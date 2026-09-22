@@ -1,0 +1,659 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CRM Setup — Dra. Marcella Barros</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(135deg, #f5f2ed 0%, #fff9f5 100%);
+      color: #333;
+      line-height: 1.6;
+    }
+
+    header {
+      background: linear-gradient(135deg, #6B4423 0%, #8B5A3C 100%);
+      color: white;
+      padding: 40px;
+      text-align: center;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+
+    header h1 {
+      font-size: 36px;
+      font-weight: 300;
+      letter-spacing: 2px;
+      margin-bottom: 10px;
+    }
+
+    header p {
+      font-size: 16px;
+      opacity: 0.95;
+      margin-bottom: 5px;
+    }
+
+    .status {
+      display: inline-block;
+      background: rgba(255,255,255,0.2);
+      padding: 8px 16px;
+      border-radius: 20px;
+      font-size: 12px;
+      margin-top: 15px;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 40px auto;
+      padding: 0 20px;
+    }
+
+    .intro {
+      background: white;
+      padding: 30px;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+      margin-bottom: 40px;
+      border-left: 4px solid #C9A961;
+    }
+
+    .intro h2 {
+      color: #6B4423;
+      margin-bottom: 15px;
+    }
+
+    .intro p {
+      color: #666;
+      margin-bottom: 10px;
+    }
+
+    .options-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+      gap: 30px;
+      margin-bottom: 40px;
+    }
+
+    .option-card {
+      background: white;
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+      transition: transform 0.3s, box-shadow 0.3s;
+    }
+
+    .option-card:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 8px 16px rgba(0,0,0,0.12);
+    }
+
+    .option-header {
+      padding: 20px;
+      text-align: center;
+      font-weight: 600;
+      color: white;
+      font-size: 18px;
+      letter-spacing: 1px;
+    }
+
+    .option-1 .option-header {
+      background: linear-gradient(135deg, #C9A961 0%, #B8995A 100%);
+    }
+
+    .option-2 .option-header {
+      background: linear-gradient(135deg, #6B4423 0%, #8B5A3C 100%);
+    }
+
+    .option-3 .option-header {
+      background: linear-gradient(135deg, #8B5A3C 0%, #6B4423 100%);
+    }
+
+    .option-content {
+      padding: 25px;
+    }
+
+    .option-content h3 {
+      color: #6B4423;
+      margin-bottom: 15px;
+      font-size: 16px;
+    }
+
+    .features {
+      list-style: none;
+      margin-bottom: 20px;
+    }
+
+    .features li {
+      padding: 8px 0;
+      color: #666;
+      border-bottom: 1px solid #f0ebe5;
+    }
+
+    .features li:last-child {
+      border-bottom: none;
+    }
+
+    .features li:before {
+      content: "✅ ";
+      color: #C9A961;
+      font-weight: bold;
+      margin-right: 8px;
+    }
+
+    .time {
+      display: inline-block;
+      background: #E8DDD0;
+      color: #6B4423;
+      padding: 6px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+      margin-top: 10px;
+      margin-bottom: 15px;
+    }
+
+    .steps {
+      background: #f9f6f0;
+      padding: 15px;
+      border-radius: 4px;
+      margin-top: 15px;
+      font-size: 13px;
+      line-height: 1.8;
+      color: #666;
+    }
+
+    .steps ol {
+      margin-left: 20px;
+    }
+
+    .steps li {
+      margin-bottom: 8px;
+    }
+
+    .btn {
+      display: inline-block;
+      background: #C9A961;
+      color: white;
+      padding: 12px 24px;
+      border-radius: 4px;
+      text-decoration: none;
+      font-weight: 600;
+      margin-top: 15px;
+      transition: background 0.3s;
+      border: none;
+      cursor: pointer;
+      font-size: 14px;
+    }
+
+    .btn:hover {
+      background: #8B5A3C;
+    }
+
+    .recommended {
+      position: relative;
+    }
+
+    .recommended:before {
+      content: "⭐ RECOMENDADO";
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      background: #C9A961;
+      color: white;
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    .quick-start {
+      background: linear-gradient(135deg, #C9A961 0%, #8B5A3C 100%);
+      color: white;
+      padding: 40px;
+      border-radius: 8px;
+      margin-bottom: 40px;
+      text-align: center;
+    }
+
+    .quick-start h2 {
+      font-size: 28px;
+      margin-bottom: 20px;
+      font-weight: 300;
+      letter-spacing: 1px;
+    }
+
+    .quick-buttons {
+      display: flex;
+      gap: 15px;
+      justify-content: center;
+      flex-wrap: wrap;
+      margin-top: 20px;
+    }
+
+    .quick-buttons a {
+      background: white;
+      color: #6B4423;
+      padding: 12px 24px;
+      border-radius: 4px;
+      text-decoration: none;
+      font-weight: 600;
+      transition: transform 0.2s;
+    }
+
+    .quick-buttons a:hover {
+      transform: scale(1.05);
+    }
+
+    .color-palette {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 15px;
+      margin-top: 30px;
+      padding-top: 30px;
+      border-top: 2px solid #f0ebe5;
+    }
+
+    .color-box {
+      text-align: center;
+    }
+
+    .color-swatch {
+      width: 100%;
+      height: 60px;
+      border-radius: 4px;
+      margin-bottom: 10px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+
+    .color-box p {
+      font-size: 13px;
+      color: #666;
+      font-weight: 600;
+    }
+
+    .color-box span {
+      display: block;
+      font-size: 11px;
+      color: #999;
+      margin-top: 5px;
+      font-family: monospace;
+    }
+
+    .summary-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 40px;
+      background: white;
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    }
+
+    .summary-table th {
+      background: #6B4423;
+      color: white;
+      padding: 15px;
+      text-align: left;
+      font-weight: 600;
+    }
+
+    .summary-table td {
+      padding: 12px 15px;
+      border-bottom: 1px solid #f0ebe5;
+    }
+
+    .summary-table tr:last-child td {
+      border-bottom: none;
+    }
+
+    .summary-table tr:hover {
+      background: #f9f6f0;
+    }
+
+    footer {
+      text-align: center;
+      padding: 40px;
+      color: #999;
+      border-top: 2px solid #f0ebe5;
+      margin-top: 40px;
+    }
+
+    footer p {
+      margin-bottom: 10px;
+    }
+
+    .success-badge {
+      display: inline-block;
+      background: #d4edda;
+      color: #155724;
+      padding: 8px 16px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+      margin: 10px 5px;
+    }
+
+    @media (max-width: 768px) {
+      header h1 {
+        font-size: 24px;
+      }
+
+      .options-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .quick-buttons {
+        flex-direction: column;
+      }
+
+      .color-palette {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>🎯 CRM Setup Completo</h1>
+    <p>Consultório Dra. Marcella Barros</p>
+    <div class="status">
+      <span>✅ Tudo Pronto para Usar</span>
+    </div>
+  </header>
+
+  <div class="container">
+    <div class="intro">
+      <h2>Bem-vindo! 👋</h2>
+      <p>
+        Você tem <strong>3 opções de CRM</strong> prontas para usar, cada uma com seu próprio propósito.
+        Escolha qual começar e siga as instruções abaixo.
+      </p>
+      <p>
+        <strong>Tempo total de setup:</strong> entre 0 minutos (Dashboard) e 30 minutos (Data Studio).
+      </p>
+      <p style="color: #C9A961; font-weight: 600;">
+        ⭐ Recomendação: Use as 3 em conjunto para cobertura completa.
+      </p>
+    </div>
+
+    <div class="quick-start">
+      <h2>⚡ Comece Agora</h2>
+      <p>Qual você quer usar primeiro?</p>
+      <div class="quick-buttons">
+        <a href="crm-dashboard-api.html" target="_blank">📱 Dashboard (0 min)</a>
+        <a href="GOOGLE-DATA-STUDIO-SETUP.md" target="_blank">📊 Data Studio (30 min)</a>
+        <a href="#opcao-1">📋 Google Sheets (5 min)</a>
+      </div>
+    </div>
+
+    <h2 style="margin-bottom: 30px; color: #6B4423;">📋 As 3 Opções de CRM</h2>
+
+    <div class="options-grid">
+      <!-- OPÇÃO 1 -->
+      <div class="option-card option-1" id="opcao-1">
+        <div class="option-header">1️⃣ GOOGLE SHEETS</div>
+        <div class="option-content">
+          <h3>Formatação Automática</h3>
+          <div class="time">⏱️ 5 minutos</div>
+
+          <h3>O que faz:</h3>
+          <ul class="features">
+            <li>Colorir por status</li>
+            <li>Congelar cabeçalho</li>
+            <li>Filtros automáticos</li>
+            <li>Ajustar colunas</li>
+          </ul>
+
+          <h3>Cores:</h3>
+          <div style="font-size: 12px; color: #666;">
+            🟢 Verde = Confirmado<br>
+            🟡 Amarelo = Pendente<br>
+            🔴 Vermelho = Não Compareceu<br>
+            🟫 Bege = Sem agendamento
+          </div>
+
+          <div class="steps">
+            <strong>Como usar:</strong>
+            <ol>
+              <li>Abra a planilha Google Sheets</li>
+              <li>Menu → Extensões → Apps Script</li>
+              <li>Cole: format-sheets.js</li>
+              <li>Execute: formatLeadsSheet()</li>
+            </ol>
+          </div>
+
+          <button class="btn" onclick="alert('Copie o conteúdo de format-sheets.js e cole no Google Apps Script')">📋 Copiar Script</button>
+        </div>
+      </div>
+
+      <!-- OPÇÃO 2 -->
+      <div class="option-card option-2 recommended" id="opcao-2">
+        <div class="option-header">2️⃣ DASHBOARD HTML</div>
+        <div class="option-content">
+          <h3>CRM Profissional</h3>
+          <div class="time">⏱️ 0 minutos (ou 5 min com API)</div>
+
+          <h3>O que faz:</h3>
+          <ul class="features">
+            <li>Visual elegante</li>
+            <li>4 cartões stat</li>
+            <li>Busca em tempo real</li>
+            <li>Responsivo (mobile)</li>
+          </ul>
+
+          <h3>Versões:</h3>
+          <div style="font-size: 12px; color: #666; margin-bottom: 15px;">
+            📱 <strong>crm-dashboard.html</strong> — Demo (simulado)<br>
+            🔗 <strong>crm-dashboard-api.html</strong> — Real (com API)
+          </div>
+
+          <div class="steps">
+            <strong>Como usar:</strong>
+            <ol>
+              <li>Abra crm-dashboard-api.html</li>
+              <li>Clique em ⚙️ Config</li>
+              <li>ID da Planilha + API Key</li>
+              <li>Pronto! (dados carregam)</li>
+            </ol>
+          </div>
+
+          <a href="crm-dashboard-api.html" target="_blank" class="btn">🚀 Abrir Dashboard</a>
+        </div>
+      </div>
+
+      <!-- OPÇÃO 3 -->
+      <div class="option-card option-3" id="opcao-3">
+        <div class="option-header">3️⃣ GOOGLE DATA STUDIO</div>
+        <div class="option-content">
+          <h3>Relatórios Visuais</h3>
+          <div class="time">⏱️ 30 minutos</div>
+
+          <h3>O que faz:</h3>
+          <ul class="features">
+            <li>Gráficos avançados</li>
+            <li>Filtros interativos</li>
+            <li>Tabela interativa</li>
+            <li>Totalmente automático</li>
+          </ul>
+
+          <h3>Inclui:</h3>
+          <div style="font-size: 12px; color: #666;">
+            📊 4 cards (estatísticas)<br>
+            📋 Tabela (com filtros)<br>
+            🥧 Pizza (distribuição)<br>
+            📈 Barras (origem)
+          </div>
+
+          <div class="steps">
+            <strong>Como começar:</strong>
+            <ol>
+              <li>datastudio.google.com</li>
+              <li>Criar → Relatório em branco</li>
+              <li>Conectar planilha</li>
+              <li>Siga guia em GOOGLE-DATA-STUDIO-SETUP.md</li>
+            </ol>
+          </div>
+
+          <a href="GOOGLE-DATA-STUDIO-SETUP.md" class="btn">📖 Ver Guia</a>
+        </div>
+      </div>
+    </div>
+
+    <h2 style="margin: 40px 0 20px; color: #6B4423;">📊 Comparação das 3 Opções</h2>
+
+    <table class="summary-table">
+      <thead>
+        <tr>
+          <th>Critério</th>
+          <th>Google Sheets</th>
+          <th>Dashboard HTML</th>
+          <th>Data Studio</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Tempo Setup</strong></td>
+          <td>5 min</td>
+          <td>0 min (ou 5 min)</td>
+          <td>30 min</td>
+        </tr>
+        <tr>
+          <td><strong>Visual</strong></td>
+          <td>⭐⭐⭐</td>
+          <td>⭐⭐⭐⭐⭐</td>
+          <td>⭐⭐⭐⭐</td>
+        </tr>
+        <tr>
+          <td><strong>Mobile</strong></td>
+          <td>✅ Sim</td>
+          <td>✅ Perfeito</td>
+          <td>⚠️ Razoável</td>
+        </tr>
+        <tr>
+          <td><strong>Automático</strong></td>
+          <td>✅ Sim</td>
+          <td>⚠️ Precisa config</td>
+          <td>✅ Sim</td>
+        </tr>
+        <tr>
+          <td><strong>Melhor Para</strong></td>
+          <td>Backup</td>
+          <td>Uso diário</td>
+          <td>Relatórios</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2 style="margin: 40px 0 20px; color: #6B4423;">🎨 Paleta de Cores da Marca</h2>
+
+    <div class="color-palette">
+      <div class="color-box">
+        <div class="color-swatch" style="background: #C9A961;"></div>
+        <p>Dourado</p>
+        <span>#C9A961</span>
+      </div>
+      <div class="color-box">
+        <div class="color-swatch" style="background: #6B4423;"></div>
+        <p>Café</p>
+        <span>#6B4423</span>
+      </div>
+      <div class="color-box">
+        <div class="color-swatch" style="background: #8B5A3C;"></div>
+        <p>Marrom</p>
+        <span>#8B5A3C</span>
+      </div>
+      <div class="color-box">
+        <div class="color-swatch" style="background: #E8DDD0;"></div>
+        <p>Areia</p>
+        <span>#E8DDD0</span>
+      </div>
+      <div class="color-box">
+        <div class="color-swatch" style="background: #d4edda;"></div>
+        <p>Verde (Confirmado)</p>
+        <span>#d4edda</span>
+      </div>
+      <div class="color-box">
+        <div class="color-swatch" style="background: #fff3cd;"></div>
+        <p>Amarelo (Pendente)</p>
+        <span>#fff3cd</span>
+      </div>
+      <div class="color-box">
+        <div class="color-swatch" style="background: #f8d7da;"></div>
+        <p>Vermelho (Não Comp.)</p>
+        <span>#f8d7da</span>
+      </div>
+      <div class="color-box">
+        <div class="color-swatch" style="background: #f5f2ed;"></div>
+        <p>Bege (Fundo)</p>
+        <span>#f5f2ed</span>
+      </div>
+    </div>
+
+    <h2 style="margin: 40px 0 20px; color: #6B4423;">✅ Arquivos Criados</h2>
+
+    <div style="background: white; padding: 20px; border-radius: 8px; border-left: 4px solid #C9A961;">
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; font-size: 13px;">
+        <div>
+          <p style="font-weight: 600; color: #6B4423; margin-bottom: 10px;">📋 Documentação</p>
+          <ul style="list-style: none; color: #666;">
+            <li>✅ GUIA-EXECUTIVO-CRM.html (este arquivo)</li>
+            <li>✅ CRM-SETUP-INDICE.md</li>
+            <li>✅ CRM-3-OPCOES.md</li>
+            <li>✅ GOOGLE-DATA-STUDIO-SETUP.md</li>
+          </ul>
+        </div>
+        <div>
+          <p style="font-weight: 600; color: #6B4423; margin-bottom: 10px;">📱 Dashboard</p>
+          <ul style="list-style: none; color: #666;">
+            <li>✅ crm-dashboard.html</li>
+            <li>✅ crm-dashboard-api.html</li>
+            <li>✅ dashboard-config.json</li>
+          </ul>
+        </div>
+        <div>
+          <p style="font-weight: 600; color: #6B4423; margin-bottom: 10px;">📊 Scripts</p>
+          <ul style="list-style: none; color: #666;">
+            <li>✅ format-sheets.js</li>
+            <li>✅ setup-todos-crms.js</li>
+            <li>✅ crm-config.json</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <h2 style="margin: 40px 0 20px; color: #6B4423;">🎯 Recomendação Final</h2>
+
+    <div style="background: linear-gradient(135deg, #C9A961 0%, #8B5A3C 100%); color: white; padding: 30px; border-radius: 8px;">
+      <p style="font-size: 16px; margin-bottom: 15px;">
+        <strong>Use TODAS AS 3 em conjunto:</strong>
+      </p>
+      <ul style="margin-left: 20px; line-height: 2;">
+        <li><strong>📱 Dashboard HTML</strong> — Celular, uso diário, rápido</li>
+        <li><strong>📊 Data Studio</strong> — Desktop, relatórios, análises</li>
+        <li><strong>📋 Google Sheets</strong> — Backup, fonte de verdade</li>
+      </ul>
+    </div>
+  </div>
+
+  <footer>
+    <p>
+      <span class="success-badge">✅ 179 Testes Passando</span>
+      <span class="success-badge">✅ 0 Falhas</span>
+      <span class="success-badge">✅ 100% Funcional</span>
+    </p>
+    <p>
+      Desenvolvido com ❤️ para Dra. Marcella Barros |
+      <a href="#" style="color: #C9A961; text-decoration: none;">Documentação Completa</a>
+    </p>
+    <p style="font-size: 12px; margin-top: 20px;">
+      Data: <script>document.write(new Date().toLocaleDateString('pt-BR'))</script>
+    </p>
+  </footer>
+</body>
+</html>

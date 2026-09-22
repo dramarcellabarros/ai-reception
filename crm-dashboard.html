@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CRM — Dra. Marcella Barros</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: #f5f2ed;
+      color: #333;
+    }
+
+    header {
+      background: linear-gradient(135deg, #6B4423 0%, #8B5A3C 100%);
+      color: white;
+      padding: 30px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+
+    header h1 {
+      font-size: 28px;
+      font-weight: 300;
+      letter-spacing: 2px;
+    }
+
+    header p {
+      font-size: 14px;
+      opacity: 0.9;
+      margin-top: 5px;
+    }
+
+    .container {
+      max-width: 1400px;
+      margin: 30px auto;
+      padding: 0 20px;
+    }
+
+    .controls {
+      display: flex;
+      gap: 15px;
+      margin-bottom: 30px;
+      flex-wrap: wrap;
+    }
+
+    .search-box {
+      flex: 1;
+      min-width: 250px;
+    }
+
+    .search-box input {
+      width: 100%;
+      padding: 12px 15px;
+      border: 2px solid #C9A961;
+      border-radius: 4px;
+      font-size: 14px;
+      background: white;
+    }
+
+    .search-box input:focus {
+      outline: none;
+      background: #fffbf7;
+      border-color: #8B5A3C;
+    }
+
+    .filter-btn {
+      padding: 12px 20px;
+      background: #C9A961;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: 600;
+      transition: background 0.3s;
+    }
+
+    .filter-btn:hover {
+      background: #8B5A3C;
+    }
+
+    .status-badge {
+      display: inline-block;
+      padding: 6px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .status-booked {
+      background: #d4edda;
+      color: #155724;
+    }
+
+    .status-confirmed {
+      background: #cce5ff;
+      color: #004085;
+    }
+
+    .status-noshow {
+      background: #f8d7da;
+      color: #721c24;
+    }
+
+    .status-ready {
+      background: #fff3cd;
+      color: #856404;
+    }
+
+    .table-wrapper {
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+      overflow: hidden;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    thead {
+      background: linear-gradient(90deg, #6B4423 0%, #8B5A3C 100%);
+      color: white;
+    }
+
+    thead th {
+      padding: 16px;
+      text-align: left;
+      font-weight: 600;
+      font-size: 13px;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+    }
+
+    tbody tr {
+      border-bottom: 1px solid #f0ebe5;
+      transition: background 0.2s;
+    }
+
+    tbody tr:hover {
+      background: #faf8f4;
+    }
+
+    td {
+      padding: 16px;
+      font-size: 14px;
+    }
+
+    .name-cell {
+      font-weight: 600;
+      color: #6B4423;
+    }
+
+    .phone-cell {
+      color: #666;
+      font-size: 13px;
+    }
+
+    .date-cell {
+      color: #8B5A3C;
+      font-weight: 500;
+    }
+
+    .slot-cell {
+      background: #f9f6f0;
+      padding: 8px 12px;
+      border-radius: 4px;
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+      color: #6B4423;
+    }
+
+    .action-btn {
+      background: #C9A961;
+      color: white;
+      border: none;
+      padding: 8px 12px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 600;
+      transition: background 0.3s;
+      margin-right: 5px;
+    }
+
+    .action-btn:hover {
+      background: #8B5A3C;
+    }
+
+    .action-btn.delete {
+      background: #d9534f;
+    }
+
+    .action-btn.delete:hover {
+      background: #ac2925;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 60px 20px;
+      color: #999;
+    }
+
+    .empty-state svg {
+      width: 80px;
+      height: 80px;
+      margin-bottom: 20px;
+      opacity: 0.5;
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 20px;
+      margin-bottom: 30px;
+    }
+
+    .stat-card {
+      background: white;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+      border-left: 4px solid #C9A961;
+    }
+
+    .stat-number {
+      font-size: 32px;
+      font-weight: 300;
+      color: #6B4423;
+    }
+
+    .stat-label {
+      font-size: 13px;
+      color: #999;
+      margin-top: 5px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    @media (max-width: 768px) {
+      .controls {
+        flex-direction: column;
+      }
+
+      .search-box {
+        min-width: 100%;
+      }
+
+      table {
+        font-size: 12px;
+      }
+
+      thead th, td {
+        padding: 10px;
+      }
+
+      .stats {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>CRM — Consultório Dra. Marcella Barros</h1>
+    <p>Gestão de Leads e Agendamentos</p>
+  </header>
+
+  <div class="container">
+    <div class="stats">
+      <div class="stat-card">
+        <div class="stat-number" id="total-leads">0</div>
+        <div class="stat-label">Leads Totais</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number" id="confirmed-count">0</div>
+        <div class="stat-label">Agendamentos Confirmados</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number" id="booked-count">0</div>
+        <div class="stat-label">Pendentes de Confirmação</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number" id="noshow-count">0</div>
+        <div class="stat-label">Não Compareceram</div>
+      </div>
+    </div>
+
+    <div class="controls">
+      <div class="search-box">
+        <input type="text" id="search" placeholder="Buscar por nome, telefone ou email...">
+      </div>
+      <button class="filter-btn" onclick="exportData()">📥 Exportar</button>
+      <button class="filter-btn" onclick="refreshData()">🔄 Atualizar</button>
+    </div>
+
+    <div class="table-wrapper">
+      <table id="leads-table">
+        <thead>
+          <tr>
+            <th>Nome</th>
+            <th>Telefone</th>
+            <th>Origem</th>
+            <th>Estado</th>
+            <th>Status</th>
+            <th>Horário Escolhido</th>
+            <th>Agendamento Confirmado</th>
+            <th>Ações</th>
+          </tr>
+        </thead>
+        <tbody id="table-body">
+          <tr>
+            <td colspan="8" style="text-align: center; padding: 40px; color: #999;">
+              Carregando dados... (Simulado com dados de teste)
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    // Dados simulados dos 5 testes (em produção, viriam da API da planilha)
+    const mockData = [
+      {
+        phone: '+5515900000101',
+        name: 'TESTE 1 - Ana Beatriz',
+        source: 'INSTAGRAM',
+        conversationState: 'CONFIRMED',
+        leadStatus: null,
+        chosenSlot: { date: '2026-09-28', start: '09:00', end: '10:00' },
+        confirmedAppointment: { id: 's9c8btq0aum8f5a4n231k9mi9g', start: { dateTime: '2026-09-28T09:00:00-03:00' }, end: { dateTime: '2026-09-28T10:00:00-03:00' } }
+      },
+      {
+        phone: '+5515900000102',
+        name: 'TESTE 2 - Patricia Nunes',
+        source: 'WHATSAPP',
+        conversationState: 'READY_TO_BOOK',
+        leadStatus: null,
+        chosenSlot: null,
+        confirmedAppointment: null
+      },
+      {
+        phone: '+5515900000103',
+        name: 'TESTE 3 - Camila Rocha',
+        source: 'SITE',
+        conversationState: null,
+        leadStatus: 'não compareceu',
+        chosenSlot: { date: '2026-09-25', start: '09:00', end: '10:00' },
+        confirmedAppointment: { id: '4p3605djc6il5rh4ksu2b6tfho', start: { dateTime: '2026-09-25T09:00:00-03:00' }, end: { dateTime: '2026-09-25T10:00:00-03:00' } }
+      },
+      {
+        phone: '+5515900000104',
+        name: 'TESTE 4 - Juliana Prado',
+        source: 'INSTAGRAM',
+        conversationState: null,
+        leadStatus: 'agendado (remarcado)',
+        chosenSlot: { date: '2026-09-30', start: '10:00', end: '11:00' },
+        confirmedAppointment: { id: 'c3dajs6s0735775aet9gfksj9k', start: { dateTime: '2026-09-30T10:00:00-03:00' }, end: { dateTime: '2026-09-30T11:00:00-03:00' } }
+      },
+      {
+        phone: '+5515900000105',
+        name: 'TESTE 5 - Fernanda Lima',
+        source: 'INSTAGRAM',
+        conversationState: null,
+        leadStatus: null,
+        chosenSlot: null,
+        confirmedAppointment: null
+      },
+      {
+        phone: '+5515900000106',
+        name: 'TESTE 5 - Fernanda Costa',
+        source: 'WHATSAPP',
+        conversationState: null,
+        leadStatus: null,
+        chosenSlot: null,
+        confirmedAppointment: null
+      }
+    ];
+
+    function getStatusBadge(lead) {
+      if (lead.confirmedAppointment) return 'confirmed';
+      if (lead.leadStatus === 'não compareceu') return 'noshow';
+      if (lead.conversationState === 'BOOKED' || lead.conversationState === 'READY_TO_BOOK') return 'ready';
+      return 'ready';
+    }
+
+    function formatDate(dateString) {
+      if (!dateString) return '—';
+      const date = new Date(dateString + 'T00:00:00');
+      return date.toLocaleDateString('pt-BR');
+    }
+
+    function renderTable(data = mockData) {
+      const tbody = document.getElementById('table-body');
+      if (data.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; padding: 40px; color: #999;">Nenhum lead encontrado</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = data.map(lead => `
+        <tr>
+          <td class="name-cell">${lead.name}</td>
+          <td class="phone-cell">${lead.phone}</td>
+          <td>${lead.source}</td>
+          <td>${lead.conversationState ? lead.conversationState.replace(/_/g, ' ') : '—'}</td>
+          <td>
+            <span class="status-badge status-${getStatusBadge(lead)}">
+              ${lead.confirmedAppointment ? 'Confirmado' : lead.leadStatus || 'Ativo'}
+            </span>
+          </td>
+          <td class="slot-cell">${lead.chosenSlot ? `${lead.chosenSlot.date} ${lead.chosenSlot.start}` : '—'}</td>
+          <td>${lead.confirmedAppointment ? `<span class="slot-cell">${formatDate(lead.confirmedAppointment.start.dateTime)} ${lead.confirmedAppointment.start.dateTime.split('T')[1].slice(0, 5)}</span>` : '—'}</td>
+          <td>
+            <button class="action-btn" onclick="alert('Ver detalhes: ${lead.name}')">👁️</button>
+            <button class="action-btn" onclick="alert('Editar: ${lead.name}')">✏️</button>
+          </td>
+        </tr>
+      `).join('');
+
+      updateStats(data);
+    }
+
+    function updateStats(data = mockData) {
+      const total = data.length;
+      const confirmed = data.filter(l => Boolean(l.confirmedAppointment)).length;
+      const booked = data.filter(l => l.conversationState === 'BOOKED' || l.conversationState === 'READY_TO_BOOK').length;
+      const noshow = data.filter(l => l.leadStatus === 'não compareceu').length;
+
+      document.getElementById('total-leads').textContent = total;
+      document.getElementById('confirmed-count').textContent = confirmed;
+      document.getElementById('booked-count').textContent = booked;
+      document.getElementById('noshow-count').textContent = noshow;
+    }
+
+    function searchData() {
+      const query = document.getElementById('search').value.toLowerCase();
+      const filtered = mockData.filter(lead =>
+        lead.name.toLowerCase().includes(query) ||
+        lead.phone.includes(query) ||
+        lead.source.toLowerCase().includes(query)
+      );
+      renderTable(filtered);
+    }
+
+    function exportData() {
+      alert('Exportar para CSV (implementar com backend)');
+    }
+
+    function refreshData() {
+      alert('Dados atualizados!');
+      renderTable();
+    }
+
+    document.getElementById('search').addEventListener('input', searchData);
+    renderTable();
+  </script>
+</body>
+</html>
