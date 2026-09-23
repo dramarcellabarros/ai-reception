@@ -468,12 +468,38 @@
       color: #333;
     }
 
-    .form-group input, .form-group textarea {
+    .form-group input, .form-group textarea, .form-group select {
       width: 100%;
       padding: 10px;
       border: 1px solid #ddd;
       border-radius: 4px;
       font-size: 14px;
+      background: white;
+    }
+
+    .form-group select:disabled {
+      background: #f5f2ed;
+      color: #999;
+    }
+
+    .form-error {
+      background: #f8d7da;
+      border: 1px solid #f5c6cb;
+      color: #721c24;
+      padding: 10px;
+      border-radius: 4px;
+      margin-bottom: 15px;
+      font-size: 13px;
+    }
+
+    .form-success {
+      background: #d4edda;
+      border: 1px solid #c3e6cb;
+      color: #155724;
+      padding: 10px;
+      border-radius: 4px;
+      margin-bottom: 15px;
+      font-size: 13px;
     }
 
     .form-group textarea {
@@ -561,7 +587,7 @@
 
     <div class="agenda-section">
       <div class="agenda-header">
-        <h2>📅 Agenda (Google Calendar)</h2>
+        <h2>📅 Agenda</h2>
         <span class="agenda-status" id="agendaStatus"></span>
       </div>
       <div id="agendaList" class="agenda-list">
@@ -573,6 +599,7 @@
       <div class="search-box">
         <input type="text" id="search" placeholder="Buscar por nome, telefone ou email...">
       </div>
+      <button class="btn" onclick="openNewAppointmentModal()">➕ Novo Agendamento</button>
       <button class="btn" onclick="refreshData()">🔄 Atualizar</button>
       <button class="btn secondary" onclick="toggleSettings()">⚙️ Config</button>
     </div>
@@ -633,9 +660,56 @@
           Encontre em: Configurações da agenda → Integrar agenda → ID da agenda. Precisa estar com "Disponibilizar ao público" ativado.
         </small>
       </div>
+      <div class="form-group">
+        <label>URL do Apps Script (para criar agendamentos):</label>
+        <input type="text" id="scriptUrl" placeholder="https://script.google.com/macros/s/.../exec">
+        <small style="color: #999; margin-top: 5px; display: block;">
+          Ver apps-script/SETUP.md para gerar essa URL. Sem isso, o botão "Novo Agendamento" fica desativado.
+        </small>
+      </div>
       <button class="btn" onclick="saveSettings()">💾 Salvar</button>
       <p style="color: #999; font-size: 12px; margin-top: 20px;">
         ℹ️ Os dados são salvos localmente no seu navegador.
+      </p>
+    </div>
+  </div>
+
+  <!-- Modal de Novo Agendamento -->
+  <div class="modal" id="newAppointmentModal">
+    <div class="modal-content">
+      <span class="close-btn" onclick="closeNewAppointmentModal()">&times;</span>
+      <h2>➕ Novo Agendamento</h2>
+      <div id="appointmentError"></div>
+      <div class="form-group">
+        <label>Nome:</label>
+        <input type="text" id="apName" placeholder="Nome completo">
+      </div>
+      <div class="form-group">
+        <label>Telefone:</label>
+        <input type="text" id="apPhone" placeholder="+5515900000000">
+      </div>
+      <div class="form-group">
+        <label>Origem:</label>
+        <select id="apSource">
+          <option value="INSTAGRAM">Instagram</option>
+          <option value="WHATSAPP">WhatsApp</option>
+          <option value="SITE">Site</option>
+          <option value="OUTRO">Outro</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Data:</label>
+        <input type="date" id="apDate" onchange="loadAvailableSlots()">
+      </div>
+      <div class="form-group">
+        <label>Horário disponível:</label>
+        <select id="apSlot">
+          <option value="">Escolha uma data primeiro</option>
+        </select>
+      </div>
+      <button class="btn" id="apSubmitBtn" onclick="submitNewAppointment()">💾 Criar Agendamento</button>
+      <p style="color: #999; font-size: 12px; margin-top: 20px;">
+        ℹ️ Cria o evento real na agenda e grava a linha na planilha.
       </p>
     </div>
   </div>
@@ -704,7 +778,8 @@
       const settings = {
         spreadsheetId: document.getElementById('spreadsheetId').value,
         apiKey: document.getElementById('apiKey').value,
-        calendarId: document.getElementById('calendarId').value
+        calendarId: document.getElementById('calendarId').value,
+        scriptUrl: document.getElementById('scriptUrl').value
       };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
       toggleSettings();
@@ -718,6 +793,7 @@
         document.getElementById('spreadsheetId').value = settings.spreadsheetId;
         document.getElementById('apiKey').value = settings.apiKey;
         document.getElementById('calendarId').value = settings.calendarId || '';
+        document.getElementById('scriptUrl').value = settings.scriptUrl || '';
       }
       modal.classList.toggle('open');
     }
@@ -1048,6 +1124,112 @@
 
     function scrollToTop() {
       window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    // --- Criação de agendamento (via Apps Script — ver apps-script/SETUP.md) ---
+
+    function openNewAppointmentModal() {
+      const settings = loadSettings();
+      if (!settings || !settings.scriptUrl) {
+        alert('Configure a "URL do Apps Script" em ⚙️ Config primeiro (ver apps-script/SETUP.md para gerar essa URL).');
+        toggleSettings();
+        return;
+      }
+
+      document.getElementById('apName').value = '';
+      document.getElementById('apPhone').value = '';
+      document.getElementById('apSource').value = 'INSTAGRAM';
+      const dateInput = document.getElementById('apDate');
+      dateInput.value = '';
+      dateInput.min = new Date().toISOString().slice(0, 10);
+      document.getElementById('apSlot').innerHTML = '<option value="">Escolha uma data primeiro</option>';
+      document.getElementById('apSlot').disabled = true;
+      document.getElementById('appointmentError').innerHTML = '';
+      document.getElementById('newAppointmentModal').classList.add('open');
+    }
+
+    function closeNewAppointmentModal() {
+      document.getElementById('newAppointmentModal').classList.remove('open');
+    }
+
+    async function loadAvailableSlots() {
+      const settings = loadSettings();
+      const date = document.getElementById('apDate').value;
+      const slotSelect = document.getElementById('apSlot');
+      if (!date) return;
+
+      slotSelect.innerHTML = '<option value="">Carregando horários...</option>';
+      slotSelect.disabled = true;
+      document.getElementById('appointmentError').innerHTML = '';
+
+      try {
+        const url = `${settings.scriptUrl}?action=availability&fromDate=${date}&daysAhead=1`;
+        const res = await fetch(url);
+        const body = await res.json();
+
+        if (!body.ok) throw new Error(body.error || 'Erro ao buscar horários');
+
+        const dayAvailability = (body.availability || []).find(d => d.date === date);
+        if (!dayAvailability || dayAvailability.slots.length === 0) {
+          slotSelect.innerHTML = '<option value="">Sem horários disponíveis nesse dia</option>';
+          return;
+        }
+
+        slotSelect.innerHTML = dayAvailability.slots
+          .map(s => `<option value="${s.start}|${s.end}">${s.start} - ${s.end}</option>`)
+          .join('');
+        slotSelect.disabled = false;
+      } catch (err) {
+        slotSelect.innerHTML = '<option value="">Erro ao carregar horários</option>';
+        showAppointmentError(`❌ ${err.message}`);
+      }
+    }
+
+    function showAppointmentError(message) {
+      document.getElementById('appointmentError').innerHTML = `<div class="form-error">${message}</div>`;
+    }
+
+    async function submitNewAppointment() {
+      const settings = loadSettings();
+      const name = document.getElementById('apName').value.trim();
+      const phone = document.getElementById('apPhone').value.trim();
+      const source = document.getElementById('apSource').value;
+      const date = document.getElementById('apDate').value;
+      const slotValue = document.getElementById('apSlot').value;
+
+      document.getElementById('appointmentError').innerHTML = '';
+
+      if (!name || !phone || !date || !slotValue) {
+        showAppointmentError('⚠️ Preencha nome, telefone, data e horário.');
+        return;
+      }
+
+      const [start, end] = slotValue.split('|');
+      const btn = document.getElementById('apSubmitBtn');
+      btn.disabled = true;
+      btn.textContent = '⏳ Criando...';
+
+      try {
+        // Content-Type text/plain evita o preflight CORS que o Apps Script
+        // Web App nao trata nativamente — o corpo ainda e JSON, so o
+        // cabecalho e diferente.
+        const response = await fetch(settings.scriptUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({ action: 'createAppointment', phone, name, source, date, start, end })
+        });
+        const result = await response.json();
+
+        if (!result.ok) throw new Error(result.error || 'Erro desconhecido');
+
+        closeNewAppointmentModal();
+        refreshData();
+      } catch (err) {
+        showAppointmentError(`❌ ${err.message}`);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '💾 Criar Agendamento';
+      }
     }
 
     // Event listeners
