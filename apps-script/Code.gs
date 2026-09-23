@@ -25,6 +25,13 @@ const SHEET_NAME = 'Leads';
 const CALENDAR_ID = '2c135b41ae97d7bf8c4b10be19c21e59cc77ee5e08a16a9126e0f5dc24179285@group.calendar.google.com';
 const TIME_ZONE = 'America/Sao_Paulo';
 
+// Notificações por e-mail (pedido do usuário 2026-09-23): aviso instantâneo
+// a cada agendamento novo + resumo diário do dia seguinte, enviado no
+// horário definido em DAILY_SUMMARY_HOUR. Usa MailApp (cota gratuita do
+// Apps Script) — não depende de nenhuma configuração do Google Calendar.
+const NOTIFICATION_EMAIL = 'dramarcellabarros@gmail.com';
+const DAILY_SUMMARY_HOUR = 20; // 20h — horário do resumo do dia seguinte
+
 // Mesmas colunas/ordem de src/googleSheetsClient.js#DEFAULT_COLUMNS — mudar
 // aqui exige mudar lá também (e vice-versa) para não dessincronizar.
 const COLUMNS = [
@@ -162,7 +169,41 @@ function createAppointment(payload) {
     confirmedAppointment,
   });
 
+  // Falha no e-mail nunca deve derrubar a criação do agendamento — o
+  // evento e a linha na planilha já foram gravados com sucesso acima,
+  // isso aqui é só um aviso extra.
+  try {
+    notifyNewAppointment({ name, phone, source, typeLabel, date, start, end, htmlLink: confirmedAppointment.htmlLink });
+  } catch (err) {
+    // Silencioso de propósito — ver nota acima.
+  }
+
   return { ok: true, event: confirmedAppointment };
+}
+
+/**
+ * E-mail instantâneo a cada agendamento novo — pedido do usuário
+ * 2026-09-23: a notificação nativa "Novos eventos" do Google Calendar só
+ * manda e-mail e depende de configuração manual na conta dela; isso aqui
+ * dispara na hora, direto do momento em que o CRM cria o evento.
+ */
+function notifyNewAppointment({ name, phone, source, typeLabel, date, start, end, htmlLink }) {
+  if (!NOTIFICATION_EMAIL) return;
+  const dateLabel = Utilities.formatDate(parseLocalDateTime(date, start), TIME_ZONE, 'dd/MM/yyyy');
+  const subject = `Novo agendamento — ${name}`;
+  const body = [
+    `Novo agendamento criado no CRM.`,
+    ``,
+    `Paciente: ${name}`,
+    `Tipo: ${typeLabel}`,
+    `Data: ${dateLabel}`,
+    `Horário: ${start} às ${end}`,
+    `Telefone: ${phone}`,
+    `Origem: ${source || '—'}`,
+    ``,
+    `Ver na agenda: ${htmlLink}`,
+  ].join('\n');
+  MailApp.sendEmail(NOTIFICATION_EMAIL, subject, body);
 }
 
 /**
@@ -432,6 +473,71 @@ function formatIso(date) {
 function buildEventHtmlLink(eventId) {
   const base64 = Utilities.base64Encode(`${eventId} ${CALENDAR_ID}`).replace(/=+$/, '');
   return `https://www.google.com/calendar/event?eid=${base64}`;
+}
+
+/**
+ * Resumo dos atendimentos de amanhã, enviado no horário fixo de
+ * DAILY_SUMMARY_HOUR — pedido do usuário 2026-09-23: o lembrete nativo do
+ * Calendar só sabe contar "X horas antes do evento", nunca um horário
+ * fixo da noite anterior independente do horário de cada consulta. Chamada
+ * automaticamente pelo gatilho criado em setupDailyTrigger() — nunca
+ * precisa rodar isso na mão no dia a dia.
+ */
+function sendTomorrowSummary() {
+  if (!NOTIFICATION_EMAIL) return;
+
+  const calendar = CalendarApp.getCalendarById(CALENDAR_ID);
+  if (!calendar) return;
+
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const dayStart = new Date(tomorrow.getFullYear(), tomorrow.getMonth(), tomorrow.getDate(), 0, 0, 0);
+  const dayEnd = new Date(tomorrow.getFullYear(), tomorrow.getMonth(), tomorrow.getDate(), 23, 59, 59);
+
+  // Ignora eventos já baixados/desmarcados (✅/❌) — não fazem sentido num
+  // resumo do que ainda vai acontecer amanhã.
+  const events = calendar
+    .getEvents(dayStart, dayEnd)
+    .filter((e) => {
+      const title = e.getTitle() || '';
+      return !title.startsWith('✅') && !title.startsWith('❌');
+    })
+    .sort((a, b) => a.getStartTime() - b.getStartTime());
+
+  const dateLabel = Utilities.formatDate(dayStart, TIME_ZONE, 'dd/MM/yyyy');
+  const subject =
+    events.length > 0
+      ? `Agenda de amanhã (${dateLabel}) — ${events.length} atendimento(s)`
+      : `Agenda de amanhã (${dateLabel}) — nenhum atendimento`;
+
+  const lines = [`Resumo dos atendimentos de amanhã (${dateLabel}):`, ''];
+  if (events.length === 0) {
+    lines.push('Nenhum atendimento agendado.');
+  } else {
+    events.forEach((e) => {
+      const time = e.isAllDayEvent() ? 'Dia todo' : Utilities.formatDate(e.getStartTime(), TIME_ZONE, 'HH:mm');
+      lines.push(`${time} — ${e.getTitle()}`);
+    });
+  }
+
+  MailApp.sendEmail(NOTIFICATION_EMAIL, subject, lines.join('\n'));
+}
+
+/**
+ * Configura o gatilho que roda sendTomorrowSummary() todo dia, no horário
+ * de DAILY_SUMMARY_HOUR. RODE ESTA FUNÇÃO MANUALMENTE UMA ÚNICA VEZ: no
+ * editor do Apps Script, selecione "setupDailyTrigger" no menu de funções
+ * (ao lado do botão Executar) e clique em Executar. Depois disso o
+ * gatilho fica salvo — não precisa rodar de novo. Remove qualquer gatilho
+ * anterior desta mesma função antes de criar um novo, pra nunca duplicar
+ * e mandar o resumo em dobro.
+ */
+function setupDailyTrigger() {
+  ScriptApp.getProjectTriggers()
+    .filter((t) => t.getHandlerFunction() === 'sendTomorrowSummary')
+    .forEach((t) => ScriptApp.deleteTrigger(t));
+
+  ScriptApp.newTrigger('sendTomorrowSummary').timeBased().atHour(DAILY_SUMMARY_HOUR).everyDays(1).create();
 }
 
 function jsonResponse(obj) {
