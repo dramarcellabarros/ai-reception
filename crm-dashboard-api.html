@@ -500,7 +500,7 @@
       try {
         setStatus(false, 'Sincronizando...');
 
-        const url = `https://sheets.googleapis.com/v4/spreadsheets/${settings.spreadsheetId}/values/Sheet1?key=${settings.apiKey}`;
+        const url = `https://sheets.googleapis.com/v4/spreadsheets/${settings.spreadsheetId}/values/Leads?key=${settings.apiKey}`;
         const response = await fetch(url);
 
         if (!response.ok) throw new Error(`Erro ${response.status}`);
@@ -518,8 +518,8 @@
           phone: row[headers.indexOf('Telefone')] || '—',
           name: row[headers.indexOf('Nome')] || 'N/A',
           source: row[headers.indexOf('Origem')] || '—',
-          conversationState: row[headers.indexOf('Estado')] || null,
-          leadStatus: row[headers.indexOf('Lead Status')] || null,
+          conversationState: row[headers.indexOf('Estado da Conversa')] || null,
+          leadStatus: row[headers.indexOf('Status')] || null,
           chosenSlot: tryParseJSON(row[headers.indexOf('Horário Escolhido (JSON)')]),
           confirmedAppointment: tryParseJSON(row[headers.indexOf('Agendamento Confirmado (JSON)')])
         }));
