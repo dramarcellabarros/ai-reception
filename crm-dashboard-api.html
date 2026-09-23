@@ -674,6 +674,24 @@
       return CONVERSATION_STATE_LABELS[state] || state.replace(/_/g, ' ');
     }
 
+    // Mascara visual pro telefone (mantém lead.phone original intacto, é só
+    // exibição) — cobre celular BR (+55 (DD) 9XXXX-XXXX) e fixo BR
+    // (+55 (DD) XXXX-XXXX). Fora desse padrão, mostra o número original sem
+    // quebrar nada.
+    function formatPhone(phone) {
+      if (!phone || phone === '—') return phone || '—';
+      const digits = phone.replace(/\D/g, '');
+
+      if (digits.startsWith('55') && (digits.length === 12 || digits.length === 13)) {
+        const ddd = digits.slice(2, 4);
+        const rest = digits.slice(4);
+        if (rest.length === 9) return `+55 (${ddd}) ${rest.slice(0, 5)}-${rest.slice(5)}`;
+        if (rest.length === 8) return `+55 (${ddd}) ${rest.slice(0, 4)}-${rest.slice(4)}`;
+      }
+
+      return phone;
+    }
+
     // LocalStorage para salvar configurações
     const STORAGE_KEY = 'crm_settings';
 
@@ -839,7 +857,7 @@
       tbody.innerHTML = data.map(lead => `
         <tr>
           <td class="name-cell">${lead.name}</td>
-          <td>${lead.phone}</td>
+          <td>${formatPhone(lead.phone)}</td>
           <td>${lead.source}</td>
           <td>${translateConversationState(lead.conversationState)}</td>
           <td>
