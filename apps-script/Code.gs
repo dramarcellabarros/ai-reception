@@ -34,6 +34,10 @@ const DAILY_SUMMARY_HOUR = 20; // 20h — horário do resumo do dia seguinte
 
 // Mesmas colunas/ordem de src/googleSheetsClient.js#DEFAULT_COLUMNS — mudar
 // aqui exige mudar lá também (e vice-versa) para não dessincronizar.
+// "Tipo de Atendimento" (2026-09-23, 2ª auditoria UX): antes só existia no
+// título do evento do Calendar, impossível de contar/relatar a partir só
+// da planilha. upsertLeadRow() migra a planilha real sozinha na primeira
+// escrita depois desta mudança — não precisa editar a planilha na mão.
 const COLUMNS = [
   'Telefone',
   'Nome',
@@ -51,6 +55,7 @@ const COLUMNS = [
   'Horários Oferecidos (JSON)',
   'Horário Escolhido (JSON)',
   'Agendamento Confirmado (JSON)',
+  'Tipo de Atendimento',
 ];
 
 // Mesmo horário de funcionamento de config/business_rules.json#scheduling —
@@ -86,6 +91,9 @@ function doPost(e) {
     }
     if (payload.action === 'cancelAppointment') {
       return jsonResponse(cancelAppointmentAction(payload));
+    }
+    if (payload.action === 'reopenAppointment') {
+      return jsonResponse(reopenAppointment(payload));
     }
 
     return jsonResponse({ ok: false, error: 'Ação desconhecida: ' + payload.action });
@@ -165,6 +173,8 @@ function createAppointment(payload) {
     name,
     source: source || '',
     conversationState: 'CONFIRMED',
+    leadStatus: '',
+    appointmentType: typeLabel,
     chosenSlot: { date, start, end },
     confirmedAppointment,
   });
@@ -214,7 +224,48 @@ function notifyNewAppointment({ name, phone, source, typeLabel, date, start, end
  * Pedido do usuário 2026-09-23: fluxo de "baixar" avaliação/procedimento
  * e, dali, encadear o próximo agendamento (procedimento ou retorno).
  */
+// Os 3 prefixos que tiram um evento da Agenda ativa e mandam pro histórico
+// do Dashboard — cada um com um significado diferente, todos reversíveis
+// (ver reopenAppointment). Definidos num só lugar pra não dessincronizar
+// com o Dashboard (que precisa reconhecer os mesmos símbolos).
+const STATUS_PREFIXES = { DONE: '✅', CANCELED: '❌', NO_SHOW: '🚫' };
+
+/** Prefixa (ou reprefixa) o título de um evento com um dos STATUS_PREFIXES. */
+function markCalendarEvent(eventId, prefix) {
+  const calendar = CalendarApp.getCalendarById(CALENDAR_ID);
+  if (!calendar) return { ok: false, error: 'Agenda não encontrada — verifique CALENDAR_ID no script.' };
+
+  const event = calendar.getEventById(eventId);
+  if (!event) return { ok: false, error: 'Evento não encontrado na agenda (pode já ter sido apagado).' };
+
+  const bareTitle = stripStatusPrefix(event.getTitle());
+  event.setTitle(`${prefix} ${bareTitle}`);
+  return { ok: true };
+}
+
+/** Remove qualquer um dos STATUS_PREFIXES do início do título, se houver. */
+function stripStatusPrefix(title) {
+  let t = (title || '').trim();
+  Object.values(STATUS_PREFIXES).forEach((p) => {
+    if (t.startsWith(p)) t = t.slice(p.length).trim();
+  });
+  return t;
+}
+
 function completeAppointment(payload) {
+  const { eventId } = payload;
+  if (!eventId) return { ok: false, error: 'Campo obrigatório: eventId.' };
+  return markCalendarEvent(eventId, STATUS_PREFIXES.DONE);
+}
+
+/**
+ * "Desfaz" uma baixa, desmarcação ou não-comparecimento — remove o prefixo
+ * do título, o evento volta a aparecer na Agenda ativa como se nada
+ * tivesse acontecido. Pedido da 2ª auditoria UX 2026-09-23: um toque
+ * errado em "Desmarcar" (perto de "Remarcar" na lista) não tinha volta
+ * pela interface antes disso.
+ */
+function reopenAppointment(payload) {
   const { eventId } = payload;
   if (!eventId) return { ok: false, error: 'Campo obrigatório: eventId.' };
 
@@ -224,11 +275,7 @@ function completeAppointment(payload) {
   const event = calendar.getEventById(eventId);
   if (!event) return { ok: false, error: 'Evento não encontrado na agenda (pode já ter sido apagado).' };
 
-  const title = event.getTitle();
-  if (!title.startsWith('✅')) {
-    event.setTitle('✅ ' + title);
-  }
-
+  event.setTitle(stripStatusPrefix(event.getTitle()));
   return { ok: true };
 }
 
@@ -300,9 +347,17 @@ function cancelAppointmentAction(payload) {
   const event = calendar.getEventById(eventId);
   if (!event) return { ok: false, error: 'Evento não encontrado na agenda (pode já ter sido apagado).' };
 
-  const title = event.getTitle();
-  if (!title.startsWith('❌') && !title.startsWith('✅')) {
-    event.setTitle('❌ ' + title);
+  event.setTitle(`${STATUS_PREFIXES.CANCELED} ${stripStatusPrefix(event.getTitle())}`);
+
+  // Sincroniza com a planilha (2ª auditoria UX 2026-09-23): sem isso, a
+  // tabela do Dashboard continuava mostrando "Confirmado" pra um
+  // atendimento já desmarcado na Agenda — dois sistemas de status que não
+  // se falavam. Limpa o agendamento confirmado (não é mais verdade) e
+  // marca o motivo; só roda se der pra achar o telefone na descrição do
+  // evento (eventos muito antigos, de antes desse campo existir, não têm).
+  const phoneMatch = (event.getDescription() || '').match(/Telefone:\s*(\+?\d+)/);
+  if (phoneMatch) {
+    upsertLeadRow({ phone: phoneMatch[1], leadStatus: 'desmarcado', confirmedAppointment: null });
   }
 
   return { ok: true };
@@ -368,11 +423,46 @@ function updateLead(payload) {
     }
   }
 
+  // Sincroniza com a Agenda (2ª auditoria UX 2026-09-23): marcar "não
+  // compareceu" aqui, no painel de detalhe, também tira o evento
+  // correspondente da Agenda ativa do Dashboard — sem isso, o evento
+  // continuava pedindo "Baixar/Remarcar/Desmarcar" como se nada tivesse
+  // acontecido. Usa 🚫, diferente de ✅ (concluído normal) e ❌
+  // (desmarcado), pra manter o motivo real visível no histórico. Falha
+  // aqui nunca derruba a atualização da planilha, que já aconteceu acima.
+  if (leadStatus === 'não compareceu') {
+    try {
+      const confirmedCol = headers.indexOf('Agendamento Confirmado (JSON)');
+      const raw = confirmedCol !== -1 ? data[rowIndex][confirmedCol] : '';
+      const confirmedAppointment = raw ? JSON.parse(raw) : null;
+      if (confirmedAppointment && confirmedAppointment.id) {
+        markCalendarEvent(confirmedAppointment.id, STATUS_PREFIXES.NO_SHOW);
+      }
+    } catch (err) {
+      // Silencioso de propósito — a planilha já foi atualizada com sucesso.
+    }
+  }
+
   return { ok: true };
+}
+
+/**
+ * Migra a planilha real sozinha se COLUMNS ganhou colunas novas desde a
+ * última vez (ex.: "Tipo de Atendimento", 2ª auditoria UX 2026-09-23) —
+ * completa os cabeçalhos que faltam no fim da linha 1. Idempotente e
+ * barata, roda toda vez sem custo perceptível.
+ */
+function ensureSheetColumns(sheet) {
+  const lastCol = sheet.getLastColumn();
+  if (lastCol < COLUMNS.length) {
+    const missing = COLUMNS.slice(lastCol);
+    sheet.getRange(1, lastCol + 1, 1, missing.length).setValues([missing]);
+  }
 }
 
 function upsertLeadRow(fields) {
   const sheet = getSheet();
+  ensureSheetColumns(sheet);
   const data = sheet.getDataRange().getValues();
   const headers = data[0];
   const phoneCol = headers.indexOf('Telefone');
@@ -390,16 +480,28 @@ function upsertLeadRow(fields) {
     name: 'Nome',
     source: 'Origem',
     conversationState: 'Estado da Conversa',
+    leadStatus: 'Status',
+    appointmentType: 'Tipo de Atendimento',
   };
 
   const existingRow = rowIndex >= 0 ? data[rowIndex] : COLUMNS.map(() => '');
 
+  // hasOwnProperty (não só "!== undefined") pra distinguir "campo não veio"
+  // (preserva o valor antigo) de "campo veio como null" (limpa a célula de
+  // propósito) — precisa pros campos JSON quando um cancelamento precisa
+  // apagar o agendamento confirmado, não só sobrescrever.
+  const has = (key) => Object.prototype.hasOwnProperty.call(fields, key);
+
   const newRow = COLUMNS.map((header, colIndex) => {
     for (const key in fieldToHeader) {
-      if (fieldToHeader[key] === header && fields[key] !== undefined) return fields[key];
+      if (fieldToHeader[key] === header && has(key)) return fields[key];
     }
-    if (header === 'Horário Escolhido (JSON)' && fields.chosenSlot) return JSON.stringify(fields.chosenSlot);
-    if (header === 'Agendamento Confirmado (JSON)' && fields.confirmedAppointment) return JSON.stringify(fields.confirmedAppointment);
+    if (header === 'Horário Escolhido (JSON)' && has('chosenSlot')) {
+      return fields.chosenSlot ? JSON.stringify(fields.chosenSlot) : '';
+    }
+    if (header === 'Agendamento Confirmado (JSON)' && has('confirmedAppointment')) {
+      return fields.confirmedAppointment ? JSON.stringify(fields.confirmedAppointment) : '';
+    }
     return existingRow[colIndex] || '';
   });
 

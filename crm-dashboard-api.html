@@ -465,13 +465,19 @@
     }
 
     .complete-btn {
-      font-size: 11.5px;
+      font-size: 13px;
       font-weight: 600;
       background: var(--cor-branco-perola);
       color: var(--cor-texto-marca);
       border: 1px solid var(--cor-creme-avela);
       border-radius: 20px;
-      padding: 4px 10px;
+      /* Área de toque maior (2ª auditoria UX 2026-09-23): os 3 botões
+         ficam colados uns nos outros na Agenda, e eram pequenos demais
+         pra tocar com precisão no celular — risco real de mis-tap entre
+         "Remarcar" e "Desmarcar". */
+      min-width: 40px;
+      min-height: 36px;
+      padding: 8px 12px;
       cursor: pointer;
       white-space: nowrap;
       flex-shrink: 0;
@@ -659,6 +665,11 @@
     .status-noshow {
       background: #f8d7da;
       color: #721c24;
+    }
+
+    .status-cancelled {
+      background: var(--cor-creme-avela);
+      color: var(--cor-cinza-cacau);
     }
 
     .status-ready {
@@ -942,6 +953,7 @@
             <th>Nome</th>
             <th>Telefone</th>
             <th>Origem</th>
+            <th>Tipo</th>
             <th>Estado</th>
             <th>Status</th>
             <th>Horário</th>
@@ -950,7 +962,7 @@
         </thead>
         <tbody id="table-body">
           <tr>
-            <td colspan="7" class="loading">⏳ Carregando dados...</td>
+            <td colspan="8" class="loading">⏳ Carregando dados...</td>
           </tr>
         </tbody>
       </table>
@@ -1218,8 +1230,18 @@
     // "✅" = concluído normalmente, "❌" = desmarcado/cancelado — os dois
     // saem da Agenda ativa e vão pro histórico (pedido do usuário
     // 2026-09-23: desmarcar não apaga mais o evento, só arquiva).
+    // ✅ concluído · ❌ desmarcado · 🚫 não compareceu (espelha
+    // apps-script/Code.gs#STATUS_PREFIXES) — os três saem da Agenda ativa
+    // e vão pro histórico.
     function isAppointmentCompleted(summary) {
-      return /^[\s✅❌]*[✅❌]/.test(summary || '');
+      return /^[\s✅❌🚫]*[✅❌🚫]/.test(summary || '');
+    }
+
+    function getHistoryStatusLabel(summary) {
+      const text = (summary || '').trim();
+      if (text.startsWith('❌')) return { icon: '❌', label: 'Desmarcado' };
+      if (text.startsWith('🚫')) return { icon: '🚫', label: 'Não Compareceu' };
+      return { icon: '✅', label: 'Concluído' };
     }
 
     function detectAppointmentType(summary) {
@@ -1413,6 +1435,7 @@
           conversationState: row[headers.indexOf('Estado da Conversa')] || null,
           leadStatus: row[headers.indexOf('Status')] || null,
           manualOnlyNote: row[headers.indexOf('Atendimento Manual (motivo)')] || '',
+          appointmentType: row[headers.indexOf('Tipo de Atendimento')] || '',
           chosenSlot: tryParseJSON(row[headers.indexOf('Horário Escolhido (JSON)')]),
           confirmedAppointment: tryParseJSON(row[headers.indexOf('Agendamento Confirmado (JSON)')])
         }));
@@ -1449,9 +1472,15 @@
       applyFilters();
     }
 
+    // "não compareceu"/"desmarcado" vêm ANTES de "confirmado" de propósito
+    // (2ª auditoria UX 2026-09-23): um lead pode ter tido um agendamento
+    // confirmado no passado e depois faltar/desmarcar — nesses casos o
+    // status atual (o que realmente importa pra decidir a próxima ação)
+    // precisa vencer o fato histórico de ter sido confirmado uma vez.
     function getStatusClass(lead) {
-      if (lead.confirmedAppointment) return 'confirmed';
       if (lead.leadStatus === 'não compareceu') return 'noshow';
+      if (lead.leadStatus === 'desmarcado') return 'cancelled';
+      if (lead.confirmedAppointment) return 'confirmed';
       if (lead.conversationState === 'BOOKED') return 'booked';
       return 'ready';
     }
@@ -1472,7 +1501,7 @@
     function renderTable(data) {
       const tbody = document.getElementById('table-body');
       if (data.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="7" class="empty-state">Nenhum lead encontrado</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" class="empty-state">Nenhum lead encontrado</td></tr>';
         return;
       }
 
@@ -1481,15 +1510,18 @@
         const phoneCell = wa
           ? `<a href="${wa}" target="_blank" rel="noopener" class="phone-link" title="Abrir no WhatsApp">💬 ${formatPhoneShort(lead.phone)}</a>`
           : formatPhoneShort(lead.phone);
+        const typeStyle = detectAppointmentType(lead.appointmentType);
+        const typeCell = typeStyle ? `<span class="type-badge ${typeStyle.className}">${typeStyle.label}</span>` : '—';
         return `
         <tr class="lead-row" onclick="openLeadDetail('${lead.phone}')">
           <td class="name-cell">${lead.name}</td>
           <td onclick="event.stopPropagation()">${phoneCell}</td>
           <td>${lead.source}</td>
+          <td>${typeCell}</td>
           <td>${translateConversationState(lead.conversationState)}</td>
           <td>
             <span class="status-badge status-${getStatusClass(lead)}">
-              ${lead.confirmedAppointment ? 'Confirmado' : lead.leadStatus || 'Ativo'}
+              ${lead.leadStatus === 'não compareceu' ? 'Não compareceu' : lead.leadStatus === 'desmarcado' ? 'Desmarcado' : lead.confirmedAppointment ? 'Confirmado' : lead.leadStatus || 'Ativo'}
             </span>
           </td>
           <td class="slot-cell">${lead.chosenSlot ? formatDateBR(lead.chosenSlot.date) + ' ' + lead.chosenSlot.start : '—'}</td>
@@ -1689,7 +1721,7 @@
           ${group.events.map(ev => {
             const type = detectAppointmentType(ev.summary);
             const completed = isAppointmentCompleted(ev.summary);
-            const statusLabel = /^[\s]*❌/.test(ev.summary || '') ? '❌ Desmarcado' : '✅ Concluído';
+            const statusInfo = getHistoryStatusLabel(ev.summary);
             const badge = type ? `<span class="type-badge ${type.className}">${type.label}</span>` : '';
             // Passa só o eventId (alfanumérico, seguro em onclick) — summary
             // e description são lidos de allCalendarEvents dentro de cada
@@ -1698,11 +1730,12 @@
             // tinha aspas, e o botão simplesmente não fazia nada (bug real
             // reportado pelo usuário 2026-09-23 — "Remarcar" não abria).
             const action = completed
-              ? `<span class="complete-done" title="${statusLabel}">${statusLabel.startsWith('❌') ? '❌' : '✅'}</span>`
+              ? `<span class="complete-done" title="${statusInfo.label}">${statusInfo.icon} ${statusInfo.label}</span>
+                 <button class="complete-btn" onclick="event.stopPropagation(); event.preventDefault(); reopenEvent('${ev.id}')" title="Reabrir (desfaz)" aria-label="Reabrir">↩️</button>`
               : `
-                <button class="complete-btn" onclick="event.stopPropagation(); event.preventDefault(); openCompleteModal('${ev.id}')" title="Marcar como concluído">✅</button>
-                <button class="complete-btn" onclick="event.stopPropagation(); event.preventDefault(); openRescheduleModal('${ev.id}')" title="Remarcar">📅</button>
-                <button class="complete-btn complete-btn-danger" onclick="event.stopPropagation(); event.preventDefault(); openCancelModal('${ev.id}')" title="Desmarcar">✕</button>
+                <button class="complete-btn" onclick="event.stopPropagation(); event.preventDefault(); openCompleteModal('${ev.id}')" title="Marcar como concluído" aria-label="Marcar como concluído">✅</button>
+                <button class="complete-btn" onclick="event.stopPropagation(); event.preventDefault(); openRescheduleModal('${ev.id}')" title="Remarcar" aria-label="Remarcar">📅</button>
+                <button class="complete-btn complete-btn-danger" onclick="event.stopPropagation(); event.preventDefault(); openCancelModal('${ev.id}')" title="Desmarcar" aria-label="Desmarcar">✕</button>
               `;
             return `
             <div class="agenda-event ${type ? type.className + '-border' : ''}${completed ? ' agenda-event-completed' : ''}">
@@ -1733,11 +1766,19 @@
       document.getElementById('ldName').textContent = lead.name;
 
       const wa = whatsappLink(lead.phone);
+      const typeStyle = detectAppointmentType(lead.appointmentType);
+      // Mesma prioridade de getStatusClass: um status manual (não
+      // compareceu/desmarcado) sempre vence o fato histórico de ter tido
+      // um agendamento confirmado (2ª auditoria UX 2026-09-23).
+      const statusText = lead.leadStatus === 'não compareceu' ? 'Não compareceu'
+        : lead.leadStatus === 'desmarcado' ? 'Desmarcado'
+        : lead.confirmedAppointment ? 'Confirmado' : (lead.leadStatus || 'Ativo');
       const rows = [
         ['Telefone', wa ? `<a href="${wa}" target="_blank" rel="noopener">💬 ${formatPhone(lead.phone)}</a>` : formatPhone(lead.phone)],
         ['Origem', lead.source || '—'],
+        ['Tipo de atendimento', typeStyle ? `<span class="type-badge ${typeStyle.className}">${typeStyle.label}</span>` : '—'],
         ['Estado da conversa', `${translateConversationState(lead.conversationState)}<br><span style="font-weight:400;font-size:11px;color:var(--cor-cinza-cacau)">etapa interna da IA de atendimento, não é o status do agendamento</span>`],
-        ['Status', lead.confirmedAppointment ? 'Confirmado' : (lead.leadStatus || 'Ativo')],
+        ['Status', statusText],
         ['Horário escolhido', lead.chosenSlot ? `${formatDateBR(lead.chosenSlot.date)} ${lead.chosenSlot.start}` : '—'],
       ];
 
@@ -2247,6 +2288,33 @@
       } finally {
         btn.disabled = false;
         btn.textContent = '✕ Confirmar Desmarcação';
+      }
+    }
+
+    // Desfaz uma baixa/desmarcação/não-comparecimento — tira o prefixo do
+    // título, o evento volta pra Agenda ativa como se nada tivesse
+    // acontecido. Ação de baixo risco (não some com nenhum dado), então
+    // não abre modal de confirmação — só um clique, direto do histórico
+    // (achado da 2ª auditoria UX 2026-09-23).
+    async function reopenEvent(eventId) {
+      const settings = loadSettings();
+      if (!settings || !settings.scriptUrl) {
+        alert('Configure a "URL do Apps Script" em ⚙️ Config primeiro.');
+        return;
+      }
+      try {
+        const response = await fetch(settings.scriptUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({ action: 'reopenAppointment', eventId })
+        });
+        const result = await response.json();
+        if (!result.ok) throw new Error(result.error || 'Erro desconhecido');
+
+        showToast('↩️ Atendimento reaberto — voltou pra Agenda ativa');
+        refreshData();
+      } catch (err) {
+        showToast(`❌ Não foi possível reabrir: ${err.message}`);
       }
     }
 
