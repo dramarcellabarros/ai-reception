@@ -137,6 +137,20 @@
       border-radius: 8px;
       box-shadow: 0 2px 8px rgba(0,0,0,0.08);
       border-left: 4px solid #C9A961;
+      cursor: pointer;
+      transition: transform 0.15s, box-shadow 0.15s;
+      user-select: none;
+    }
+
+    .stat-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 14px rgba(0,0,0,0.12);
+    }
+
+    .stat-card.active {
+      border-left-color: #6B4423;
+      background: #fbf8f3;
+      box-shadow: 0 0 0 2px #C9A961 inset;
     }
 
     .stat-number {
@@ -153,16 +167,56 @@
       letter-spacing: 0.5px;
     }
 
+    .filter-banner {
+      display: none;
+      align-items: center;
+      justify-content: space-between;
+      background: #fbf8f3;
+      border: 1px solid #C9A961;
+      border-radius: 4px;
+      padding: 10px 16px;
+      margin-bottom: 15px;
+      font-size: 14px;
+      color: #6B4423;
+    }
+
+    .filter-banner.visible {
+      display: flex;
+    }
+
+    .filter-banner button {
+      background: none;
+      border: none;
+      color: #6B4423;
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: underline;
+    }
+
     .table-wrapper {
       background: white;
       border-radius: 8px;
       box-shadow: 0 2px 12px rgba(0,0,0,0.08);
-      overflow: hidden;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .scroll-hint {
+      display: none;
+      text-align: center;
+      font-size: 12px;
+      color: #999;
+      padding: 8px 0 0;
     }
 
     table {
       width: 100%;
+      min-width: 820px;
       border-collapse: collapse;
+    }
+
+    td, thead th {
+      white-space: nowrap;
     }
 
     thead {
@@ -350,6 +404,10 @@
       .stats {
         grid-template-columns: 1fr;
       }
+
+      .scroll-hint {
+        display: block;
+      }
     }
   </style>
 </head>
@@ -369,19 +427,19 @@
     <div id="errorContainer"></div>
 
     <div class="stats">
-      <div class="stat-card">
+      <div class="stat-card" id="card-all" onclick="filterByStatus('all')">
         <div class="stat-number" id="total-leads">—</div>
         <div class="stat-label">Leads Totais</div>
       </div>
-      <div class="stat-card">
+      <div class="stat-card" id="card-confirmed" onclick="filterByStatus('confirmed')">
         <div class="stat-number" id="confirmed-count">—</div>
         <div class="stat-label">Agendamentos Confirmados</div>
       </div>
-      <div class="stat-card">
+      <div class="stat-card" id="card-booked" onclick="filterByStatus('booked')">
         <div class="stat-number" id="booked-count">—</div>
         <div class="stat-label">Pendentes de Confirmação</div>
       </div>
-      <div class="stat-card">
+      <div class="stat-card" id="card-noshow" onclick="filterByStatus('noshow')">
         <div class="stat-number" id="noshow-count">—</div>
         <div class="stat-label">Não Compareceram</div>
       </div>
@@ -393,6 +451,11 @@
       </div>
       <button class="btn" onclick="refreshData()">🔄 Atualizar</button>
       <button class="btn secondary" onclick="toggleSettings()">⚙️ Config</button>
+    </div>
+
+    <div class="filter-banner" id="filterBanner">
+      <span id="filterBannerText"></span>
+      <button onclick="filterByStatus('all')">✕ Limpar filtro</button>
     </div>
 
     <div class="table-wrapper">
@@ -415,6 +478,7 @@
         </tbody>
       </table>
     </div>
+    <div class="scroll-hint">↔ arraste a tabela para o lado para ver mais colunas</div>
   </div>
 
   <!-- Modal de Configuração -->
@@ -445,6 +509,14 @@
 
   <script>
     let allData = [];
+    let activeFilter = 'all';
+
+    const FILTER_LABELS = {
+      all: 'Todos os leads',
+      confirmed: 'Agendamentos Confirmados',
+      booked: 'Pendentes de Confirmação',
+      noshow: 'Não Compareceram',
+    };
 
     // LocalStorage para salvar configurações
     const STORAGE_KEY = 'crm_settings';
@@ -525,7 +597,8 @@
         }));
 
         setStatus(true, `✅ ${allData.length} leads sincronizados`);
-        renderTable(allData);
+        updateStats(allData);
+        applyFilters();
         clearError();
       } catch (err) {
         console.error('Erro ao buscar dados:', err);
@@ -573,7 +646,8 @@
           confirmedAppointment: { start: { dateTime: '2026-09-25T09:00:00-03:00' } }
         }
       ];
-      renderTable(allData);
+      updateStats(allData);
+      applyFilters();
       setStatus(true, '📋 Dados simulados (configure API pra usar dados reais)');
     }
 
@@ -582,6 +656,19 @@
       if (lead.leadStatus === 'não compareceu') return 'noshow';
       if (lead.conversationState === 'BOOKED') return 'booked';
       return 'ready';
+    }
+
+    // Mesmo critério usado nos 4 cards de estatística — usado tanto para
+    // calcular os números quanto para filtrar a tabela ao clicar num card,
+    // assim clicar em "Não Compareceram" sempre mostra exatamente os leads
+    // contados naquele número.
+    function matchesStatusFilter(lead, filter) {
+      switch (filter) {
+        case 'confirmed': return Boolean(lead.confirmedAppointment);
+        case 'booked': return lead.conversationState === 'BOOKED' || lead.conversationState === 'READY_TO_BOOK';
+        case 'noshow': return lead.leadStatus === 'não compareceu';
+        default: return true;
+      }
     }
 
     function renderTable(data) {
@@ -608,8 +695,6 @@
           </td>
         </tr>
       `).join('');
-
-      updateStats(data);
     }
 
     function updateStats(data) {
@@ -624,6 +709,48 @@
       document.getElementById('noshow-count').textContent = noshow;
     }
 
+    // Clique num card de estatística: filtra a tabela abaixo por aquela
+    // classificação, sem recalcular os números dos cards (eles continuam
+    // mostrando o total geral, sempre). Clicar de novo no mesmo card (ou em
+    // "Leads Totais") remove o filtro.
+    function filterByStatus(filter) {
+      activeFilter = (activeFilter === filter && filter !== 'all') ? 'all' : filter;
+
+      document.querySelectorAll('.stat-card').forEach(card => card.classList.remove('active'));
+      if (activeFilter !== 'all') {
+        document.getElementById(`card-${activeFilter}`).classList.add('active');
+      }
+
+      const banner = document.getElementById('filterBanner');
+      const bannerText = document.getElementById('filterBannerText');
+      if (activeFilter === 'all') {
+        banner.classList.remove('visible');
+      } else {
+        const count = allData.filter(l => matchesStatusFilter(l, activeFilter)).length;
+        bannerText.textContent = `Mostrando: ${FILTER_LABELS[activeFilter]} (${count})`;
+        banner.classList.add('visible');
+      }
+
+      applyFilters();
+
+      if (activeFilter !== 'all') {
+        document.querySelector('.table-wrapper').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }
+
+    // Combina o texto de busca com o filtro de card ativo — os dois nunca
+    // mexem nos números dos cards, só no que aparece na tabela.
+    function applyFilters() {
+      const query = document.getElementById('search').value.toLowerCase();
+      const filtered = allData.filter(lead =>
+        matchesStatusFilter(lead, activeFilter) &&
+        (lead.name.toLowerCase().includes(query) ||
+          lead.phone.includes(query) ||
+          lead.source.toLowerCase().includes(query))
+      );
+      renderTable(filtered);
+    }
+
     function showError(message) {
       const container = document.getElementById('errorContainer');
       container.innerHTML = `<div class="error">${message}</div>`;
@@ -631,16 +758,6 @@
 
     function clearError() {
       document.getElementById('errorContainer').innerHTML = '';
-    }
-
-    function searchData() {
-      const query = document.getElementById('search').value.toLowerCase();
-      const filtered = allData.filter(lead =>
-        lead.name.toLowerCase().includes(query) ||
-        lead.phone.includes(query) ||
-        lead.source.toLowerCase().includes(query)
-      );
-      renderTable(filtered);
     }
 
     function refreshData() {
@@ -652,7 +769,7 @@
     }
 
     // Event listeners
-    document.getElementById('search').addEventListener('input', searchData);
+    document.getElementById('search').addEventListener('input', applyFilters);
 
     // Inicializar
     window.addEventListener('load', () => {
