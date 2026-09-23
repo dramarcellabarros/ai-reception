@@ -276,6 +276,18 @@ function reopenAppointment(payload) {
   if (!event) return { ok: false, error: 'Evento não encontrado na agenda (pode já ter sido apagado).' };
 
   event.setTitle(stripStatusPrefix(event.getTitle()));
+
+  // Sincroniza de volta com a planilha — sem isso o Reabrir tirava o
+  // prefixo 🚫/❌ do evento mas o Status na tabela do Dashboard continuava
+  // preso em "não compareceu"/"desmarcado" (achado do teste ao vivo
+  // 2026-09-23, mesma classe de bug que o Desmarcar já tinha antes de
+  // sincronizar). Mantém o Agendamento Confirmado (JSON) intacto — o
+  // vínculo com esse evento ainda é válido.
+  const phoneMatch = (event.getDescription() || '').match(/Telefone:\s*(\+?\d+)/);
+  if (phoneMatch) {
+    upsertLeadRow({ phone: phoneMatch[1], leadStatus: '' });
+  }
+
   return { ok: true };
 }
 
