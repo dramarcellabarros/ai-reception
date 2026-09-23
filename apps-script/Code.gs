@@ -281,11 +281,23 @@ function reopenAppointment(payload) {
   // prefixo 🚫/❌ do evento mas o Status na tabela do Dashboard continuava
   // preso em "não compareceu"/"desmarcado" (achado do teste ao vivo
   // 2026-09-23, mesma classe de bug que o Desmarcar já tinha antes de
-  // sincronizar). Mantém o Agendamento Confirmado (JSON) intacto — o
-  // vínculo com esse evento ainda é válido.
+  // sincronizar). Reconstrói o Agendamento Confirmado (JSON) a partir do
+  // evento em vez de só limpar o Status: Desmarcar zera esse campo (não
+  // estava mais confirmado), então sem isso o card "Agendamentos
+  // Confirmados" ficava subcontando um atendimento já reaberto e ativo
+  // (2º achado do mesmo teste ao vivo).
   const phoneMatch = (event.getDescription() || '').match(/Telefone:\s*(\+?\d+)/);
   if (phoneMatch) {
-    upsertLeadRow({ phone: phoneMatch[1], leadStatus: '' });
+    upsertLeadRow({
+      phone: phoneMatch[1],
+      leadStatus: '',
+      confirmedAppointment: {
+        id: event.getId(),
+        htmlLink: buildEventHtmlLink(event.getId()),
+        start: { dateTime: formatIso(event.getStartTime()), timeZone: TIME_ZONE },
+        end: { dateTime: formatIso(event.getEndTime()), timeZone: TIME_ZONE },
+      },
+    });
   }
 
   return { ok: true };
