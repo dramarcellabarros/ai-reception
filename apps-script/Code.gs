@@ -242,10 +242,12 @@ function rescheduleAppointmentAction(payload) {
 }
 
 /**
- * Desmarca um atendimento — apaga o evento de verdade da agenda (não é
- * "arquivar" nem "marcar como cancelado", é deleteEvent mesmo). Ação
- * irreversível, pedido explícito do usuário 2026-09-23: "onde o desmarcou
- * elimine o agendamento no calendar".
+ * Desmarca um atendimento — NÃO apaga o evento (revisado 2026-09-23 a
+ * pedido do usuário: "desmarcar deve ser baixado também e ir pro
+ * histórico"). Prefixa o título com "❌ " (mesmo princípio de
+ * completeAppointment, que usa "✅ ") — some da agenda ativa do Dashboard e
+ * passa a aparecer na aba de histórico, mantendo o registro em vez de
+ * perdê-lo.
  */
 function cancelAppointmentAction(payload) {
   const { eventId } = payload;
@@ -255,9 +257,13 @@ function cancelAppointmentAction(payload) {
   if (!calendar) return { ok: false, error: 'Agenda não encontrada — verifique CALENDAR_ID no script.' };
 
   const event = calendar.getEventById(eventId);
-  if (!event) return { ok: true }; // já não existe — considera concluído
+  if (!event) return { ok: false, error: 'Evento não encontrado na agenda (pode já ter sido apagado).' };
 
-  event.deleteEvent();
+  const title = event.getTitle();
+  if (!title.startsWith('❌') && !title.startsWith('✅')) {
+    event.setTitle('❌ ' + title);
+  }
+
   return { ok: true };
 }
 

@@ -184,6 +184,15 @@
       flex-wrap: wrap;
     }
 
+    /* Ações mais frequentes do dia (criar + atualizar) logo no topo, antes
+       dos cards — pedido do usuário 2026-09-23. */
+    .top-actions {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+    }
+
     .search-box {
       flex: 1;
       min-width: 250px;
@@ -820,6 +829,11 @@
   <div class="container">
     <div id="errorContainer"></div>
 
+    <div class="top-actions">
+      <button class="btn" onclick="openNewAppointmentModal()">➕ Novo Agendamento</button>
+      <button class="btn ghost" onclick="refreshData()">🔄 Atualizar</button>
+    </div>
+
     <div class="stats">
       <div class="stat-card" id="card-all" onclick="filterByStatus('all')">
         <div class="stat-number" id="total-leads">—</div>
@@ -856,8 +870,6 @@
       <div class="search-box">
         <input type="text" id="search" placeholder="Buscar por nome, telefone ou email...">
       </div>
-      <button class="btn" onclick="openNewAppointmentModal()">➕ Novo Agendamento</button>
-      <button class="btn ghost" onclick="refreshData()">🔄 Atualizar</button>
       <button class="btn secondary" onclick="toggleSettings()">⚙️ Config</button>
     </div>
 
@@ -1039,7 +1051,7 @@
       <h2>✕ Desmarcar Atendimento</h2>
       <div id="cancelError"></div>
       <div class="lead-detail-grid" id="cancelInfo"></div>
-      <p style="color: #B3462F; font-size: 13px; margin: 18px 0;">⚠️ Isso apaga o evento de verdade da agenda. Não tem como desfazer.</p>
+      <p style="color: var(--cor-cinza-cacau); font-size: 13px; margin: 18px 0;">O horário sai da agenda ativa e o atendimento vai pro histórico, marcado como desmarcado.</p>
       <div style="display:flex; gap:10px;">
         <button class="btn secondary" onclick="closeCancelModal()" style="flex:1;">Voltar</button>
         <button class="btn danger" id="cancelSubmitBtn" onclick="submitCancel()" style="flex:1;">✕ Confirmar Desmarcação</button>
@@ -1146,8 +1158,11 @@
 
     // Checa se o evento já foi "baixado" (concluído) — completeAppointment()
     // no Apps Script prefixa o título com "✅ " sem mexer no resto.
+    // "✅" = concluído normalmente, "❌" = desmarcado/cancelado — os dois
+    // saem da Agenda ativa e vão pro histórico (pedido do usuário
+    // 2026-09-23: desmarcar não apaga mais o evento, só arquiva).
     function isAppointmentCompleted(summary) {
-      return /^[\s✅]*✅/.test(summary || '');
+      return /^[\s✅❌]*[✅❌]/.test(summary || '');
     }
 
     function detectAppointmentType(summary) {
@@ -1633,14 +1648,20 @@
           ${group.events.map(ev => {
             const type = detectAppointmentType(ev.summary);
             const completed = isAppointmentCompleted(ev.summary);
+            const statusLabel = /^[\s]*❌/.test(ev.summary || '') ? '❌ Desmarcado' : '✅ Concluído';
             const badge = type ? `<span class="type-badge ${type.className}">${type.label}</span>` : '';
-            const args = `'${ev.id}', ${JSON.stringify(ev.summary)}, ${JSON.stringify(ev.description)}`;
+            // Passa só o eventId (alfanumérico, seguro em onclick) — summary
+            // e description são lidos de allCalendarEvents dentro de cada
+            // função. Antes disso, JSON.stringify(ev.description) dentro do
+            // atributo onclick="..." quebrava o HTML sempre que a descrição
+            // tinha aspas, e o botão simplesmente não fazia nada (bug real
+            // reportado pelo usuário 2026-09-23 — "Remarcar" não abria).
             const action = completed
-              ? '<span class="complete-done">✅ Concluído</span>'
+              ? `<span class="complete-done" title="${statusLabel}">${statusLabel.startsWith('❌') ? '❌' : '✅'}</span>`
               : `
-                <button class="complete-btn" onclick="event.stopPropagation(); event.preventDefault(); openCompleteModal(${args})" title="Marcar como concluído">✅ Baixar</button>
-                <button class="complete-btn" onclick="event.stopPropagation(); event.preventDefault(); openRescheduleModal(${args})" title="Remarcar">📅 Remarcar</button>
-                <button class="complete-btn complete-btn-danger" onclick="event.stopPropagation(); event.preventDefault(); openCancelModal(${args})" title="Desmarcar">✕ Desmarcar</button>
+                <button class="complete-btn" onclick="event.stopPropagation(); event.preventDefault(); openCompleteModal('${ev.id}')" title="Marcar como concluído">✅</button>
+                <button class="complete-btn" onclick="event.stopPropagation(); event.preventDefault(); openRescheduleModal('${ev.id}')" title="Remarcar">📅</button>
+                <button class="complete-btn complete-btn-danger" onclick="event.stopPropagation(); event.preventDefault(); openCancelModal('${ev.id}')" title="Desmarcar">✕</button>
               `;
             return `
             <div class="agenda-event ${type ? type.className + '-border' : ''}${completed ? ' agenda-event-completed' : ''}">
@@ -1930,13 +1951,18 @@
 
     let completeContext = null;
 
-    function openCompleteModal(eventId, summary, description) {
+    function openCompleteModal(eventId) {
       const settings = loadSettings();
       if (!settings || !settings.scriptUrl) {
         alert('Configure a "URL do Apps Script" em ⚙️ Config primeiro (ver apps-script/SETUP.md para gerar essa URL).');
         toggleSettings();
         return;
       }
+
+      const ev = allCalendarEvents.find(e => e.id === eventId);
+      if (!ev) return;
+      const summary = ev.summary;
+      const description = ev.description || '';
 
       const type = detectAppointmentType(summary);
       const info = parseEventInfo(summary, description);
@@ -2018,13 +2044,18 @@
 
     let rescheduleContext = null;
 
-    function openRescheduleModal(eventId, summary, description) {
+    function openRescheduleModal(eventId) {
       const settings = loadSettings();
       if (!settings || !settings.scriptUrl) {
         alert('Configure a "URL do Apps Script" em ⚙️ Config primeiro (ver apps-script/SETUP.md para gerar essa URL).');
         toggleSettings();
         return;
       }
+
+      const ev = allCalendarEvents.find(e => e.id === eventId);
+      if (!ev) return;
+      const summary = ev.summary;
+      const description = ev.description || '';
 
       const type = detectAppointmentType(summary);
       const info = parseEventInfo(summary, description);
@@ -2121,13 +2152,18 @@
 
     let cancelContext = null;
 
-    function openCancelModal(eventId, summary, description) {
+    function openCancelModal(eventId) {
       const settings = loadSettings();
       if (!settings || !settings.scriptUrl) {
         alert('Configure a "URL do Apps Script" em ⚙️ Config primeiro (ver apps-script/SETUP.md para gerar essa URL).');
         toggleSettings();
         return;
       }
+
+      const ev = allCalendarEvents.find(e => e.id === eventId);
+      if (!ev) return;
+      const summary = ev.summary;
+      const description = ev.description || '';
 
       const type = detectAppointmentType(summary);
       const info = parseEventInfo(summary, description);
@@ -2163,7 +2199,7 @@
         if (!result.ok) throw new Error(result.error || 'Erro desconhecido');
 
         closeCancelModal();
-        showToast('🗑️ Atendimento desmarcado e removido da agenda');
+        showToast('❌ Atendimento desmarcado — foi pro histórico');
         refreshData();
       } catch (err) {
         document.getElementById('cancelError').innerHTML = `<div class="form-error">❌ ${err.message}</div>`;
