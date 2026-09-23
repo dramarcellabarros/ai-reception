@@ -802,6 +802,56 @@ function formatLeadsSheet() {
     .setVerticalAlignment('middle');
 }
 
+/**
+ * Apaga TODOS os dados de teste (Agenda + Planilha) — pedido do usuário
+ * 2026-09-23, depois de várias rodadas de teste ao vivo populando a
+ * planilha real. RODE ESTA FUNÇÃO MANUALMENTE UMA ÚNICA VEZ: no editor
+ * do Apps Script, selecione "cleanupTestData" no menu de funções e
+ * clique em Executar.
+ *
+ * Critério: qualquer evento do Calendar cujo título (já sem o prefixo
+ * de status ✅/❌/🚫) comece com "TESTE", e qualquer linha da planilha
+ * cujo Nome comece com "TESTE" — mesmo padrão usado em todos os testes
+ * deste projeto ("TESTE FLUXO 24", "TESTE DEMO Maria Silva", etc.).
+ * Não toca em nenhum lead/evento real (que nunca teria esse prefixo).
+ *
+ * Isso APAGA de verdade (ao contrário de Desmarcar/não-compareceu, que
+ * só arquivam) — é irreversível. Só roda o que casa com "TESTE".
+ */
+function cleanupTestData() {
+  const calendar = CalendarApp.getCalendarById(CALENDAR_ID);
+  let eventsDeleted = 0;
+  if (calendar) {
+    const from = new Date();
+    from.setDate(from.getDate() - 60);
+    const to = new Date();
+    to.setDate(to.getDate() + 90);
+    calendar.getEvents(from, to).forEach((event) => {
+      const title = stripStatusPrefix(event.getTitle() || '');
+      if (title.startsWith('TESTE')) {
+        event.deleteEvent();
+        eventsDeleted++;
+      }
+    });
+  }
+
+  const sheet = getSheet();
+  const data = sheet.getDataRange().getValues();
+  const headers = data[0];
+  const nameCol = headers.indexOf('Nome');
+  let rowsDeleted = 0;
+  // De baixo pra cima, senão apagar uma linha desloca o índice das outras.
+  for (let i = data.length - 1; i >= 1; i--) {
+    const name = String(data[i][nameCol] || '');
+    if (name.startsWith('TESTE')) {
+      sheet.deleteRow(i + 1);
+      rowsDeleted++;
+    }
+  }
+
+  Logger.log(`Limpeza concluída: ${eventsDeleted} evento(s) da Agenda e ${rowsDeleted} linha(s) da Planilha removidos.`);
+}
+
 function jsonResponse(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
 }
