@@ -1319,8 +1319,7 @@
       if (!settings || !settings.spreadsheetId || !settings.apiKey) {
         showError('⚠️ Configure a planilha e a chave da API primeiro. Clique em ⚙️ Config');
         setStatus(false, 'Config necessária');
-        // Mostrar dados simulados enquanto não configurar
-        loadMockData();
+        showEmptyState();
         return;
       }
 
@@ -1336,7 +1335,9 @@
         const values = result.values || [];
 
         if (values.length < 2) {
-          loadMockData();
+          setStatus(true, '✅ Nenhum lead na planilha ainda');
+          showEmptyState();
+          clearError();
           return;
         }
 
@@ -1361,7 +1362,7 @@
         console.error('Erro ao buscar dados:', err);
         setStatus(false, 'Erro na sincronização');
         showError(`❌ Erro: ${err.message}`);
-        loadMockData();
+        showEmptyState();
       }
     }
 
@@ -1373,39 +1374,15 @@
       }
     }
 
-    function loadMockData() {
-      allData = [
-        {
-          phone: '+5515900000101',
-          name: 'TESTE 1 - Ana Beatriz',
-          source: 'INSTAGRAM',
-          conversationState: 'CONFIRMED',
-          leadStatus: null,
-          chosenSlot: { date: '2026-09-28', start: '09:00' },
-          confirmedAppointment: { start: { dateTime: '2026-09-28T09:00:00-03:00' } }
-        },
-        {
-          phone: '+5515900000102',
-          name: 'TESTE 2 - Patricia Nunes',
-          source: 'WHATSAPP',
-          conversationState: 'READY_TO_BOOK',
-          leadStatus: null,
-          chosenSlot: null,
-          confirmedAppointment: null
-        },
-        {
-          phone: '+5515900000103',
-          name: 'TESTE 3 - Camila Rocha',
-          source: 'SITE',
-          conversationState: null,
-          leadStatus: 'não compareceu',
-          chosenSlot: { date: '2026-09-25', start: '09:00' },
-          confirmedAppointment: { start: { dateTime: '2026-09-25T09:00:00-03:00' } }
-        }
-      ];
+    // Estado vazio de verdade — nunca inventa leads fictícios pra preencher
+    // a tela. Usado quando falta configuração, a planilha ainda não tem
+    // dados, ou a sincronização falhou (removido a pedido do usuário
+    // 2026-09-23: "remova os dados simulados, não sei onde isso está
+    // chumbado").
+    function showEmptyState() {
+      allData = [];
       updateStats(allData);
       applyFilters();
-      setStatus(true, '📋 Dados simulados (configure API pra usar dados reais)');
     }
 
     function getStatusClass(lead) {
@@ -2271,7 +2248,7 @@
         fetchSheetsData();
         fetchCalendarEvents();
       } else {
-        loadMockData();
+        showEmptyState();
         toggleSettings(); // Abrir config ao carregar se não tiver configurado
       }
     });
