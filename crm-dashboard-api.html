@@ -804,8 +804,25 @@
         padding: 10px;
       }
 
+      /* 4 cards empilhados em 1 coluna ocupavam a tela quase inteira no
+         celular antes de chegar na Agenda — grade 2x2 mais compacta
+         (achado do usuário 2026-09-23). */
       .stats {
-        grid-template-columns: 1fr;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 10px;
+        margin-bottom: 20px;
+      }
+
+      .stat-card {
+        padding: 12px 14px;
+      }
+
+      .stat-number {
+        font-size: 24px;
+      }
+
+      .stat-label {
+        font-size: 11px;
       }
 
       .scroll-hint {
