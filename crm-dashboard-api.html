@@ -148,9 +148,32 @@
       align-items: center;
       gap: 8px;
       font-size: 14px;
-      padding: 8px 16px;
+      padding: 6px 8px 6px 16px;
       background: rgba(255,255,255,0.2);
       border-radius: 20px;
+    }
+
+    /* Novo Agendamento e Atualizar viram icone dentro da propria pilula de
+       status, pra economizar altura (pedido do usuario 2026-09-23: antes
+       ficavam numa barra propria, empurrando o resto da tela pra baixo). */
+    .icon-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      border: none;
+      background: rgba(255,255,255,0.25);
+      color: white;
+      font-size: 15px;
+      cursor: pointer;
+      flex-shrink: 0;
+      transition: background 0.2s;
+    }
+
+    .icon-btn:hover {
+      background: rgba(255,255,255,0.4);
     }
 
     .status-dot {
@@ -184,14 +207,6 @@
       flex-wrap: wrap;
     }
 
-    /* Ações mais frequentes do dia (criar + atualizar) logo no topo, antes
-       dos cards — pedido do usuário 2026-09-23. */
-    .top-actions {
-      display: flex;
-      gap: 12px;
-      margin-bottom: 20px;
-      flex-wrap: wrap;
-    }
 
     .search-box {
       flex: 1;
@@ -841,18 +856,15 @@
       </div>
     </div>
     <div class="status-indicator">
+      <button class="icon-btn" onclick="openNewAppointmentModal()" title="Novo Agendamento" aria-label="Novo Agendamento">➕</button>
       <span class="status-dot" id="statusDot"></span>
       <span id="statusText">Conectando...</span>
+      <button class="icon-btn" onclick="refreshData()" title="Atualizar" aria-label="Atualizar">🔄</button>
     </div>
   </header>
 
   <div class="container">
     <div id="errorContainer"></div>
-
-    <div class="top-actions">
-      <button class="btn" onclick="openNewAppointmentModal()">➕ Novo Agendamento</button>
-      <button class="btn ghost" onclick="refreshData()">🔄 Atualizar</button>
-    </div>
 
     <div class="stats">
       <div class="stat-card" id="card-all" onclick="filterByStatus('all')">
