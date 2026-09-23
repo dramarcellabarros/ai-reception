@@ -29,6 +29,10 @@
          (títulos, texto de tabela, cabeçalhos). Ver auditoria UX 2026-09-23. */
       --cor-texto-marca: #6B4423;
       --cor-texto-marca-hover: #8B5A3C;
+      /* Verde oliva suave, harmônico com a paleta terrosa da marca — cor
+         semântica só pra diferenciar "Retorno" na Agenda, separada da
+         paleta oficial de identidade (não é uma cor da marca em si). */
+      --cor-tipo-retorno: #6B8E5A;
     }
 
     * {
@@ -393,6 +397,42 @@
     .agenda-event-summary {
       font-size: 14px;
       flex: 1;
+    }
+
+    /* Identificação do tipo de atendimento na Agenda — pedido do usuário
+       2026-09-23: além de avaliação, já existem procedimentos e retornos
+       agendados, e precisam ser diferenciados visualmente na lista. */
+    .type-procedimento-border {
+      border-left-color: var(--cor-texto-marca);
+    }
+
+    .type-retorno-border {
+      border-left-color: var(--cor-tipo-retorno);
+    }
+
+    .type-badge {
+      font-size: 10.5px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+      padding: 3px 8px;
+      border-radius: 20px;
+      white-space: nowrap;
+    }
+
+    .type-avaliacao {
+      background: var(--cor-creme-avela);
+      color: var(--cor-texto-marca);
+    }
+
+    .type-procedimento {
+      background: var(--cor-texto-marca);
+      color: white;
+    }
+
+    .type-retorno {
+      background: var(--cor-tipo-retorno);
+      color: white;
     }
 
     .agenda-empty {
@@ -852,6 +892,14 @@
           </select>
         </div>
         <div class="form-group">
+          <label>Tipo de atendimento:</label>
+          <select id="apType">
+            <option value="AVALIACAO">Avaliação</option>
+            <option value="PROCEDIMENTO">Procedimento</option>
+            <option value="RETORNO">Retorno</option>
+          </select>
+        </div>
+        <div class="form-group">
           <label>Data:</label>
           <input type="date" id="apDate" onchange="loadAvailableSlots()">
         </div>
@@ -954,6 +1002,34 @@
       CONFIRMED: 'Confirmado',
       HUMAN_HANDOFF: 'Atendimento Humano',
     };
+
+    // Espelha apps-script/Code.gs#APPOINTMENT_TYPE_LABELS — o rótulo vira o
+    // prefixo do título do evento no Calendar (ex: "Procedimento - Nome").
+    const APPOINTMENT_TYPE_LABELS = {
+      AVALIACAO: 'Avaliação',
+      PROCEDIMENTO: 'Procedimento',
+      RETORNO: 'Retorno',
+    };
+
+    // Identifica o tipo de atendimento a partir do TÍTULO do evento do
+    // Calendar — cobre tanto os criados pelo CRM (sempre com esse prefixo)
+    // quanto eventos lançados manualmente direto na agenda pela equipe,
+    // desde que comecem com uma dessas palavras. Pedido do usuário
+    // 2026-09-23: identificar procedimentos e retornos na Agenda, não só
+    // avaliação.
+    const APPOINTMENT_TYPE_STYLES = {
+      AVALIACAO: { label: 'Avaliação', className: 'type-avaliacao' },
+      PROCEDIMENTO: { label: 'Procedimento', className: 'type-procedimento' },
+      RETORNO: { label: 'Retorno', className: 'type-retorno' },
+    };
+
+    function detectAppointmentType(summary) {
+      const text = (summary || '').toLowerCase();
+      if (text.startsWith('avalia')) return APPOINTMENT_TYPE_STYLES.AVALIACAO;
+      if (text.startsWith('procedimento')) return APPOINTMENT_TYPE_STYLES.PROCEDIMENTO;
+      if (text.startsWith('retorno')) return APPOINTMENT_TYPE_STYLES.RETORNO;
+      return null;
+    }
 
     function translateConversationState(state) {
       if (!state) return '—';
@@ -1373,12 +1449,17 @@
       agendaList.innerHTML = groups.map(group => `
         <div class="agenda-day-group${group.isToday ? ' agenda-today' : ''}">
           <div class="agenda-day-label">${group.isToday ? `🔶 Hoje — ${group.label}` : group.label}</div>
-          ${group.events.map(ev => `
-            <a class="agenda-event" href="${ev.link}" target="_blank" rel="noopener">
+          ${group.events.map(ev => {
+            const type = detectAppointmentType(ev.summary);
+            const badge = type ? `<span class="type-badge ${type.className}">${type.label}</span>` : '';
+            return `
+            <a class="agenda-event ${type ? type.className + '-border' : ''}" href="${ev.link}" target="_blank" rel="noopener">
               <span class="agenda-event-time">${ev.time}</span>
               <span class="agenda-event-summary">${ev.summary}</span>
+              ${badge}
             </a>
-          `).join('')}
+          `;
+          }).join('')}
         </div>
       `).join('');
     }
@@ -1536,6 +1617,7 @@
       document.getElementById('apName').value = '';
       document.getElementById('apPhone').value = '';
       document.getElementById('apSource').value = 'INSTAGRAM';
+      document.getElementById('apType').value = 'AVALIACAO';
       const dateInput = document.getElementById('apDate');
       dateInput.value = '';
       dateInput.min = new Date().toISOString().slice(0, 10);
@@ -1597,6 +1679,7 @@
       const name = document.getElementById('apName').value.trim();
       const phoneRaw = document.getElementById('apPhone').value.trim();
       const source = document.getElementById('apSource').value;
+      const type = document.getElementById('apType').value;
       const date = document.getElementById('apDate').value;
       const slotValue = document.getElementById('apSlot').value;
 
@@ -1624,6 +1707,7 @@
         ['Nome', name],
         ['Telefone', formatPhone(phone)],
         ['Origem', source],
+        ['Tipo', APPOINTMENT_TYPE_LABELS[type] || type],
         ['Data', dateLabel],
         ['Horário', `${start} às ${end}`],
       ];
@@ -1649,6 +1733,7 @@
       const name = document.getElementById('apName').value.trim();
       const phone = document.getElementById('apPhone').value.trim();
       const source = document.getElementById('apSource').value;
+      const appointmentType = document.getElementById('apType').value;
       const date = document.getElementById('apDate').value;
       const slotValue = document.getElementById('apSlot').value;
 
@@ -1670,7 +1755,7 @@
         const response = await fetch(settings.scriptUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-          body: JSON.stringify({ action: 'createAppointment', phone, name, source, date, start, end })
+          body: JSON.stringify({ action: 'createAppointment', phone, name, source, appointmentType, date, start, end })
         });
         const result = await response.json();
 

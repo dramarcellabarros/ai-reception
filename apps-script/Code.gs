@@ -95,11 +95,23 @@ function doGet(e) {
  * src/googleSheetsClient.js#persistLead fazem juntos, só que rodando aqui
  * (com permissão de dono) em vez de via Service Account.
  */
+// Tipos de atendimento identificáveis na agenda (seção nova, 2026-09-23,
+// a pedido do usuário: já existem pacientes com procedimento agendado e
+// retorno, não só avaliação inicial). O rótulo vira o prefixo do título do
+// evento no Calendar — é esse prefixo que o Dashboard usa pra colorir/
+// identificar o tipo na tela da Agenda (ver TYPE_KEYWORDS no HTML).
+const APPOINTMENT_TYPE_LABELS = {
+  AVALIACAO: 'Avaliação',
+  PROCEDIMENTO: 'Procedimento',
+  RETORNO: 'Retorno',
+};
+
 function createAppointment(payload) {
-  const { phone, name, source, date, start, end } = payload;
+  const { phone, name, source, date, start, end, appointmentType } = payload;
   if (!phone || !name || !date || !start || !end) {
     return { ok: false, error: 'Campos obrigatórios: phone, name, date, start, end.' };
   }
+  const typeLabel = APPOINTMENT_TYPE_LABELS[appointmentType] || APPOINTMENT_TYPE_LABELS.AVALIACAO;
 
   const calendar = CalendarApp.getCalendarById(CALENDAR_ID);
   if (!calendar) {
@@ -121,8 +133,8 @@ function createAppointment(payload) {
     return { ok: false, error: 'Esse horário já está ocupado na agenda. Escolha outro.' };
   }
 
-  const event = calendar.createEvent(`Avaliação - ${name}`, startDateTime, endDateTime, {
-    description: `Agendado via CRM. Telefone: ${phone}. Origem: ${source || '—'}.`,
+  const event = calendar.createEvent(`${typeLabel} - ${name}`, startDateTime, endDateTime, {
+    description: `Agendado via CRM. Telefone: ${phone}. Origem: ${source || '—'}. Tipo: ${typeLabel}.`,
   });
 
   const confirmedAppointment = {
