@@ -68,6 +68,9 @@ function doPost(e) {
     if (payload.action === 'markNoShow') {
       return jsonResponse(markNoShow(payload));
     }
+    if (payload.action === 'updateLead') {
+      return jsonResponse(updateLead(payload));
+    }
 
     return jsonResponse({ ok: false, error: 'Ação desconhecida: ' + payload.action });
   } catch (err) {
@@ -159,6 +162,49 @@ function markNoShow(payload) {
     }
   }
   return { ok: false, error: 'Lead não encontrado para esse telefone.' };
+}
+
+/**
+ * Edita campos de negócio de um lead já existente (nome, origem, status,
+ * atendimento manual) — a partir do painel de detalhe do Dashboard. Nunca
+ * cria linha nova (diferente de upsertLeadRow): se o telefone não existe
+ * ainda, falha explicitamente em vez de inserir um registro incompleto.
+ * Só atualiza os campos que vierem presentes no payload — os demais ficam
+ * como estavam.
+ */
+function updateLead(payload) {
+  const { phone, name, source, leadStatus, manualOnlyNote } = payload;
+  if (!phone) return { ok: false, error: 'Campo obrigatório: phone.' };
+
+  const sheet = getSheet();
+  const data = sheet.getDataRange().getValues();
+  const headers = data[0];
+  const phoneCol = headers.indexOf('Telefone');
+
+  let rowIndex = -1;
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][phoneCol]) === String(phone)) {
+      rowIndex = i;
+      break;
+    }
+  }
+  if (rowIndex === -1) return { ok: false, error: 'Lead não encontrado para esse telefone.' };
+
+  const fieldToHeader = {
+    name: 'Nome',
+    source: 'Origem',
+    leadStatus: 'Status',
+    manualOnlyNote: 'Atendimento Manual (motivo)',
+  };
+
+  for (const key in fieldToHeader) {
+    if (payload[key] !== undefined) {
+      const colIndex = headers.indexOf(fieldToHeader[key]);
+      if (colIndex !== -1) sheet.getRange(rowIndex + 1, colIndex + 1).setValue(payload[key]);
+    }
+  }
+
+  return { ok: true };
 }
 
 function upsertLeadRow(fields) {

@@ -829,17 +829,70 @@
       <span class="close-btn" onclick="closeNewAppointmentModal()">&times;</span>
       <h2>➕ Novo Agendamento</h2>
       <div id="appointmentError"></div>
+
+      <div id="apFormStep">
+        <div class="form-group">
+          <label>Nome:</label>
+          <input type="text" id="apName" placeholder="Nome completo">
+        </div>
+        <div class="form-group">
+          <label>Telefone:</label>
+          <input type="text" id="apPhone" placeholder="+5515900000000">
+        </div>
+        <div class="form-group">
+          <label>Origem:</label>
+          <select id="apSource">
+            <option value="INSTAGRAM">Instagram</option>
+            <option value="WHATSAPP">WhatsApp</option>
+            <option value="SITE">Site</option>
+            <option value="OUTRO">Outro</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Data:</label>
+          <input type="date" id="apDate" onchange="loadAvailableSlots()">
+        </div>
+        <div class="form-group">
+          <label>Horário disponível:</label>
+          <select id="apSlot">
+            <option value="">Escolha uma data primeiro</option>
+          </select>
+        </div>
+        <button class="btn" id="apReviewBtn" onclick="reviewAppointment()">Revisar e Confirmar →</button>
+        <p style="color: var(--cor-cinza-cacau); font-size: 12px; margin-top: 20px;">
+          ℹ️ Cria o evento real na agenda e grava a linha na planilha.
+        </p>
+      </div>
+
+      <!-- Etapa de confirmação — evita gravar direto na agenda real por um
+           clique só, sem chance de revisão (achado crítico da auditoria UX
+           2026-09-23). -->
+      <div id="apConfirmStep" style="display:none;">
+        <div class="lead-detail-grid" id="apConfirmBody"></div>
+        <div style="display:flex; gap:10px; margin-top:20px;">
+          <button class="btn secondary" onclick="backToForm()">← Voltar</button>
+          <button class="btn" id="apSubmitBtn" onclick="submitNewAppointment()" style="flex:1;">✅ Confirmar e Criar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal de Detalhe do Lead -->
+  <div class="modal" id="leadDetailModal">
+    <div class="modal-content">
+      <span class="close-btn" onclick="closeLeadDetail()">&times;</span>
+      <h2 id="ldName">—</h2>
+      <div class="lead-detail-grid" id="ldBody"></div>
+
+      <h3 style="font-size: 14px; color: var(--cor-texto-marca); margin: 22px 0 12px; border-top: 1px solid var(--cor-creme-avela); padding-top: 18px;">✏️ Editar</h3>
+      <div id="ldEditError"></div>
       <div class="form-group">
         <label>Nome:</label>
-        <input type="text" id="apName" placeholder="Nome completo">
-      </div>
-      <div class="form-group">
-        <label>Telefone:</label>
-        <input type="text" id="apPhone" placeholder="+5515900000000">
+        <input type="text" id="ldEditName">
       </div>
       <div class="form-group">
         <label>Origem:</label>
-        <select id="apSource">
+        <select id="ldEditSource">
           <option value="INSTAGRAM">Instagram</option>
           <option value="WHATSAPP">WhatsApp</option>
           <option value="SITE">Site</option>
@@ -847,30 +900,25 @@
         </select>
       </div>
       <div class="form-group">
-        <label>Data:</label>
-        <input type="date" id="apDate" onchange="loadAvailableSlots()">
-      </div>
-      <div class="form-group">
-        <label>Horário disponível:</label>
-        <select id="apSlot">
-          <option value="">Escolha uma data primeiro</option>
+        <label>Status:</label>
+        <select id="ldEditStatus">
+          <option value="">Ativo</option>
+          <option value="não compareceu">Não compareceu</option>
         </select>
       </div>
-      <button class="btn" id="apSubmitBtn" onclick="submitNewAppointment()">💾 Criar Agendamento</button>
-      <p style="color: var(--cor-cinza-cacau); font-size: 12px; margin-top: 20px;">
-        ℹ️ Cria o evento real na agenda e grava a linha na planilha.
-      </p>
-    </div>
-  </div>
-
-  <!-- Modal de Detalhe do Lead (leitura) -->
-  <div class="modal" id="leadDetailModal">
-    <div class="modal-content">
-      <span class="close-btn" onclick="closeLeadDetail()">&times;</span>
-      <h2 id="ldName">—</h2>
-      <div class="lead-detail-grid" id="ldBody"></div>
-      <p style="color: var(--cor-cinza-cacau); font-size: 12px; margin-top: 20px;">
-        ℹ️ Painel de leitura. Edição direta de leads ainda não está disponível pelo CRM — altere na planilha, se necessário.
+      <div class="form-group">
+        <label style="display:flex; align-items:center; gap:8px; font-weight:600;">
+          <input type="checkbox" id="ldEditManualOnly" onchange="toggleManualOnlyReason()" style="width:auto;">
+          Atendimento manual (a IA para de responder este contato)
+        </label>
+      </div>
+      <div class="form-group" id="ldManualOnlyReasonGroup" style="display:none;">
+        <label>Motivo:</label>
+        <input type="text" id="ldEditManualOnlyReason" placeholder="Ex: atende só com a Dra., conversa em andamento">
+      </div>
+      <button class="btn" id="ldSaveBtn" onclick="saveLeadEdit()">💾 Salvar Alterações</button>
+      <p style="color: var(--cor-cinza-cacau); font-size: 12px; margin-top: 16px;" id="ldEditHint">
+        ℹ️ Telefone, Estado da Conversa e Agendamento não são editáveis por aqui.
       </p>
     </div>
   </div>
@@ -1013,6 +1061,7 @@
           source: row[headers.indexOf('Origem')] || '—',
           conversationState: row[headers.indexOf('Estado da Conversa')] || null,
           leadStatus: row[headers.indexOf('Status')] || null,
+          manualOnlyNote: row[headers.indexOf('Atendimento Manual (motivo)')] || '',
           chosenSlot: tryParseJSON(row[headers.indexOf('Horário Escolhido (JSON)')]),
           confirmedAppointment: tryParseJSON(row[headers.indexOf('Agendamento Confirmado (JSON)')])
         }));
@@ -1301,9 +1350,12 @@
     // chamada de rede. Ainda é só leitura — edição depende de estender
     // apps-script/Code.gs com uma ação updateLead (fase futura, sinalizada
     // na auditoria).
+    let currentDetailPhone = null;
+
     function openLeadDetail(phone) {
       const lead = allData.find(l => l.phone === phone);
       if (!lead) return;
+      currentDetailPhone = phone;
 
       document.getElementById('ldName').textContent = lead.name;
 
@@ -1328,11 +1380,92 @@
         </div>
       `).join('');
 
+      // Preenche o formulário de edição com o estado atual do lead.
+      document.getElementById('ldEditName').value = lead.name || '';
+      document.getElementById('ldEditSource').value = lead.source || 'INSTAGRAM';
+      document.getElementById('ldEditStatus').value = lead.leadStatus === 'não compareceu' ? 'não compareceu' : '';
+      const hasManualOnly = Boolean(lead.manualOnlyNote && lead.manualOnlyNote.trim());
+      document.getElementById('ldEditManualOnly').checked = hasManualOnly;
+      document.getElementById('ldEditManualOnlyReason').value = lead.manualOnlyNote || '';
+      document.getElementById('ldManualOnlyReasonGroup').style.display = hasManualOnly ? 'block' : 'none';
+      document.getElementById('ldEditError').innerHTML = '';
+
+      const settings = loadSettings();
+      const saveBtn = document.getElementById('ldSaveBtn');
+      const hint = document.getElementById('ldEditHint');
+      if (!settings || !settings.scriptUrl) {
+        saveBtn.disabled = true;
+        hint.textContent = '⚠️ Configure a "URL do Apps Script" em ⚙️ Config para poder salvar edições.';
+      } else {
+        saveBtn.disabled = false;
+        hint.textContent = 'ℹ️ Telefone, Estado da Conversa e Agendamento não são editáveis por aqui.';
+      }
+
       document.getElementById('leadDetailModal').classList.add('open');
     }
 
     function closeLeadDetail() {
       document.getElementById('leadDetailModal').classList.remove('open');
+      currentDetailPhone = null;
+    }
+
+    function toggleManualOnlyReason() {
+      const checked = document.getElementById('ldEditManualOnly').checked;
+      document.getElementById('ldManualOnlyReasonGroup').style.display = checked ? 'block' : 'none';
+    }
+
+    // Edição real de um lead já existente — antes disso o CRM só sabia
+    // criar; corrigir um nome ou marcar não-comparecimento exigia abrir a
+    // planilha por fora (achado crítico da auditoria UX 2026-09-23).
+    async function saveLeadEdit() {
+      if (!currentDetailPhone) return;
+      const settings = loadSettings();
+      const name = document.getElementById('ldEditName').value.trim();
+      const source = document.getElementById('ldEditSource').value;
+      const leadStatus = document.getElementById('ldEditStatus').value;
+      const manualOnly = document.getElementById('ldEditManualOnly').checked;
+      const manualOnlyReason = document.getElementById('ldEditManualOnlyReason').value.trim();
+
+      document.getElementById('ldEditError').innerHTML = '';
+
+      if (!name) {
+        document.getElementById('ldEditError').innerHTML = '<div class="form-error">⚠️ Nome não pode ficar em branco.</div>';
+        return;
+      }
+      if (manualOnly && !manualOnlyReason) {
+        document.getElementById('ldEditError').innerHTML = '<div class="form-error">⚠️ Informe o motivo do atendimento manual.</div>';
+        return;
+      }
+
+      const btn = document.getElementById('ldSaveBtn');
+      btn.disabled = true;
+      btn.textContent = '⏳ Salvando...';
+
+      try {
+        const response = await fetch(settings.scriptUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({
+            action: 'updateLead',
+            phone: currentDetailPhone,
+            name,
+            source,
+            leadStatus,
+            manualOnlyNote: manualOnly ? manualOnlyReason : '',
+          }),
+        });
+        const result = await response.json();
+        if (!result.ok) throw new Error(result.error || 'Erro desconhecido');
+
+        closeLeadDetail();
+        showToast(`✅ ${name} atualizado(a) com sucesso`);
+        refreshData();
+      } catch (err) {
+        document.getElementById('ldEditError').innerHTML = `<div class="form-error">❌ ${err.message}</div>`;
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '💾 Salvar Alterações';
+      }
     }
 
     function scrollToTop() {
@@ -1370,6 +1503,8 @@
       document.getElementById('apSlot').innerHTML = '<option value="">Escolha uma data primeiro</option>';
       document.getElementById('apSlot').disabled = true;
       document.getElementById('appointmentError').innerHTML = '';
+      document.getElementById('apFormStep').style.display = 'block';
+      document.getElementById('apConfirmStep').style.display = 'none';
       document.getElementById('newAppointmentModal').classList.add('open');
     }
 
@@ -1414,8 +1549,12 @@
       document.getElementById('appointmentError').innerHTML = `<div class="form-error">${message}</div>`;
     }
 
-    async function submitNewAppointment() {
-      const settings = loadSettings();
+    // Etapa de revisão antes de gravar de verdade — antes disso, um clique
+    // em "Criar" já criava o evento real na agenda e a linha na planilha
+    // sem nenhuma chance de conferir os dados (achado crítico da auditoria
+    // UX 2026-09-23: um erro de data/hora virava um agendamento errado de
+    // verdade, sem possibilidade de revisão).
+    function reviewAppointment() {
       const name = document.getElementById('apName').value.trim();
       const phone = document.getElementById('apPhone').value.trim();
       const source = document.getElementById('apSource').value;
@@ -1425,6 +1564,48 @@
       document.getElementById('appointmentError').innerHTML = '';
 
       if (!name || !phone || !date || !slotValue) {
+        showAppointmentError('⚠️ Preencha nome, telefone, data e horário.');
+        return;
+      }
+
+      const [start, end] = slotValue.split('|');
+      const dateObj = new Date(`${date}T00:00:00`);
+      const dateLabel = `${WEEKDAY_LABELS_PT[dateObj.getDay()]}, ${dateObj.toLocaleDateString('pt-BR')}`;
+
+      const rows = [
+        ['Nome', name],
+        ['Telefone', formatPhone(phone)],
+        ['Origem', source],
+        ['Data', dateLabel],
+        ['Horário', `${start} às ${end}`],
+      ];
+
+      document.getElementById('apConfirmBody').innerHTML = rows.map(([label, value]) => `
+        <div class="ld-row">
+          <span class="ld-label">${label}</span>
+          <span class="ld-value">${value}</span>
+        </div>
+      `).join('');
+
+      document.getElementById('apFormStep').style.display = 'none';
+      document.getElementById('apConfirmStep').style.display = 'block';
+    }
+
+    function backToForm() {
+      document.getElementById('apConfirmStep').style.display = 'none';
+      document.getElementById('apFormStep').style.display = 'block';
+    }
+
+    async function submitNewAppointment() {
+      const settings = loadSettings();
+      const name = document.getElementById('apName').value.trim();
+      const phone = document.getElementById('apPhone').value.trim();
+      const source = document.getElementById('apSource').value;
+      const date = document.getElementById('apDate').value;
+      const slotValue = document.getElementById('apSlot').value;
+
+      if (!name || !phone || !date || !slotValue) {
+        backToForm();
         showAppointmentError('⚠️ Preencha nome, telefone, data e horário.');
         return;
       }
