@@ -983,6 +983,16 @@
       return digits ? `https://wa.me/${digits}` : null;
     }
 
+    // Converte data ISO ("2026-09-28", como vem da planilha/API) para o
+    // padrão brasileiro de exibição ("28/09/2026"). Nunca usado pro valor
+    // real de um <input type="date"> (que exige ISO) — só para texto.
+    function formatDateBR(isoDate) {
+      if (!isoDate) return isoDate;
+      const [year, month, day] = isoDate.split('-');
+      if (!year || !month || !day) return isoDate;
+      return `${day}/${month}/${year}`;
+    }
+
     // LocalStorage para salvar configurações
     const STORAGE_KEY = 'crm_settings';
 
@@ -1165,7 +1175,7 @@
               ${lead.confirmedAppointment ? 'Confirmado' : lead.leadStatus || 'Ativo'}
             </span>
           </td>
-          <td class="slot-cell">${lead.chosenSlot ? lead.chosenSlot.date + ' ' + lead.chosenSlot.start : '—'}</td>
+          <td class="slot-cell">${lead.chosenSlot ? formatDateBR(lead.chosenSlot.date) + ' ' + lead.chosenSlot.start : '—'}</td>
           <td>
             <button class="btn" style="padding: 6px 12px; font-size: 12px;" onclick="event.stopPropagation(); openLeadDetail('${lead.phone}')">👁️ Ver</button>
           </td>
@@ -1365,7 +1375,7 @@
         ['Origem', lead.source || '—'],
         ['Estado da conversa', `${translateConversationState(lead.conversationState)}<br><span style="font-weight:400;font-size:11px;color:var(--cor-cinza-cacau)">etapa interna da IA de atendimento, não é o status do agendamento</span>`],
         ['Status', lead.confirmedAppointment ? 'Confirmado' : (lead.leadStatus || 'Ativo')],
-        ['Horário escolhido', lead.chosenSlot ? `${lead.chosenSlot.date} ${lead.chosenSlot.start}` : '—'],
+        ['Horário escolhido', lead.chosenSlot ? `${formatDateBR(lead.chosenSlot.date)} ${lead.chosenSlot.start}` : '—'],
       ];
 
       if (lead.confirmedAppointment) {
@@ -1629,7 +1639,7 @@
         if (!result.ok) throw new Error(result.error || 'Erro desconhecido');
 
         closeNewAppointmentModal();
-        showToast(`✅ Agendamento criado para ${name} — ${date} às ${start}`);
+        showToast(`✅ Agendamento criado para ${name} — ${formatDateBR(date)} às ${start}`);
         refreshData();
       } catch (err) {
         showAppointmentError(`❌ ${err.message}`);
