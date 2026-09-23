@@ -193,11 +193,14 @@ function upsertLeadRow(fields) {
     return existingRow[colIndex] || '';
   });
 
-  if (rowIndex === -1) {
-    sheet.appendRow(newRow);
-  } else {
-    sheet.getRange(rowIndex + 1, 1, 1, newRow.length).setValues([newRow]);
-  }
+  const targetRowNumber = rowIndex === -1 ? sheet.getLastRow() + 1 : rowIndex + 1;
+  const range = sheet.getRange(targetRowNumber, 1, 1, newRow.length);
+  // Formata a linha como texto simples ANTES de escrever — sem isso, o
+  // Sheets interpreta "+5515..." como início de fórmula e corta o "+"
+  // (mesmo bug já resolvido do lado Node em
+  // src/googleSheetsClient.js#persistLead, que usa valueInputOption=RAW).
+  range.setNumberFormat('@');
+  range.setValues([newRow]);
 }
 
 /**
