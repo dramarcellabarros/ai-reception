@@ -837,7 +837,10 @@
         </div>
         <div class="form-group">
           <label>Telefone:</label>
-          <input type="text" id="apPhone" placeholder="+5515900000000">
+          <input type="tel" id="apPhone" placeholder="15997892900" maxlength="11">
+          <small style="color: var(--cor-cinza-cacau); margin-top: 5px; display: block;">
+            Só DDD + número, sem espaço nem +55 — isso é preenchido automático.
+          </small>
         </div>
         <div class="form-group">
           <label>Origem:</label>
@@ -975,12 +978,38 @@
       return phone;
     }
 
+    // Mesma máscara, sem o código do país — usada só na tabela (o grid),
+    // onde o "+55" é redundante já que todo mundo ali é do Brasil. O
+    // painel de detalhe e a tela de confirmação continuam mostrando o
+    // número completo (formatPhone), útil quando dá pra conferir antes de
+    // salvar.
+    function formatPhoneShort(phone) {
+      const full = formatPhone(phone);
+      return full.startsWith('+55 ') ? full.slice(4) : full;
+    }
+
     // Link direto pro WhatsApp a partir do telefone em E.164 (+5515900000101
     // -> 5515900000101, formato que wa.me espera, sem o "+").
     function whatsappLink(phone) {
       if (!phone || phone === '—') return null;
       const digits = phone.replace(/\D/g, '');
       return digits ? `https://wa.me/${digits}` : null;
+    }
+
+    // Normaliza o telefone digitado no formulário (só DDD + número, ex.
+    // "15997892900") para E.164 completo ("+5515997892900"), que é o
+    // formato que a planilha, o Apps Script e o link do WhatsApp esperam.
+    // Se a pessoa já digitar com "55" na frente, não duplica.
+    function normalizePhoneBR(raw) {
+      const digits = (raw || '').replace(/\D/g, '');
+      if (!digits) return '';
+      if (digits.startsWith('55') && (digits.length === 12 || digits.length === 13)) {
+        return `+${digits}`;
+      }
+      if (digits.length === 10 || digits.length === 11) {
+        return `+55${digits}`;
+      }
+      return `+${digits}`;
     }
 
     // Converte data ISO ("2026-09-28", como vem da planilha/API) para o
@@ -1162,8 +1191,8 @@
       tbody.innerHTML = data.map(lead => {
         const wa = whatsappLink(lead.phone);
         const phoneCell = wa
-          ? `<a href="${wa}" target="_blank" rel="noopener" class="phone-link" title="Abrir no WhatsApp">💬 ${formatPhone(lead.phone)}</a>`
-          : formatPhone(lead.phone);
+          ? `<a href="${wa}" target="_blank" rel="noopener" class="phone-link" title="Abrir no WhatsApp">💬 ${formatPhoneShort(lead.phone)}</a>`
+          : formatPhoneShort(lead.phone);
         return `
         <tr class="lead-row" onclick="openLeadDetail('${lead.phone}')">
           <td class="name-cell">${lead.name}</td>
@@ -1566,17 +1595,26 @@
     // verdade, sem possibilidade de revisão).
     function reviewAppointment() {
       const name = document.getElementById('apName').value.trim();
-      const phone = document.getElementById('apPhone').value.trim();
+      const phoneRaw = document.getElementById('apPhone').value.trim();
       const source = document.getElementById('apSource').value;
       const date = document.getElementById('apDate').value;
       const slotValue = document.getElementById('apSlot').value;
 
       document.getElementById('appointmentError').innerHTML = '';
 
-      if (!name || !phone || !date || !slotValue) {
+      if (!name || !phoneRaw || !date || !slotValue) {
         showAppointmentError('⚠️ Preencha nome, telefone, data e horário.');
         return;
       }
+
+      const phone = normalizePhoneBR(phoneRaw);
+      if (phone.replace(/\D/g, '').length < 12) {
+        showAppointmentError('⚠️ Telefone inválido — digite DDD + número, ex: 15997892900.');
+        return;
+      }
+      // Grava o valor completo (+55...) de volta no campo, é o que
+      // submitNewAppointment envia pro backend.
+      document.getElementById('apPhone').value = phone;
 
       const [start, end] = slotValue.split('|');
       const dateObj = new Date(`${date}T00:00:00`);
