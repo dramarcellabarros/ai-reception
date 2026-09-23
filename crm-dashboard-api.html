@@ -186,6 +186,30 @@
       background: rgba(255,255,255,0.4);
     }
 
+    /* Status vira botão de atualizar (pedido do usuário 2026-09-23): num
+       atalho de tela de início do iPhone não tem barra do Safari, então o
+       botão de recarregar de sempre some — sem isso não tinha nenhuma
+       forma de atualizar os dados no modo atalho. */
+    .status-refresh {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      border: none;
+      background: none;
+      color: inherit;
+      font: inherit;
+      padding: 4px 4px 4px 0;
+      margin: 0;
+      border-radius: 14px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .status-refresh:hover,
+    .status-refresh:active {
+      background: rgba(255,255,255,0.15);
+    }
+
     /* "Novo Agendamento" e a acao mais usada do dia a dia — se destaca do
        resto da pilula com a cor de destaque da marca em vez do branco
        translucido generico (pedido do usuario 2026-09-23, apos remover
@@ -895,8 +919,10 @@
     </div>
     <div class="status-indicator">
       <button class="icon-btn icon-btn-primary" onclick="openNewAppointmentModal()" title="Novo Agendamento" aria-label="Novo Agendamento">➕</button>
-      <span class="status-dot" id="statusDot"></span>
-      <span id="statusText">Conectando...</span>
+      <button class="status-refresh" onclick="refreshData()" title="Toque para atualizar" aria-label="Atualizar dados">
+        <span class="status-dot" id="statusDot"></span>
+        <span id="statusText">Conectando...</span>
+      </button>
     </div>
   </header>
 
