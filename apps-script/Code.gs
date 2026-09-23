@@ -666,6 +666,142 @@ function setupDailyTrigger() {
   ScriptApp.newTrigger('sendTomorrowSummary').timeBased().atHour(DAILY_SUMMARY_HOUR).everyDays(1).create();
 }
 
+/**
+ * Formata a planilha "Leads" pra ficar amigável de olhar direto no Google
+ * Sheets (fora do Dashboard) — pedido do usuário 2026-09-23. RODE ESTA
+ * FUNÇÃO MANUALMENTE UMA ÚNICA VEZ (ou de novo quando quiser reaplicar):
+ * no editor do Apps Script, selecione "formatLeadsSheet" no menu de
+ * funções e clique em Executar. Não mexe em nenhum dado, só formatação.
+ *
+ * O que faz:
+ * - Congela a linha de cabeçalho + as colunas Telefone/Nome, pra nunca
+ *   perder de vista quem é a linha ao rolar pras colunas da direita.
+ * - Cabeçalho com a cor da marca (café), texto branco, negrito.
+ * - Larguras de coluna ajustadas por conteúdo (bem menor pra Score,
+ *   bem maior pra Nome/Status).
+ * - Esconde as 3 colunas de JSON técnico (Horários Oferecidos, Horário
+ *   Escolhido, Agendamento Confirmado) — são payloads internos que o
+ *   Dashboard lê, não fazem sentido pra leitura humana na planilha. Pra
+ *   reexibir: clique nas setinhas pequenas que aparecem entre as letras
+ *   das colunas vizinhas onde elas ficam escondidas.
+ * - Linhas com cor alternada (mais fácil acompanhar uma linha comprida).
+ * - Filtro (setas de filtro) em todas as colunas.
+ * - Cor de fundo automática na coluna Status: rosa claro pra "não
+ *   compareceu", areia pra "desmarcado" — igual às cores do Dashboard.
+ */
+function formatLeadsSheet() {
+  const sheet = getSheet();
+  ensureSheetColumns(sheet);
+
+  // Lê os headers reais da planilha em vez de assumir a ordem do array
+  // COLUMNS — ensureSheetColumns só GARANTE que cada header exista em
+  // algum lugar, não que a ordem bata com COLUMNS (planilhas antigas ou
+  // reordenadas à mão continuam funcionando certo).
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  const numCols = headers.length;
+  const numRows = Math.max(sheet.getLastRow(), 2);
+  const colOf = (name) => headers.indexOf(name) + 1; // 1-based; 0 se não achar
+
+  // Cabeçalho: cor da marca, negrito, branco, centralizado.
+  const headerRange = sheet.getRange(1, 1, 1, numCols);
+  headerRange
+    .setBackground('#6B4423')
+    .setFontColor('#FFFFFF')
+    .setFontWeight('bold')
+    .setHorizontalAlignment('center')
+    .setVerticalAlignment('middle');
+  sheet.setRowHeight(1, 34);
+
+  // Congela cabeçalho + até a coluna "Nome" (ou "Telefone" se "Nome" não
+  // existir por algum motivo), pra nunca perder de vista quem é a linha
+  // ao rolar pras colunas da direita.
+  sheet.setFrozenRows(1);
+  const freezeUpTo = Math.max(colOf('Telefone'), colOf('Nome'), 1);
+  sheet.setFrozenColumns(Math.min(freezeUpTo, numCols));
+
+  // Larguras por coluna — generosas pro que a usuária lê, enxutas pro
+  // que é só metadado interno.
+  const widths = {
+    Telefone: 130,
+    Nome: 180,
+    'Atendimento Manual (motivo)': 160,
+    Origem: 100,
+    'Interesse/Procedimento': 160,
+    Objetivo: 120,
+    'Última Intenção': 120,
+    Score: 70,
+    'Estado da Conversa': 140,
+    'Estágio do Funil': 120,
+    Status: 130,
+    'Primeiro Contato': 130,
+    'Última Interação': 130,
+    'Tipo de Atendimento': 140,
+  };
+  Object.keys(widths).forEach((name) => {
+    const col = colOf(name);
+    if (col > 0) sheet.setColumnWidth(col, widths[name]);
+  });
+
+  // Esconde as colunas de JSON técnico (Horários Oferecidos, Horário
+  // Escolhido, Agendamento Confirmado) — payloads internos que o
+  // Dashboard lê, sem uso pra leitura humana. Esconde uma de cada vez
+  // (índices podem não ser seguidos se a planilha tiver colunas extras
+  // fora de COLUMNS).
+  ['Horários Oferecidos (JSON)', 'Horário Escolhido (JSON)', 'Agendamento Confirmado (JSON)'].forEach((name) => {
+    const col = colOf(name);
+    if (col > 0) {
+      sheet.showColumns(col); // garante estado conhecido antes de esconder de novo
+      sheet.hideColumns(col);
+    }
+  });
+
+  // Remove banding/filtro antigos antes de reaplicar, pra função poder
+  // rodar de novo sem dar erro de "já existe".
+  sheet.getBandings().forEach((b) => b.remove());
+  const existingFilter = sheet.getFilter();
+  if (existingFilter) existingFilter.remove();
+
+  const dataRange = sheet.getRange(1, 1, numRows, numCols);
+
+  const banding = dataRange.applyRowBanding(SpreadsheetApp.BandingTheme.BROWN, true, false);
+  banding.setHeaderRowColor('#6B4423').setFirstRowColor('#FFFDFA').setSecondRowColor('#F8F3EC');
+
+  dataRange.createFilter();
+
+  // Cor de fundo condicional na coluna Status, igual ao Dashboard.
+  const statusColIndex = colOf('Status');
+  if (statusColIndex > 0) {
+    const statusRange = sheet.getRange(2, statusColIndex, numRows - 1, 1);
+    const rules = sheet.getConditionalFormatRules().filter((r) => {
+      return !r.getRanges().some((r2) => r2.getColumn() === statusColIndex && r2.getRow() === 2);
+    });
+    rules.push(
+      SpreadsheetApp.newConditionalFormatRule()
+        .whenTextEqualTo('não compareceu')
+        .setBackground('#FFEDE3')
+        .setFontColor('#8B5A3C')
+        .setRanges([statusRange])
+        .build()
+    );
+    rules.push(
+      SpreadsheetApp.newConditionalFormatRule()
+        .whenTextEqualTo('desmarcado')
+        .setBackground('#EDE3D4')
+        .setFontColor('#877E75')
+        .setRanges([statusRange])
+        .build()
+    );
+    sheet.setConditionalFormatRules(rules);
+  }
+
+  // Texto sem quebra de linha (linhas mais compactas e uniformes) e
+  // alinhamento vertical central no corpo da planilha.
+  sheet
+    .getRange(2, 1, numRows - 1, numCols)
+    .setWrap(false)
+    .setVerticalAlignment('middle');
+}
+
 function jsonResponse(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
 }
