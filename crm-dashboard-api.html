@@ -374,7 +374,8 @@
     .agenda-event {
       display: flex;
       align-items: center;
-      gap: 14px;
+      flex-wrap: wrap;
+      gap: 8px 14px;
       padding: 10px 14px;
       border-left: 4px solid var(--cor-dourado-ambar);
       background: var(--cor-rosa-sereno);
@@ -397,6 +398,72 @@
     .agenda-event-summary {
       font-size: 14px;
       flex: 1;
+      color: inherit;
+      text-decoration: none;
+    }
+
+    .agenda-event-summary:hover {
+      text-decoration: underline;
+    }
+
+    .agenda-event-completed {
+      opacity: 0.6;
+    }
+
+    .agenda-event-completed .agenda-event-summary {
+      text-decoration: line-through;
+    }
+
+    .complete-btn {
+      font-size: 11.5px;
+      font-weight: 600;
+      background: var(--cor-branco-perola);
+      color: var(--cor-texto-marca);
+      border: 1px solid var(--cor-creme-avela);
+      border-radius: 20px;
+      padding: 4px 10px;
+      cursor: pointer;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    .complete-btn:hover {
+      background: var(--cor-creme-avela);
+    }
+
+    .complete-btn-danger {
+      color: #B3462F;
+      border-color: #E8C6BC;
+    }
+
+    .complete-btn-danger:hover {
+      background: #FBEAE5;
+    }
+
+    .btn.danger {
+      background: #B3462F;
+    }
+
+    .btn.danger:hover {
+      background: #8F3524;
+    }
+
+    .complete-done {
+      font-size: 11.5px;
+      color: var(--cor-cinza-cacau);
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    .agenda-toggle-btn {
+      background: none;
+      border: none;
+      color: var(--cor-texto-marca);
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: underline;
+      padding: 0;
     }
 
     /* Identificação do tipo de atendimento na Agenda — pedido do usuário
@@ -774,8 +841,11 @@
 
     <div class="agenda-section">
       <div class="agenda-header">
-        <h2>📅 Agenda</h2>
-        <span class="agenda-status" id="agendaStatus"></span>
+        <h2 id="agendaTitle">📅 Agenda</h2>
+        <span style="display:flex; align-items:center; gap:12px;">
+          <span class="agenda-status" id="agendaStatus"></span>
+          <button class="agenda-toggle-btn" id="agendaToggleBtn" onclick="toggleAgendaHistory()">📜 Ver histórico</button>
+        </span>
       </div>
       <div id="agendaList" class="agenda-list">
         <div class="loading">⏳ Carregando agenda...</div>
@@ -928,6 +998,55 @@
     </div>
   </div>
 
+  <!-- Modal de Concluir Atendimento (baixa + encadeamento) -->
+  <div class="modal" id="completeModal">
+    <div class="modal-content">
+      <span class="close-btn" onclick="closeCompleteModal()">&times;</span>
+      <h2>✅ Concluir Atendimento</h2>
+      <div class="lead-detail-grid" id="cmBody"></div>
+      <div id="cmQuestion" style="margin-top:20px;"></div>
+    </div>
+  </div>
+
+  <!-- Modal de Remarcar Atendimento -->
+  <div class="modal" id="rescheduleModal">
+    <div class="modal-content">
+      <span class="close-btn" onclick="closeRescheduleModal()">&times;</span>
+      <h2>📅 Remarcar Atendimento</h2>
+      <div id="rescheduleError"></div>
+      <div class="lead-detail-grid" id="rescheduleInfo"></div>
+      <div class="form-group" style="margin-top:18px;">
+        <label>Nova data:</label>
+        <input type="date" id="rsDate" onchange="loadRescheduleSlots()">
+      </div>
+      <div class="form-group">
+        <label>Novo horário:</label>
+        <select id="rsSlot">
+          <option value="">Escolha uma data primeiro</option>
+        </select>
+      </div>
+      <button class="btn" id="rsSubmitBtn" onclick="submitReschedule()">💾 Confirmar Remarcação</button>
+      <p style="color: var(--cor-cinza-cacau); font-size: 12px; margin-top: 16px;">
+        ℹ️ Move o mesmo evento pra nova data/horário — não cria um novo.
+      </p>
+    </div>
+  </div>
+
+  <!-- Modal de Desmarcar Atendimento -->
+  <div class="modal" id="cancelModal">
+    <div class="modal-content">
+      <span class="close-btn" onclick="closeCancelModal()">&times;</span>
+      <h2>✕ Desmarcar Atendimento</h2>
+      <div id="cancelError"></div>
+      <div class="lead-detail-grid" id="cancelInfo"></div>
+      <p style="color: #B3462F; font-size: 13px; margin: 18px 0;">⚠️ Isso apaga o evento de verdade da agenda. Não tem como desfazer.</p>
+      <div style="display:flex; gap:10px;">
+        <button class="btn secondary" onclick="closeCancelModal()" style="flex:1;">Voltar</button>
+        <button class="btn danger" id="cancelSubmitBtn" onclick="submitCancel()" style="flex:1;">✕ Confirmar Desmarcação</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Modal de Detalhe do Lead -->
   <div class="modal" id="leadDetailModal">
     <div class="modal-content">
@@ -976,6 +1095,8 @@
 
   <script>
     let allData = [];
+    let allCalendarEvents = [];
+    let showAgendaHistory = false;
     let activeFilter = 'all';
 
     const FILTER_LABELS = {
@@ -1023,12 +1144,47 @@
       RETORNO: { label: 'Retorno', className: 'type-retorno' },
     };
 
+    // Checa se o evento já foi "baixado" (concluído) — completeAppointment()
+    // no Apps Script prefixa o título com "✅ " sem mexer no resto.
+    function isAppointmentCompleted(summary) {
+      return /^[\s✅]*✅/.test(summary || '');
+    }
+
     function detectAppointmentType(summary) {
-      const text = (summary || '').toLowerCase();
+      // Remove o "✅ " de concluído (se houver) antes de checar a palavra —
+      // senão um evento já baixado deixaria de ser identificado.
+      const text = (summary || '').toLowerCase().replace(/^[^a-zà-öø-ÿ]+/i, '');
       if (text.startsWith('avalia')) return APPOINTMENT_TYPE_STYLES.AVALIACAO;
       if (text.startsWith('procedimento')) return APPOINTMENT_TYPE_STYLES.PROCEDIMENTO;
       if (text.startsWith('retorno')) return APPOINTMENT_TYPE_STYLES.RETORNO;
       return null;
+    }
+
+    // Extrai nome/telefone/origem de um evento do Calendar pra pré-preencher
+    // o próximo agendamento no encadeamento (avaliação -> procedimento ->
+    // retorno). O título segue "Tipo - Nome" ou "Tipo — Nome"; a descrição
+    // (quando criado pelo CRM) tem "Telefone: +55...  Origem: X."
+    function parseEventInfo(summary, description) {
+      const nameMatch = (summary || '').match(/^[^-—]+[-—]\s*(.+)$/);
+      const name = nameMatch ? nameMatch[1].trim() : (summary || '').replace(/^✅\s*/, '').trim();
+
+      const phoneMatch = (description || '').match(/Telefone:\s*(\+?\d+)/);
+      let phone = phoneMatch ? phoneMatch[1] : '';
+
+      const sourceMatch = (description || '').match(/Origem:\s*([^.]+)\./);
+      let source = sourceMatch ? sourceMatch[1].trim() : '';
+
+      // Sem telefone na descrição (evento antigo ou criado manualmente) —
+      // tenta achar o lead já carregado pelo nome, como último recurso.
+      if (!phone) {
+        const lead = allData.find(l => l.name && l.name.toLowerCase() === name.toLowerCase());
+        if (lead) {
+          phone = lead.phone;
+          source = source || lead.source || '';
+        }
+      }
+
+      return { name, phone, source };
     }
 
     function translateConversationState(state) {
@@ -1379,9 +1535,14 @@
       try {
         agendaStatus.textContent = 'Sincronizando...';
 
+        // Range inclui 30 dias pra trás — sem isso, um atendimento de
+        // ontem marcado como concluído nunca apareceria no histórico
+        // (achado do usuário 2026-09-23: concluídos ficam ocultos por
+        // padrão, mas precisam continuar consultáveis).
         const timeMin = new Date();
+        timeMin.setDate(timeMin.getDate() - 30);
         timeMin.setHours(0, 0, 0, 0);
-        const timeMax = new Date(timeMin);
+        const timeMax = new Date();
         timeMax.setDate(timeMax.getDate() + 60);
 
         const params = new URLSearchParams({
@@ -1390,7 +1551,7 @@
           timeMax: timeMax.toISOString(),
           singleEvents: 'true',
           orderBy: 'startTime',
-          maxResults: '50'
+          maxResults: '100'
         });
         const url = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(settings.calendarId)}/events?${params.toString()}`;
         const response = await fetch(url);
@@ -1401,9 +1562,10 @@
         }
 
         const result = await response.json();
-        const events = result.items || [];
-        renderAgenda(events);
-        agendaStatus.textContent = `✅ ${events.length} evento(s)`;
+        allCalendarEvents = result.items || [];
+        renderAgenda();
+        const activeCount = allCalendarEvents.filter(e => !isAppointmentCompleted(e.summary)).length;
+        agendaStatus.textContent = `✅ ${activeCount} evento(s)`;
       } catch (err) {
         console.error('Erro ao buscar agenda:', err);
         agendaStatus.textContent = '🔴 Erro ao sincronizar';
@@ -1411,11 +1573,28 @@
       }
     }
 
-    function renderAgenda(events) {
+    // Concluídos ficam ocultos por padrão (pedido do usuário 2026-09-23) —
+    // a Agenda do dia a dia deve mostrar só o que ainda vai acontecer.
+    // "📜 Ver histórico" alterna pra mostrar só os já concluídos.
+    function toggleAgendaHistory() {
+      showAgendaHistory = !showAgendaHistory;
+      renderAgenda();
+    }
+
+    function renderAgenda() {
       const agendaList = document.getElementById('agendaList');
+      const toggleBtn = document.getElementById('agendaToggleBtn');
+      const title = document.getElementById('agendaTitle');
+
+      const events = allCalendarEvents.filter(e => isAppointmentCompleted(e.summary) === showAgendaHistory);
+
+      title.textContent = showAgendaHistory ? '📜 Histórico de Atendimentos' : '📅 Agenda';
+      toggleBtn.textContent = showAgendaHistory ? '← Voltar pra Agenda' : '📜 Ver histórico';
 
       if (events.length === 0) {
-        agendaList.innerHTML = '<div class="agenda-empty">Nenhum agendamento nos próximos 60 dias.</div>';
+        agendaList.innerHTML = showAgendaHistory
+          ? '<div class="agenda-empty">Nenhum atendimento concluído nos últimos 30 dias.</div>'
+          : '<div class="agenda-empty">Nenhum agendamento pendente nos próximos 60 dias.</div>';
         return;
       }
 
@@ -1442,7 +1621,9 @@
         currentGroup.events.push({
           time,
           summary: event.summary || '(sem título)',
-          link: event.htmlLink
+          link: event.htmlLink,
+          id: event.id,
+          description: event.description || ''
         });
       }
 
@@ -1451,13 +1632,23 @@
           <div class="agenda-day-label">${group.isToday ? `🔶 Hoje — ${group.label}` : group.label}</div>
           ${group.events.map(ev => {
             const type = detectAppointmentType(ev.summary);
+            const completed = isAppointmentCompleted(ev.summary);
             const badge = type ? `<span class="type-badge ${type.className}">${type.label}</span>` : '';
+            const args = `'${ev.id}', ${JSON.stringify(ev.summary)}, ${JSON.stringify(ev.description)}`;
+            const action = completed
+              ? '<span class="complete-done">✅ Concluído</span>'
+              : `
+                <button class="complete-btn" onclick="event.stopPropagation(); event.preventDefault(); openCompleteModal(${args})" title="Marcar como concluído">✅ Baixar</button>
+                <button class="complete-btn" onclick="event.stopPropagation(); event.preventDefault(); openRescheduleModal(${args})" title="Remarcar">📅 Remarcar</button>
+                <button class="complete-btn complete-btn-danger" onclick="event.stopPropagation(); event.preventDefault(); openCancelModal(${args})" title="Desmarcar">✕ Desmarcar</button>
+              `;
             return `
-            <a class="agenda-event ${type ? type.className + '-border' : ''}" href="${ev.link}" target="_blank" rel="noopener">
+            <div class="agenda-event ${type ? type.className + '-border' : ''}${completed ? ' agenda-event-completed' : ''}">
               <span class="agenda-event-time">${ev.time}</span>
-              <span class="agenda-event-summary">${ev.summary}</span>
+              <a class="agenda-event-summary" href="${ev.link}" target="_blank" rel="noopener">${ev.summary}</a>
               ${badge}
-            </a>
+              ${action}
+            </div>
           `;
           }).join('')}
         </div>
@@ -1606,7 +1797,10 @@
 
     // --- Criação de agendamento (via Apps Script — ver apps-script/SETUP.md) ---
 
-    function openNewAppointmentModal() {
+    // `prefill` (opcional): { name, phone, source, type } — usado pelo
+    // encadeamento avaliação -> procedimento -> retorno (achado do usuário
+    // 2026-09-23), pra não precisar redigitar os dados do paciente.
+    function openNewAppointmentModal(prefill) {
       const settings = loadSettings();
       if (!settings || !settings.scriptUrl) {
         alert('Configure a "URL do Apps Script" em ⚙️ Config primeiro (ver apps-script/SETUP.md para gerar essa URL).');
@@ -1614,10 +1808,10 @@
         return;
       }
 
-      document.getElementById('apName').value = '';
-      document.getElementById('apPhone').value = '';
-      document.getElementById('apSource').value = 'INSTAGRAM';
-      document.getElementById('apType').value = 'AVALIACAO';
+      document.getElementById('apName').value = (prefill && prefill.name) || '';
+      document.getElementById('apPhone').value = (prefill && prefill.phone) || '';
+      document.getElementById('apSource').value = (prefill && prefill.source) || 'INSTAGRAM';
+      document.getElementById('apType').value = (prefill && prefill.type) || 'AVALIACAO';
       const dateInput = document.getElementById('apDate');
       dateInput.value = '';
       dateInput.min = new Date().toISOString().slice(0, 10);
@@ -1726,6 +1920,257 @@
     function backToForm() {
       document.getElementById('apConfirmStep').style.display = 'none';
       document.getElementById('apFormStep').style.display = 'block';
+    }
+
+    // --- Fluxo de "baixa" + encadeamento (achado do usuário 2026-09-23) ---
+    // Avaliação concluída -> pergunta se fechou o procedimento -> se sim,
+    // já abre o Novo Agendamento pré-preenchido com tipo Procedimento.
+    // Procedimento concluído -> pergunta se precisa de retorno -> mesma
+    // lógica, tipo Retorno.
+
+    let completeContext = null;
+
+    function openCompleteModal(eventId, summary, description) {
+      const settings = loadSettings();
+      if (!settings || !settings.scriptUrl) {
+        alert('Configure a "URL do Apps Script" em ⚙️ Config primeiro (ver apps-script/SETUP.md para gerar essa URL).');
+        toggleSettings();
+        return;
+      }
+
+      const type = detectAppointmentType(summary);
+      const info = parseEventInfo(summary, description);
+      completeContext = { eventId, ...info };
+
+      document.getElementById('cmBody').innerHTML = `
+        <div class="ld-row"><span class="ld-label">Paciente</span><span class="ld-value">${info.name || '—'}</span></div>
+        <div class="ld-row"><span class="ld-label">Tipo</span><span class="ld-value">${type ? type.label : '—'}</span></div>
+      `;
+
+      const q = document.getElementById('cmQuestion');
+      const typeKey = type === APPOINTMENT_TYPE_STYLES.AVALIACAO ? 'AVALIACAO' : type === APPOINTMENT_TYPE_STYLES.PROCEDIMENTO ? 'PROCEDIMENTO' : null;
+
+      if (typeKey === 'AVALIACAO') {
+        q.innerHTML = `
+          <p style="font-weight:600; margin-bottom:12px;">Fechou o procedimento?</p>
+          <div style="display:flex; gap:10px;">
+            <button class="btn secondary" onclick="answerComplete(false)" style="flex:1;">Não, só concluir</button>
+            <button class="btn" onclick="answerComplete(true, 'PROCEDIMENTO')" style="flex:1;">Sim, agendar procedimento</button>
+          </div>
+        `;
+      } else if (typeKey === 'PROCEDIMENTO') {
+        q.innerHTML = `
+          <p style="font-weight:600; margin-bottom:12px;">Este procedimento precisa de retorno?</p>
+          <div style="display:flex; gap:10px;">
+            <button class="btn secondary" onclick="answerComplete(false)" style="flex:1;">Não, só concluir</button>
+            <button class="btn" onclick="answerComplete(true, 'RETORNO')" style="flex:1;">Sim, agendar retorno</button>
+          </div>
+        `;
+      } else {
+        q.innerHTML = `
+          <div style="display:flex; gap:10px;">
+            <button class="btn secondary" onclick="closeCompleteModal()" style="flex:1;">Cancelar</button>
+            <button class="btn" onclick="answerComplete(false)" style="flex:1;">✅ Marcar como concluído</button>
+          </div>
+        `;
+      }
+
+      document.getElementById('completeModal').classList.add('open');
+    }
+
+    function closeCompleteModal() {
+      document.getElementById('completeModal').classList.remove('open');
+      completeContext = null;
+    }
+
+    async function answerComplete(chain, nextType) {
+      if (!completeContext) return;
+      const settings = loadSettings();
+      const q = document.getElementById('cmQuestion');
+      q.innerHTML = '<p>⏳ Processando...</p>';
+
+      try {
+        const response = await fetch(settings.scriptUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({ action: 'completeAppointment', eventId: completeContext.eventId })
+        });
+        const result = await response.json();
+        if (!result.ok) throw new Error(result.error || 'Erro desconhecido');
+
+        const { name, phone, source } = completeContext;
+        closeCompleteModal();
+
+        if (chain) {
+          showToast(`✅ Concluído — agora escolha o horário do ${(APPOINTMENT_TYPE_LABELS[nextType] || '').toLowerCase()}`);
+          refreshData();
+          openNewAppointmentModal({ name, phone, source, type: nextType });
+        } else {
+          showToast(`✅ Atendimento de ${name} concluído`);
+          refreshData();
+        }
+      } catch (err) {
+        q.innerHTML = `<div class="form-error">❌ ${err.message}</div>`;
+      }
+    }
+
+    // --- Remarcar (move o mesmo evento) ---
+
+    let rescheduleContext = null;
+
+    function openRescheduleModal(eventId, summary, description) {
+      const settings = loadSettings();
+      if (!settings || !settings.scriptUrl) {
+        alert('Configure a "URL do Apps Script" em ⚙️ Config primeiro (ver apps-script/SETUP.md para gerar essa URL).');
+        toggleSettings();
+        return;
+      }
+
+      const type = detectAppointmentType(summary);
+      const info = parseEventInfo(summary, description);
+      rescheduleContext = { eventId };
+
+      document.getElementById('rescheduleInfo').innerHTML = `
+        <div class="ld-row"><span class="ld-label">Paciente</span><span class="ld-value">${info.name || '—'}</span></div>
+        <div class="ld-row"><span class="ld-label">Tipo</span><span class="ld-value">${type ? type.label : '—'}</span></div>
+      `;
+      document.getElementById('rescheduleError').innerHTML = '';
+      const dateInput = document.getElementById('rsDate');
+      dateInput.value = '';
+      dateInput.min = new Date().toISOString().slice(0, 10);
+      document.getElementById('rsSlot').innerHTML = '<option value="">Escolha uma data primeiro</option>';
+      document.getElementById('rsSlot').disabled = true;
+      document.getElementById('rescheduleModal').classList.add('open');
+    }
+
+    function closeRescheduleModal() {
+      document.getElementById('rescheduleModal').classList.remove('open');
+      rescheduleContext = null;
+    }
+
+    async function loadRescheduleSlots() {
+      const settings = loadSettings();
+      const date = document.getElementById('rsDate').value;
+      const slotSelect = document.getElementById('rsSlot');
+      if (!date) return;
+
+      slotSelect.innerHTML = '<option value="">Carregando horários...</option>';
+      slotSelect.disabled = true;
+      document.getElementById('rescheduleError').innerHTML = '';
+
+      try {
+        const url = `${settings.scriptUrl}?action=availability&fromDate=${date}&daysAhead=1`;
+        const res = await fetch(url);
+        const body = await res.json();
+        if (!body.ok) throw new Error(body.error || 'Erro ao buscar horários');
+
+        const dayAvailability = (body.availability || []).find(d => d.date === date);
+        if (!dayAvailability || dayAvailability.slots.length === 0) {
+          slotSelect.innerHTML = '<option value="">Sem horários disponíveis nesse dia</option>';
+          return;
+        }
+
+        slotSelect.innerHTML = dayAvailability.slots
+          .map(s => `<option value="${s.start}|${s.end}">${s.start} - ${s.end}</option>`)
+          .join('');
+        slotSelect.disabled = false;
+      } catch (err) {
+        slotSelect.innerHTML = '<option value="">Erro ao carregar horários</option>';
+        document.getElementById('rescheduleError').innerHTML = `<div class="form-error">❌ ${err.message}</div>`;
+      }
+    }
+
+    async function submitReschedule() {
+      if (!rescheduleContext) return;
+      const settings = loadSettings();
+      const date = document.getElementById('rsDate').value;
+      const slotValue = document.getElementById('rsSlot').value;
+
+      document.getElementById('rescheduleError').innerHTML = '';
+      if (!date || !slotValue) {
+        document.getElementById('rescheduleError').innerHTML = '<div class="form-error">⚠️ Escolha data e horário.</div>';
+        return;
+      }
+
+      const [start, end] = slotValue.split('|');
+      const btn = document.getElementById('rsSubmitBtn');
+      btn.disabled = true;
+      btn.textContent = '⏳ Remarcando...';
+
+      try {
+        const response = await fetch(settings.scriptUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({ action: 'rescheduleAppointment', eventId: rescheduleContext.eventId, date, start, end })
+        });
+        const result = await response.json();
+        if (!result.ok) throw new Error(result.error || 'Erro desconhecido');
+
+        closeRescheduleModal();
+        showToast(`✅ Remarcado para ${formatDateBR(date)} às ${start}`);
+        refreshData();
+      } catch (err) {
+        document.getElementById('rescheduleError').innerHTML = `<div class="form-error">❌ ${err.message}</div>`;
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '💾 Confirmar Remarcação';
+      }
+    }
+
+    // --- Desmarcar (apaga o evento de verdade) ---
+
+    let cancelContext = null;
+
+    function openCancelModal(eventId, summary, description) {
+      const settings = loadSettings();
+      if (!settings || !settings.scriptUrl) {
+        alert('Configure a "URL do Apps Script" em ⚙️ Config primeiro (ver apps-script/SETUP.md para gerar essa URL).');
+        toggleSettings();
+        return;
+      }
+
+      const type = detectAppointmentType(summary);
+      const info = parseEventInfo(summary, description);
+      cancelContext = { eventId };
+
+      document.getElementById('cancelInfo').innerHTML = `
+        <div class="ld-row"><span class="ld-label">Paciente</span><span class="ld-value">${info.name || '—'}</span></div>
+        <div class="ld-row"><span class="ld-label">Tipo</span><span class="ld-value">${type ? type.label : '—'}</span></div>
+      `;
+      document.getElementById('cancelError').innerHTML = '';
+      document.getElementById('cancelModal').classList.add('open');
+    }
+
+    function closeCancelModal() {
+      document.getElementById('cancelModal').classList.remove('open');
+      cancelContext = null;
+    }
+
+    async function submitCancel() {
+      if (!cancelContext) return;
+      const settings = loadSettings();
+      const btn = document.getElementById('cancelSubmitBtn');
+      btn.disabled = true;
+      btn.textContent = '⏳ Desmarcando...';
+
+      try {
+        const response = await fetch(settings.scriptUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({ action: 'cancelAppointment', eventId: cancelContext.eventId })
+        });
+        const result = await response.json();
+        if (!result.ok) throw new Error(result.error || 'Erro desconhecido');
+
+        closeCancelModal();
+        showToast('🗑️ Atendimento desmarcado e removido da agenda');
+        refreshData();
+      } catch (err) {
+        document.getElementById('cancelError').innerHTML = `<div class="form-error">❌ ${err.message}</div>`;
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '✕ Confirmar Desmarcação';
+      }
     }
 
     async function submitNewAppointment() {

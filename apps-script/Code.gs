@@ -71,6 +71,15 @@ function doPost(e) {
     if (payload.action === 'updateLead') {
       return jsonResponse(updateLead(payload));
     }
+    if (payload.action === 'completeAppointment') {
+      return jsonResponse(completeAppointment(payload));
+    }
+    if (payload.action === 'rescheduleAppointment') {
+      return jsonResponse(rescheduleAppointmentAction(payload));
+    }
+    if (payload.action === 'cancelAppointment') {
+      return jsonResponse(cancelAppointmentAction(payload));
+    }
 
     return jsonResponse({ ok: false, error: 'Ação desconhecida: ' + payload.action });
   } catch (err) {
@@ -154,6 +163,102 @@ function createAppointment(payload) {
   });
 
   return { ok: true, event: confirmedAppointment };
+}
+
+/**
+ * "Baixa" um atendimento — marca o evento do Calendar como concluído
+ * prefixando o título com "✅ " (mantém o resto do título intacto, então
+ * detectAppointmentType() no Dashboard continua reconhecendo o tipo).
+ * Não apaga nem move o evento — só sinaliza visualmente que já aconteceu.
+ * Pedido do usuário 2026-09-23: fluxo de "baixar" avaliação/procedimento
+ * e, dali, encadear o próximo agendamento (procedimento ou retorno).
+ */
+function completeAppointment(payload) {
+  const { eventId } = payload;
+  if (!eventId) return { ok: false, error: 'Campo obrigatório: eventId.' };
+
+  const calendar = CalendarApp.getCalendarById(CALENDAR_ID);
+  if (!calendar) return { ok: false, error: 'Agenda não encontrada — verifique CALENDAR_ID no script.' };
+
+  const event = calendar.getEventById(eventId);
+  if (!event) return { ok: false, error: 'Evento não encontrado na agenda (pode já ter sido apagado).' };
+
+  const title = event.getTitle();
+  if (!title.startsWith('✅')) {
+    event.setTitle('✅ ' + title);
+  }
+
+  return { ok: true };
+}
+
+/**
+ * Remarca um atendimento existente para nova data/horário — atualiza o
+ * MESMO evento (mesmo id/link, event.setTime), nunca cria um novo. Pedido
+ * do usuário 2026-09-23.
+ */
+function rescheduleAppointmentAction(payload) {
+  const { eventId, date, start, end } = payload;
+  if (!eventId || !date || !start || !end) {
+    return { ok: false, error: 'Campos obrigatórios: eventId, date, start, end.' };
+  }
+
+  const calendar = CalendarApp.getCalendarById(CALENDAR_ID);
+  if (!calendar) return { ok: false, error: 'Agenda não encontrada — verifique CALENDAR_ID no script.' };
+
+  const event = calendar.getEventById(eventId);
+  if (!event) return { ok: false, error: 'Evento não encontrado na agenda (pode já ter sido apagado).' };
+
+  const newStart = parseLocalDateTime(date, start);
+  const newEnd = parseLocalDateTime(date, end);
+  if (newEnd <= newStart) return { ok: false, error: 'Horário de término precisa ser depois do início.' };
+
+  // Mesma checagem de conflito de createAppointment, excluindo o próprio
+  // evento (senão ele sempre "colidiria" consigo mesmo).
+  const conflicting = calendar.getEvents(newStart, newEnd).filter((e) => e.getId() !== event.getId());
+  if (conflicting.length > 0) {
+    return { ok: false, error: 'Esse horário já está ocupado na agenda. Escolha outro.' };
+  }
+
+  event.setTime(newStart, newEnd);
+
+  // Atualiza o lead na planilha (se der pra identificar o telefone na
+  // descrição do evento), pra tabela/painel de detalhe do Dashboard
+  // ficarem coerentes com a nova data sem precisar editar a mão.
+  const phoneMatch = (event.getDescription() || '').match(/Telefone:\s*(\+?\d+)/);
+  if (phoneMatch) {
+    upsertLeadRow({
+      phone: phoneMatch[1],
+      chosenSlot: { date, start, end },
+      confirmedAppointment: {
+        id: event.getId(),
+        htmlLink: buildEventHtmlLink(event.getId()),
+        start: { dateTime: formatIso(newStart), timeZone: TIME_ZONE },
+        end: { dateTime: formatIso(newEnd), timeZone: TIME_ZONE },
+      },
+    });
+  }
+
+  return { ok: true };
+}
+
+/**
+ * Desmarca um atendimento — apaga o evento de verdade da agenda (não é
+ * "arquivar" nem "marcar como cancelado", é deleteEvent mesmo). Ação
+ * irreversível, pedido explícito do usuário 2026-09-23: "onde o desmarcou
+ * elimine o agendamento no calendar".
+ */
+function cancelAppointmentAction(payload) {
+  const { eventId } = payload;
+  if (!eventId) return { ok: false, error: 'Campo obrigatório: eventId.' };
+
+  const calendar = CalendarApp.getCalendarById(CALENDAR_ID);
+  if (!calendar) return { ok: false, error: 'Agenda não encontrada — verifique CALENDAR_ID no script.' };
+
+  const event = calendar.getEventById(eventId);
+  if (!event) return { ok: true }; // já não existe — considera concluído
+
+  event.deleteEvent();
+  return { ok: true };
 }
 
 /** Marca leadStatus = "não compareceu" numa linha já existente, sem mexer no resto. */
