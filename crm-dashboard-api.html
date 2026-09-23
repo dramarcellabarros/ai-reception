@@ -11,10 +11,44 @@
       box-sizing: border-box;
     }
 
+    html {
+      touch-action: pan-x pan-y;
+    }
+
     body {
       font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
       background: #f5f2ed;
       color: #333;
+      touch-action: pan-x pan-y;
+    }
+
+    .back-to-top {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      background: #6B4423;
+      color: white;
+      border: none;
+      font-size: 20px;
+      cursor: pointer;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 900;
+      transition: background 0.2s, transform 0.2s;
+    }
+
+    .back-to-top.visible {
+      display: flex;
+    }
+
+    .back-to-top:hover {
+      background: #8B5A3C;
+      transform: translateY(-2px);
     }
 
     header {
@@ -571,6 +605,8 @@
     <div class="scroll-hint">↔ arraste a tabela para o lado para ver mais colunas</div>
   </div>
 
+  <button class="back-to-top" id="backToTopBtn" onclick="scrollToTop()" aria-label="Voltar ao topo">↑</button>
+
   <!-- Modal de Configuração -->
   <div class="modal" id="settingsModal">
     <div class="modal-content">
@@ -992,8 +1028,21 @@
       alert(`Detalhes de: ${name}\n\n(Modal de detalhes — implementar conforme necessário)`);
     }
 
+    function scrollToTop() {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
     // Event listeners
     document.getElementById('search').addEventListener('input', applyFilters);
+
+    window.addEventListener('scroll', () => {
+      const btn = document.getElementById('backToTopBtn');
+      if (window.scrollY > 300) {
+        btn.classList.add('visible');
+      } else {
+        btn.classList.remove('visible');
+      }
+    });
 
     // Inicializar
     window.addEventListener('load', () => {
