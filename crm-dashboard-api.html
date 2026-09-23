@@ -186,6 +186,22 @@
       background: rgba(255,255,255,0.4);
     }
 
+    /* "Novo Agendamento" e a acao mais usada do dia a dia — se destaca do
+       resto da pilula com a cor de destaque da marca em vez do branco
+       translucido generico (pedido do usuario 2026-09-23, apos remover
+       "Atualizar" do cabecalho). */
+    .icon-btn-primary {
+      width: 34px;
+      height: 34px;
+      font-size: 17px;
+      background: var(--cor-dourado-ambar);
+      box-shadow: 0 2px 6px rgba(0,0,0,0.25);
+    }
+
+    .icon-btn-primary:hover {
+      filter: brightness(0.9);
+    }
+
     .status-dot {
       width: 10px;
       height: 10px;
@@ -867,10 +883,9 @@
       </div>
     </div>
     <div class="status-indicator">
-      <button class="icon-btn" onclick="openNewAppointmentModal()" title="Novo Agendamento" aria-label="Novo Agendamento">➕</button>
+      <button class="icon-btn icon-btn-primary" onclick="openNewAppointmentModal()" title="Novo Agendamento" aria-label="Novo Agendamento">➕</button>
       <span class="status-dot" id="statusDot"></span>
       <span id="statusText">Conectando...</span>
-      <button class="icon-btn" onclick="refreshData()" title="Atualizar" aria-label="Atualizar">🔄</button>
     </div>
   </header>
 
