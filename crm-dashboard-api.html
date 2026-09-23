@@ -193,6 +193,86 @@
       text-decoration: underline;
     }
 
+    .agenda-section {
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+      padding: 20px;
+      margin-bottom: 30px;
+    }
+
+    .agenda-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 15px;
+    }
+
+    .agenda-header h2 {
+      font-size: 18px;
+      font-weight: 600;
+      color: #6B4423;
+    }
+
+    .agenda-status {
+      font-size: 12px;
+      color: #999;
+    }
+
+    .agenda-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .agenda-day-group {
+      margin-bottom: 6px;
+    }
+
+    .agenda-day-label {
+      font-size: 12px;
+      font-weight: 700;
+      color: #C9A961;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin: 12px 0 6px;
+    }
+
+    .agenda-event {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 10px 14px;
+      border-left: 4px solid #C9A961;
+      background: #faf8f4;
+      border-radius: 4px;
+      text-decoration: none;
+      color: inherit;
+    }
+
+    .agenda-event:hover {
+      background: #f3ede2;
+    }
+
+    .agenda-event-time {
+      font-family: 'Courier New', monospace;
+      font-weight: 700;
+      color: #6B4423;
+      min-width: 48px;
+    }
+
+    .agenda-event-summary {
+      font-size: 14px;
+      flex: 1;
+    }
+
+    .agenda-empty {
+      text-align: center;
+      padding: 20px;
+      color: #999;
+      font-size: 14px;
+    }
+
     .table-wrapper {
       background: white;
       border-radius: 8px;
@@ -445,6 +525,16 @@
       </div>
     </div>
 
+    <div class="agenda-section">
+      <div class="agenda-header">
+        <h2>📅 Agenda (Google Calendar)</h2>
+        <span class="agenda-status" id="agendaStatus"></span>
+      </div>
+      <div id="agendaList" class="agenda-list">
+        <div class="loading">⏳ Carregando agenda...</div>
+      </div>
+    </div>
+
     <div class="controls">
       <div class="search-box">
         <input type="text" id="search" placeholder="Buscar por nome, telefone ou email...">
@@ -500,6 +590,13 @@
           Crie em: console.cloud.google.com → APIs & Services → Credentials
         </small>
       </div>
+      <div class="form-group">
+        <label>ID da Agenda Google Calendar (opcional):</label>
+        <input type="text" id="calendarId" placeholder="algumacoisa@group.calendar.google.com">
+        <small style="color: #999; margin-top: 5px; display: block;">
+          Encontre em: Configurações da agenda → Integrar agenda → ID da agenda. Precisa estar com "Disponibilizar ao público" ativado.
+        </small>
+      </div>
       <button class="btn" onclick="saveSettings()">💾 Salvar</button>
       <p style="color: #999; font-size: 12px; margin-top: 20px;">
         ℹ️ Os dados são salvos localmente no seu navegador.
@@ -518,6 +615,29 @@
       noshow: 'Não Compareceram',
     };
 
+    // Estados da máquina de conversa (src/conversationState.js) traduzidos
+    // para PT-BR — a planilha grava o valor técnico em inglês, isso é só
+    // para exibição.
+    const CONVERSATION_STATE_LABELS = {
+      NEW_LEAD: 'Novo Lead',
+      WELCOME: 'Boas-vindas',
+      DISCOVERY: 'Descoberta',
+      NEED_IDENTIFIED: 'Necessidade Identificada',
+      EDUCATION: 'Educação',
+      VALUE_ESTABLISHED: 'Valor Estabelecido',
+      OBJECTION: 'Objeção',
+      READY_TO_BOOK: 'Pronto para Agendar',
+      SCHEDULING: 'Escolhendo Horário',
+      BOOKED: 'Aguardando Confirmação',
+      CONFIRMED: 'Confirmado',
+      HUMAN_HANDOFF: 'Atendimento Humano',
+    };
+
+    function translateConversationState(state) {
+      if (!state) return '—';
+      return CONVERSATION_STATE_LABELS[state] || state.replace(/_/g, ' ');
+    }
+
     // LocalStorage para salvar configurações
     const STORAGE_KEY = 'crm_settings';
 
@@ -529,7 +649,8 @@
     function saveSettings() {
       const settings = {
         spreadsheetId: document.getElementById('spreadsheetId').value,
-        apiKey: document.getElementById('apiKey').value
+        apiKey: document.getElementById('apiKey').value,
+        calendarId: document.getElementById('calendarId').value
       };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
       toggleSettings();
@@ -542,6 +663,7 @@
       if (settings) {
         document.getElementById('spreadsheetId').value = settings.spreadsheetId;
         document.getElementById('apiKey').value = settings.apiKey;
+        document.getElementById('calendarId').value = settings.calendarId || '';
       }
       modal.classList.toggle('open');
     }
@@ -683,7 +805,7 @@
           <td class="name-cell">${lead.name}</td>
           <td>${lead.phone}</td>
           <td>${lead.source}</td>
-          <td>${lead.conversationState ? lead.conversationState.replace(/_/g, ' ') : '—'}</td>
+          <td>${translateConversationState(lead.conversationState)}</td>
           <td>
             <span class="status-badge status-${getStatusClass(lead)}">
               ${lead.confirmedAppointment ? 'Confirmado' : lead.leadStatus || 'Ativo'}
@@ -762,6 +884,108 @@
 
     function refreshData() {
       fetchSheetsData();
+      fetchCalendarEvents();
+    }
+
+    const WEEKDAY_LABELS_PT = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
+
+    function formatAgendaDayLabel(dateObj) {
+      const weekday = WEEKDAY_LABELS_PT[dateObj.getDay()];
+      const dateLabel = dateObj.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+      return `${weekday} (${dateLabel})`;
+    }
+
+    async function fetchCalendarEvents() {
+      const settings = loadSettings();
+      const agendaList = document.getElementById('agendaList');
+      const agendaStatus = document.getElementById('agendaStatus');
+
+      if (!settings || !settings.apiKey || !settings.calendarId) {
+        agendaList.innerHTML = '<div class="agenda-empty">⚙️ Configure o ID da Agenda em Config para ver os agendamentos aqui.</div>';
+        agendaStatus.textContent = '';
+        return;
+      }
+
+      try {
+        agendaStatus.textContent = 'Sincronizando...';
+
+        const timeMin = new Date();
+        timeMin.setHours(0, 0, 0, 0);
+        const timeMax = new Date(timeMin);
+        timeMax.setDate(timeMax.getDate() + 60);
+
+        const params = new URLSearchParams({
+          key: settings.apiKey,
+          timeMin: timeMin.toISOString(),
+          timeMax: timeMax.toISOString(),
+          singleEvents: 'true',
+          orderBy: 'startTime',
+          maxResults: '50'
+        });
+        const url = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(settings.calendarId)}/events?${params.toString()}`;
+        const response = await fetch(url);
+
+        if (!response.ok) {
+          const errBody = await response.json().catch(() => null);
+          throw new Error(errBody && errBody.error ? errBody.error.message : `Erro ${response.status}`);
+        }
+
+        const result = await response.json();
+        const events = result.items || [];
+        renderAgenda(events);
+        agendaStatus.textContent = `✅ ${events.length} evento(s)`;
+      } catch (err) {
+        console.error('Erro ao buscar agenda:', err);
+        agendaStatus.textContent = '🔴 Erro ao sincronizar';
+        agendaList.innerHTML = `<div class="agenda-empty">❌ ${err.message}. Verifique se a Calendar API está ativada, se a chave permite "Google Calendar API" e se a agenda está com "Disponibilizar ao público" ativado.</div>`;
+      }
+    }
+
+    function renderAgenda(events) {
+      const agendaList = document.getElementById('agendaList');
+
+      if (events.length === 0) {
+        agendaList.innerHTML = '<div class="agenda-empty">Nenhum agendamento nos próximos 60 dias.</div>';
+        return;
+      }
+
+      const groups = [];
+      let currentDayKey = null;
+      let currentGroup = null;
+
+      for (const event of events) {
+        const startRaw = event.start && (event.start.dateTime || event.start.date);
+        if (!startRaw) continue;
+        const startDate = new Date(startRaw);
+        const dayKey = startDate.toDateString();
+
+        if (dayKey !== currentDayKey) {
+          currentDayKey = dayKey;
+          currentGroup = { label: formatAgendaDayLabel(startDate), events: [] };
+          groups.push(currentGroup);
+        }
+
+        const isAllDay = !event.start.dateTime;
+        const time = isAllDay ? 'Dia todo' : startDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+
+        currentGroup.events.push({
+          time,
+          summary: event.summary || '(sem título)',
+          link: event.htmlLink
+        });
+      }
+
+      agendaList.innerHTML = groups.map(group => `
+        <div class="agenda-day-group">
+          <div class="agenda-day-label">${group.label}</div>
+          ${group.events.map(ev => `
+            <a class="agenda-event" href="${ev.link}" target="_blank" rel="noopener">
+              <span class="agenda-event-time">${ev.time}</span>
+              <span class="agenda-event-summary">${ev.summary}</span>
+            </a>
+          `).join('')}
+        </div>
+      `).join('');
     }
 
     function viewDetails(name) {
@@ -775,6 +999,7 @@
     window.addEventListener('load', () => {
       if (loadSettings()) {
         fetchSheetsData();
+        fetchCalendarEvents();
       } else {
         loadMockData();
         toggleSettings(); // Abrir config ao carregar se não tiver configurado
