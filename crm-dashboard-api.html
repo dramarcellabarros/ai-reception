@@ -1260,11 +1260,11 @@
       <div id="apFormStep">
         <div class="form-group">
           <label>Nome:</label>
-          <input type="text" id="apName" placeholder="Nome completo">
+          <input type="text" id="apName" placeholder="Nome completo" maxlength="80">
         </div>
         <div class="form-group">
           <label>Telefone:</label>
-          <input type="tel" id="apPhone">
+          <input type="tel" id="apPhone" maxlength="15" oninput="maskCellphoneInput(this)">
         </div>
         <div class="form-group">
           <label>Origem:</label>
@@ -1286,7 +1286,7 @@
         <div class="form-group" id="apProcedureGroup" style="display:none;">
           <label>Procedimento:</label>
           <select id="apProcedure" onchange="toggleProcedureOther('apProcedure', 'apProcedureOther')"></select>
-          <input type="text" id="apProcedureOther" placeholder="Qual procedimento?" style="display:none; margin-top:8px;">
+          <input type="text" id="apProcedureOther" placeholder="Qual procedimento?" maxlength="60" style="display:none; margin-top:8px;">
         </div>
         <div class="form-group">
           <label>Data:</label>
@@ -1354,7 +1354,7 @@
       <div id="editAppointmentError"></div>
       <div class="form-group">
         <label>Nome:</label>
-        <input type="text" id="editName">
+        <input type="text" id="editName" maxlength="80">
       </div>
       <div class="form-group">
         <label>Origem:</label>
@@ -1376,7 +1376,7 @@
       <div class="form-group" id="editProcedureGroup" style="display:none;">
         <label>Procedimento:</label>
         <select id="editProcedure" onchange="toggleProcedureOther('editProcedure', 'editProcedureOther')"></select>
-        <input type="text" id="editProcedureOther" placeholder="Qual procedimento?" style="display:none; margin-top:8px;">
+        <input type="text" id="editProcedureOther" placeholder="Qual procedimento?" maxlength="60" style="display:none; margin-top:8px;">
       </div>
       <div class="form-group">
         <label>Data:</label>
@@ -1428,7 +1428,7 @@
       <div id="ldEditError"></div>
       <div class="form-group">
         <label>Nome:</label>
-        <input type="text" id="ldEditName">
+        <input type="text" id="ldEditName" maxlength="80">
       </div>
       <div class="form-group">
         <label>Origem:</label>
@@ -1454,7 +1454,7 @@
       </div>
       <div class="form-group" id="ldManualOnlyReasonGroup" style="display:none;">
         <label>Motivo:</label>
-        <input type="text" id="ldEditManualOnlyReason" placeholder="Ex: atende só com a Dra., conversa em andamento">
+        <input type="text" id="ldEditManualOnlyReason" placeholder="Ex: atende só com a Dra., conversa em andamento" maxlength="120">
       </div>
       <button class="btn" id="ldSaveBtn" onclick="saveLeadEdit()">💾 Salvar Alterações</button>
       <p style="color: var(--cor-cinza-cacau); font-size: 12px; margin-top: 16px;" id="ldEditHint">
@@ -1680,6 +1680,26 @@
         return `+55${digits}`;
       }
       return `+${digits}`;
+    }
+
+    // Máscara de celular BR ao vivo, enquanto digita — pedido do usuário
+    // 2026-09-24: "no telefone deixe um padrão de celular". Reconhece
+    // tanto digitação livre (DDD + número) quanto colar do WhatsApp
+    // (+55 15 99789-2900 etc.) — sempre extrai só os dígitos e reformata
+    // pro padrão (DD) 9XXXX-XXXX, limitado a DDD + 9 dígitos do celular
+    // (remove o "55" da frente se vier junto, já que ele é só reanexado
+    // depois por normalizePhoneBR ao gravar).
+    function maskCellphoneInput(el) {
+      let digits = el.value.replace(/\D/g, '');
+      if (digits.startsWith('55') && digits.length > 11) {
+        digits = digits.slice(2);
+      }
+      digits = digits.slice(0, 11);
+
+      let formatted = digits;
+      if (digits.length > 2) formatted = `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
+      if (digits.length > 7) formatted = `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
+      el.value = formatted;
     }
 
     // Converte data ISO ("2026-09-28", como vem da planilha/API) para o
