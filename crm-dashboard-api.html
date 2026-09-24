@@ -488,6 +488,18 @@
       text-decoration: line-through;
     }
 
+    /* Botões de ação sempre na linha de baixo, nunca dividindo linha com o
+       título (pedido do usuário 2026-09-24 — antes, dependendo do tamanho
+       do nome, um botão "sobrava" sozinho na primeira linha enquanto os
+       outros quebravam, ficando inconsistente entre eventos). */
+    .agenda-event-actions {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      flex-basis: 100%;
+    }
+
     .complete-btn {
       font-size: 13px;
       font-weight: 600;
@@ -1882,7 +1894,7 @@
               <span class="agenda-event-time">${ev.time}</span>
               <a class="agenda-event-summary" href="${ev.link}" target="_blank" rel="noopener">${agendaDisplayTitle(ev.summary)}</a>
               ${badge}
-              ${action}
+              <div class="agenda-event-actions">${action}</div>
             </div>
           `;
           }).join('')}
