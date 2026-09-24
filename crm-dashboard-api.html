@@ -129,6 +129,12 @@
       right: 16px;
     }
 
+    .header-finance-btn {
+      position: absolute;
+      top: 12px;
+      right: 54px;
+    }
+
     .header-left {
       display: flex;
       align-items: center;
@@ -1042,6 +1048,62 @@
       color: var(--cor-texto-marca);
     }
 
+    .finance-summary-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    .finance-summary-card {
+      background: var(--cor-areia-suave);
+      border-radius: 8px;
+      padding: 12px 8px;
+      text-align: center;
+    }
+
+    .finance-summary-value {
+      font-size: 17px;
+      font-weight: 700;
+      color: var(--cor-texto-marca);
+      font-family: 'Courier New', monospace;
+    }
+
+    .finance-summary-label {
+      font-size: 10.5px;
+      color: var(--cor-cinza-cacau);
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+      margin-top: 2px;
+    }
+
+    .finance-summary-received {
+      background: #E3F0DC;
+    }
+
+    .finance-summary-received .finance-summary-value {
+      color: #4A7A3B;
+    }
+
+    .finance-summary-overdue {
+      background: #FBEAE5;
+    }
+
+    .finance-summary-overdue .finance-summary-value {
+      color: #B3462F;
+    }
+
+    .finance-summary-methods {
+      margin-top: 10px;
+    }
+
+    .finance-summary-method {
+      display: flex;
+      justify-content: space-between;
+      font-size: 13px;
+      padding: 4px 0;
+    }
+
     .form-error {
       background: #f8d7da;
       border: 1px solid #f5c6cb;
@@ -1164,6 +1226,7 @@
 <body>
   <header>
     <button class="icon-btn header-config-btn" onclick="toggleSettings()" title="Config" aria-label="Config">⚙️</button>
+    <button class="icon-btn header-finance-btn" onclick="openFinanceReport()" title="Relatório Financeiro" aria-label="Relatório Financeiro">💰</button>
     <div class="header-left">
       <img src="assets/logo-branco.png" alt="Marcella Barros" class="header-logo">
       <div>
@@ -1469,6 +1532,23 @@
   </div>
 
   <!-- Modal de Detalhe do Lead -->
+  <!-- Modal de Relatório Financeiro (pedido do usuário 2026-09-24: "quero
+       lançar o que recebi em pix, cartao, dinheiro para depois saber
+       quanto recebi por período"). -->
+  <div class="modal" id="financeReportModal">
+    <div class="modal-content modal-content-wide">
+      <span class="close-btn" onclick="closeFinanceReport()">&times;</span>
+      <h2>💰 Relatório Financeiro</h2>
+      <div class="form-group">
+        <label>Período:</label>
+        <input type="month" id="reportMonth" onchange="renderFinanceReport()">
+      </div>
+      <div id="financeReportSummary"></div>
+      <h3 style="font-size: 13px; color: var(--cor-texto-marca); margin: 20px 0 10px; border-top: 1px solid var(--cor-creme-avela); padding-top: 16px;">Parcelas do mês</h3>
+      <div id="financeReportList"></div>
+    </div>
+  </div>
+
   <!-- Modal de Novo Lead — adiciona um lead direto, sem passar por um
        agendamento (pedido do usuário 2026-09-24, pra registrar clientes
        que já fizeram o procedimento antes de existir no CRM). -->
@@ -2759,6 +2839,111 @@
         btn.disabled = false;
         btn.textContent = '💾 Adicionar Lead';
       }
+    }
+
+    // --- Relatório Financeiro (pedido do usuário 2026-09-24: "quero
+    // lançar o que recebi em pix, cartao, dinheiro para depois saber
+    // quanto recebi por período") ---
+
+    const PAYMENT_METHOD_ICONS = { Pix: '💠', 'Cartão': '💳', Dinheiro: '💵', Outro: '📄' };
+
+    function openFinanceReport() {
+      const settings = loadSettings();
+      if (!settings || !settings.spreadsheetId || !settings.apiKey) {
+        alert('Configure a planilha e a chave da API em ⚙️ Config primeiro.');
+        return;
+      }
+      const now = new Date();
+      document.getElementById('reportMonth').value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+      renderFinanceReport();
+      document.getElementById('financeReportModal').classList.add('open');
+    }
+
+    function closeFinanceReport() {
+      document.getElementById('financeReportModal').classList.remove('open');
+    }
+
+    function renderFinanceReport() {
+      const monthValue = document.getElementById('reportMonth').value; // "2026-09"
+      const summaryEl = document.getElementById('financeReportSummary');
+      const listEl = document.getElementById('financeReportList');
+
+      if (!monthValue) {
+        summaryEl.innerHTML = '';
+        listEl.innerHTML = '';
+        return;
+      }
+
+      const todayStr = localDateStr(new Date());
+
+      // Recebido no mês: pela Data de Recebimento, não pelo vencimento —
+      // uma parcela vencida em agosto mas paga em setembro conta como
+      // recebimento de setembro.
+      const receivedInMonth = allFinance.filter(f => f.status === 'Recebido' && f.receivedDate && f.receivedDate.startsWith(monthValue));
+      const receivedTotal = receivedInMonth.reduce((s, f) => s + f.value, 0);
+      const receivedByMethod = {};
+      receivedInMonth.forEach(f => {
+        const key = f.paymentMethod || 'Outro';
+        receivedByMethod[key] = (receivedByMethod[key] || 0) + f.value;
+      });
+
+      // A receber vencendo no mês (ainda não recebido).
+      const pendingInMonth = allFinance.filter(f => f.status !== 'Recebido' && f.dueDate && f.dueDate.startsWith(monthValue));
+      const pendingTotal = pendingInMonth.reduce((s, f) => s + f.value, 0);
+
+      // Atrasado é sempre "a partir de hoje", independente do mês que
+      // está sendo visto no relatório — não faz sentido escopar isso por
+      // período (atraso é um estado atual, não histórico de um mês).
+      const overdue = allFinance.filter(f => f.status !== 'Recebido' && f.dueDate && f.dueDate < todayStr);
+      const overdueTotal = overdue.reduce((s, f) => s + f.value, 0);
+
+      const methodRows = Object.keys(receivedByMethod).sort().map(method => `
+        <div class="finance-summary-method">
+          <span>${PAYMENT_METHOD_ICONS[method] || '📄'} ${method}</span>
+          <span>${formatCurrencyBRL(receivedByMethod[method])}</span>
+        </div>
+      `).join('') || '<div class="finance-summary-method" style="color:var(--cor-cinza-cacau);">Nenhum recebimento nesse mês.</div>';
+
+      summaryEl.innerHTML = `
+        <div class="finance-summary-grid">
+          <div class="finance-summary-card finance-summary-received">
+            <div class="finance-summary-value">${formatCurrencyBRL(receivedTotal)}</div>
+            <div class="finance-summary-label">Recebido no mês</div>
+          </div>
+          <div class="finance-summary-card">
+            <div class="finance-summary-value">${formatCurrencyBRL(pendingTotal)}</div>
+            <div class="finance-summary-label">A receber no mês</div>
+          </div>
+          <div class="finance-summary-card ${overdueTotal > 0 ? 'finance-summary-overdue' : ''}">
+            <div class="finance-summary-value">${formatCurrencyBRL(overdueTotal)}</div>
+            <div class="finance-summary-label">Atrasado (hoje)</div>
+          </div>
+        </div>
+        <div class="finance-summary-methods">${methodRows}</div>
+      `;
+
+      const monthItems = allFinance
+        .filter(f => (f.receivedDate && f.receivedDate.startsWith(monthValue)) || (f.dueDate && f.dueDate.startsWith(monthValue)))
+        .sort((a, b) => (a.dueDate || '').localeCompare(b.dueDate || ''));
+
+      if (monthItems.length === 0) {
+        listEl.innerHTML = '<div class="agenda-empty">Nenhuma parcela nesse mês.</div>';
+        return;
+      }
+
+      listEl.innerHTML = monthItems.map(item => `
+        <div class="finance-row">
+          <div class="finance-row-main">
+            <span>${item.name} — ${item.description || 'Cobrança'} (${item.installmentLabel})</span>
+            <span class="finance-row-value">${formatCurrencyBRL(item.value)}</span>
+          </div>
+          <div class="finance-row-meta">
+            <span>Vence ${formatDateBR(item.dueDate)}</span>
+            <span>${item.paymentMethod || '—'}</span>
+            <span class="finance-status-badge ${item.status === 'Recebido' ? 'finance-status-paid' : 'finance-status-pending'}">${item.status}</span>
+          </div>
+        </div>
+      `).join('');
     }
 
     // --- Lançar Cobrança (contas a receber) ---
