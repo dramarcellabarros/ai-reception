@@ -1989,6 +1989,15 @@
     // como falha real.
     let allFinance = [];
 
+    // A planilha grava/devolve valores no formato BR ("183,33", vírgula
+    // decimal) — parseFloat("183,33") do JS para no primeiro caractere
+    // não numérico (a vírgula) e vira só "183", perdendo os centavos
+    // (bug real encontrado no primeiro lançamento de teste, 2026-09-24).
+    function parseCurrencyCell(raw) {
+      if (raw === undefined || raw === null || raw === '') return 0;
+      return parseFloat(String(raw).replace(',', '.')) || 0;
+    }
+
     async function fetchFinanceData() {
       const settings = loadSettings();
       if (!settings || !settings.spreadsheetId || !settings.apiKey) {
@@ -2020,7 +2029,7 @@
           description: row[headers.indexOf('Descrição')] || '',
           totalValue: row[headers.indexOf('Valor Total Combinado')] || '',
           installmentLabel: row[headers.indexOf('Parcela')] || '',
-          value: parseFloat(row[headers.indexOf('Valor da Parcela')]) || 0,
+          value: parseCurrencyCell(row[headers.indexOf('Valor da Parcela')]),
           dueDate: row[headers.indexOf('Vencimento')] || '',
           paymentMethod: row[headers.indexOf('Meio de Pagamento')] || '',
           status: row[headers.indexOf('Status')] || 'A receber',
