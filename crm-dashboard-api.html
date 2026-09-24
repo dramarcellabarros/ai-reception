@@ -851,6 +851,128 @@
       color: var(--cor-texto-marca);
     }
 
+    /* Visão do Mês — calendário em grade pra ver de longe quais dias
+       estão ocupados (pedido do usuário 2026-09-24). */
+    .modal-content-wide {
+      max-width: 420px;
+    }
+
+    .month-nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+      font-weight: 700;
+      color: var(--cor-texto-marca);
+      font-family: 'Roboto Serif', serif;
+      font-size: 16px;
+      text-transform: capitalize;
+    }
+
+    .icon-btn-flat {
+      border: none;
+      background: var(--cor-areia-suave);
+      color: var(--cor-texto-marca);
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      font-size: 18px;
+      cursor: pointer;
+      line-height: 1;
+    }
+
+    .icon-btn-flat:hover {
+      background: var(--cor-creme-avela);
+    }
+
+    .month-weekdays, .month-grid {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 4px;
+    }
+
+    .month-weekdays {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--cor-cinza-cacau);
+      text-align: center;
+      margin-bottom: 4px;
+    }
+
+    .month-day-cell {
+      aspect-ratio: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid transparent;
+      border-radius: 6px;
+      background: var(--cor-areia-suave);
+      font-size: 13px;
+      color: var(--cor-texto);
+      cursor: pointer;
+      gap: 2px;
+    }
+
+    .month-day-cell.empty {
+      background: none;
+      cursor: default;
+    }
+
+    .month-day-cell:not(.empty):hover {
+      background: var(--cor-creme-avela);
+    }
+
+    .month-day-cell.today {
+      border-color: var(--cor-dourado-ambar);
+      font-weight: 700;
+    }
+
+    .month-day-cell.has-events {
+      background: var(--cor-rosa-sereno);
+    }
+
+    .month-day-cell.selected {
+      background: var(--cor-dourado-ambar);
+      color: white;
+    }
+
+    .month-day-dot {
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: var(--cor-dourado-ambar);
+    }
+
+    .month-day-cell.selected .month-day-dot {
+      background: white;
+    }
+
+    .month-day-detail {
+      margin-top: 16px;
+      border-top: 1px solid var(--cor-creme-avela);
+      padding-top: 12px;
+    }
+
+    .month-day-detail-empty {
+      color: var(--cor-cinza-cacau);
+      font-size: 13px;
+    }
+
+    .month-day-detail-row {
+      display: flex;
+      gap: 10px;
+      font-size: 13.5px;
+      padding: 5px 0;
+    }
+
+    .month-day-detail-time {
+      font-family: 'Courier New', monospace;
+      font-weight: 700;
+      color: var(--cor-texto-marca);
+      min-width: 42px;
+    }
+
     .form-error {
       background: #f8d7da;
       border: 1px solid #f5c6cb;
@@ -1000,6 +1122,7 @@
         <h2 id="agendaTitle">📅 Agenda</h2>
         <span style="display:flex; align-items:center; gap:12px;">
           <span class="agenda-status" id="agendaStatus"></span>
+          <button class="agenda-toggle-btn" onclick="openMonthCalendar()" title="Visão do mês" aria-label="Visão do mês">🗓️</button>
           <button class="agenda-toggle-btn" id="agendaToggleBtn" onclick="toggleAgendaHistory()">📜 Ver histórico</button>
         </span>
       </div>
@@ -1251,6 +1374,28 @@
     </div>
   </div>
 
+  <!-- Modal de Visão do Mês — visão macro de quais dias a agenda está
+       ocupada (pedido do usuário 2026-09-24). Usa os eventos já
+       carregados em allCalendarEvents (janela de -30/+60 dias a partir de
+       hoje, ver fetchCalendarEvents) — navegar pra um mês fora dessa
+       janela mostra "sem dados carregados", nunca inventa ocupação. -->
+  <div class="modal" id="monthCalendarModal">
+    <div class="modal-content modal-content-wide">
+      <span class="close-btn" onclick="closeMonthCalendar()">&times;</span>
+      <h2>🗓️ Visão do Mês</h2>
+      <div class="month-nav">
+        <button class="icon-btn-flat" onclick="shiftMonthCalendar(-1)" aria-label="Mês anterior">‹</button>
+        <span id="monthCalendarLabel"></span>
+        <button class="icon-btn-flat" onclick="shiftMonthCalendar(1)" aria-label="Próximo mês">›</button>
+      </div>
+      <div class="month-weekdays">
+        <span>D</span><span>S</span><span>T</span><span>Q</span><span>Q</span><span>S</span><span>S</span>
+      </div>
+      <div id="monthCalendarGrid" class="month-grid"></div>
+      <div id="monthDayDetail" class="month-day-detail"></div>
+    </div>
+  </div>
+
   <!-- Modal de Detalhe do Lead -->
   <div class="modal" id="leadDetailModal">
     <div class="modal-content">
@@ -1432,18 +1577,20 @@
       return { name, phone, source };
     }
 
-    // Mensagem pronta de confirmação de presença pro dia seguinte — pedido
-    // do usuário 2026-09-24. Usa o primeiro nome (mais natural numa
-    // mensagem de WhatsApp do que o nome completo) e o horário já formatado
-    // que a Agenda mostra (ev.time).
-    function buildConfirmationWhatsAppLink(ev, dateObj) {
+    // Mensagem pronta de confirmação de presença pra hoje ou amanhã —
+    // pedido do usuário 2026-09-24 (ampliado no mesmo dia pra cobrir
+    // também agendamentos de hoje, não só de amanhã). Usa o primeiro nome
+    // (mais natural numa mensagem de WhatsApp do que o nome completo) e o
+    // horário já formatado que a Agenda mostra (ev.time).
+    function buildConfirmationWhatsAppLink(ev, dateObj, isToday) {
       const info = parseEventInfo(ev.summary, ev.description);
       const wa = whatsappLink(info.phone);
       if (!wa) return null;
 
       const firstName = (info.name || '').trim().split(/\s+/)[0] || info.name;
       const dateLabel = dateObj.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
-      const message = `Olá${firstName ? ' ' + firstName : ''}! Passando para confirmar seu atendimento de amanhã (${dateLabel}) às ${ev.time} com a Dra. Marcella Barros. Você confirma presença?`;
+      const whenLabel = isToday ? `hoje (${dateLabel})` : `amanhã (${dateLabel})`;
+      const message = `Olá${firstName ? ' ' + firstName : ''}! Passando para confirmar seu atendimento de ${whenLabel} às ${ev.time} com a Dra. Marcella Barros. Você confirma presença?`;
 
       return `${wa}?text=${encodeURIComponent(message)}`;
     }
@@ -1777,6 +1924,112 @@
       return `${weekday} (${dateLabel})`;
     }
 
+    // --- Visão do Mês (pedido do usuário 2026-09-24): calendário em
+    // grade pra ver de longe quais dias a agenda está ocupada, e ao
+    // clicar num dia ver a lista simplificada (hora — nome). Usa só os
+    // eventos já carregados em allCalendarEvents (janela de -30/+60 dias
+    // a partir de hoje, ver fetchCalendarEvents) — navegar pra um mês
+    // fora dessa janela mostra dias sem marcação nenhuma, nunca inventa
+    // ocupação que não foi realmente carregada. ---
+
+    const MONTH_LABELS_PT = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+    let monthCalendarDate = new Date();
+    let selectedMonthDay = null;
+
+    function openMonthCalendar() {
+      monthCalendarDate = new Date();
+      monthCalendarDate.setDate(1);
+      selectedMonthDay = localDateStr(new Date());
+      renderMonthCalendar();
+      document.getElementById('monthCalendarModal').classList.add('open');
+    }
+
+    function closeMonthCalendar() {
+      document.getElementById('monthCalendarModal').classList.remove('open');
+    }
+
+    function shiftMonthCalendar(delta) {
+      monthCalendarDate.setMonth(monthCalendarDate.getMonth() + delta);
+      selectedMonthDay = null;
+      renderMonthCalendar();
+    }
+
+    function getEventsForDate(dateStr) {
+      return allCalendarEvents
+        .filter((ev) => {
+          const raw = ev.start && (ev.start.dateTime || ev.start.date);
+          if (!raw) return false;
+          return localDateStr(new Date(raw)) === dateStr;
+        })
+        .sort((a, b) => {
+          const ta = a.start.dateTime || a.start.date;
+          const tb = b.start.dateTime || b.start.date;
+          return new Date(ta) - new Date(tb);
+        });
+    }
+
+    function renderMonthCalendar() {
+      const year = monthCalendarDate.getFullYear();
+      const month = monthCalendarDate.getMonth();
+      document.getElementById('monthCalendarLabel').textContent = `${MONTH_LABELS_PT[month]} de ${year}`;
+
+      const startWeekday = new Date(year, month, 1).getDay();
+      const daysInMonth = new Date(year, month + 1, 0).getDate();
+      const todayStr = localDateStr(new Date());
+
+      let cellsHtml = '';
+      for (let i = 0; i < startWeekday; i++) {
+        cellsHtml += '<div class="month-day-cell empty"></div>';
+      }
+      for (let day = 1; day <= daysInMonth; day++) {
+        const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        const events = getEventsForDate(dateStr);
+        const classes = ['month-day-cell'];
+        if (dateStr === todayStr) classes.push('today');
+        if (events.length > 0) classes.push('has-events');
+        if (dateStr === selectedMonthDay) classes.push('selected');
+        cellsHtml += `<button type="button" class="${classes.join(' ')}" onclick="selectMonthDay('${dateStr}')">
+          <span>${day}</span>
+          ${events.length > 0 ? '<span class="month-day-dot"></span>' : ''}
+        </button>`;
+      }
+
+      document.getElementById('monthCalendarGrid').innerHTML = cellsHtml;
+      renderMonthDayDetail();
+    }
+
+    function selectMonthDay(dateStr) {
+      selectedMonthDay = dateStr;
+      renderMonthCalendar();
+    }
+
+    function renderMonthDayDetail() {
+      const container = document.getElementById('monthDayDetail');
+      if (!selectedMonthDay) {
+        container.innerHTML = '';
+        return;
+      }
+
+      const events = getEventsForDate(selectedMonthDay);
+      const dateObj = new Date(`${selectedMonthDay}T00:00:00`);
+      const label = `${WEEKDAY_LABELS_PT[dateObj.getDay()]}, ${dateObj.toLocaleDateString('pt-BR')}`;
+
+      if (events.length === 0) {
+        container.innerHTML = `<div style="font-weight:600;margin-bottom:6px;">${label}</div><div class="month-day-detail-empty">Nenhum agendamento nesse dia.</div>`;
+        return;
+      }
+
+      const rows = events.map((ev) => {
+        const raw = ev.start.dateTime || ev.start.date;
+        const time = ev.start.dateTime
+          ? new Date(raw).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+          : 'Dia todo';
+        return `<div class="month-day-detail-row"><span class="month-day-detail-time">${time}</span><span>${agendaDisplayTitle(ev.summary)}</span></div>`;
+      }).join('');
+
+      container.innerHTML = `<div style="font-weight:600;margin-bottom:6px;">${label}</div>${rows}`;
+    }
+
     async function fetchCalendarEvents() {
       const settings = loadSettings();
       const agendaList = document.getElementById('agendaList');
@@ -1900,12 +2153,14 @@
             // atributo onclick="..." quebrava o HTML sempre que a descrição
             // tinha aspas, e o botão simplesmente não fazia nada (bug real
             // reportado pelo usuário 2026-09-23 — "Remarcar" não abria).
-            // Botão de confirmação via WhatsApp — só nos agendamentos de
-            // amanhã e ainda ativos (pedido do usuário 2026-09-24: ao ver
-            // na Agenda que tem atendimento amanhã, tocar e já abrir o
-            // WhatsApp do cliente com uma mensagem pronta pedindo
-            // confirmação de presença, em vez de digitar do zero).
-            const confirmLink = (!completed && group.isTomorrow) ? buildConfirmationWhatsAppLink(ev, group.dateObj) : null;
+            // Botão de confirmação via WhatsApp — nos agendamentos de hoje
+            // ou amanhã, ainda ativos (pedido do usuário 2026-09-24,
+            // ampliado no mesmo dia pra cobrir hoje também): tocar e já
+            // abrir o WhatsApp do cliente com uma mensagem pronta pedindo
+            // confirmação de presença, em vez de digitar do zero.
+            const confirmLink = (!completed && (group.isToday || group.isTomorrow))
+              ? buildConfirmationWhatsAppLink(ev, group.dateObj, group.isToday)
+              : null;
             const confirmBtn = confirmLink
               ? `<a class="complete-btn" href="${confirmLink}" target="_blank" rel="noopener" onclick="event.stopPropagation();" title="Confirmar presença via WhatsApp" aria-label="Confirmar presença via WhatsApp">💬</a>`
               : '';
