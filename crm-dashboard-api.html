@@ -462,6 +462,7 @@
       border-radius: 4px;
       text-decoration: none;
       color: inherit;
+      cursor: pointer;
     }
 
     .agenda-event:hover {
@@ -819,6 +820,55 @@
 
     .form-group select:disabled {
       background: var(--cor-areia-suave);
+      color: var(--cor-cinza-cacau);
+    }
+
+    /* Busca de cliente já cadastrado no Novo Agendamento (pedido do
+       usuário 2026-09-24: "selecionar um cliente já existente na base,
+       pode ser um cliente recorrente em outro procedimento") — lista
+       flutuante sobre o formulário, fecha ao selecionar. */
+    .client-search-results {
+      display: none;
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 100%;
+      margin-top: 4px;
+      background: white;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      max-height: 220px;
+      overflow-y: auto;
+      z-index: 20;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+    }
+
+    .client-search-item {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 10px 12px;
+      cursor: pointer;
+      font-size: 13px;
+      border-bottom: 1px solid var(--cor-creme-avela);
+    }
+
+    .client-search-item:last-child {
+      border-bottom: none;
+    }
+
+    .client-search-item:hover {
+      background: var(--cor-rosa-sereno);
+    }
+
+    .client-search-phone {
+      color: var(--cor-cinza-cacau);
+      white-space: nowrap;
+    }
+
+    .client-search-empty {
+      padding: 10px 12px;
+      font-size: 13px;
       color: var(--cor-cinza-cacau);
     }
 
@@ -1372,6 +1422,12 @@
       <div id="appointmentError"></div>
 
       <div id="apFormStep">
+        <div class="form-group" style="position:relative;">
+          <label>Cliente já cadastrado (opcional):</label>
+          <input type="text" id="apClientSearch" placeholder="Buscar por nome ou telefone..." oninput="filterClientSearch()" autocomplete="off">
+          <div id="apClientResults" class="client-search-results"></div>
+          <p style="color: var(--cor-cinza-cacau); font-size: 12px; margin-top: 6px;">Use pra um cliente recorrente agendando outro procedimento — preenche Nome/Telefone/Origem abaixo.</p>
+        </div>
         <div class="form-group">
           <label>Nome:</label>
           <input type="text" id="apName" placeholder="Nome completo" maxlength="80">
@@ -1506,6 +1562,21 @@
       <p style="color: var(--cor-cinza-cacau); font-size: 12px; margin-top: 16px;">
         ℹ️ Atualiza o mesmo evento na agenda (mesmo link) e a planilha juntos. Telefone não é editável aqui.
       </p>
+    </div>
+  </div>
+
+  <!-- Modal de Resumo do Agendamento — clicar no agendamento (sem precisar
+       editar) mostra um resumo rápido do atendimento (pedido do usuário
+       2026-09-24: "quando eu clicar no agendamento, sem precisar editar
+       quero que exploda na tela o resumo do atendimento agendado"). Ações
+       rápidas (Concluir/Editar/Desmarcar/Reabrir) abrem os modais já
+       existentes por cima deste, que se fecha primeiro. -->
+  <div class="modal" id="appointmentSummaryModal">
+    <div class="modal-content">
+      <span class="close-btn" onclick="closeAppointmentSummary()">&times;</span>
+      <h2>📋 Resumo do Agendamento</h2>
+      <div class="lead-detail-grid" id="asBody"></div>
+      <div id="asActions" style="display:flex; flex-wrap:wrap; gap:10px; margin-top:20px;"></div>
     </div>
   </div>
 
@@ -1758,7 +1829,14 @@
     // usuário 2026-09-24) — o site/knowledge trata como uma categoria só
     // ("Bioestimuladores & Enzimas"), mas na prática são cobranças/
     // procedimentos distintos que ela quer registrar separadamente.
-    const PROCEDURE_OPTIONS = [
+    // A partir de 2026-09-24 esta lista é só o FALLBACK inicial (usado
+    // enquanto a aba "Procedimentos" da planilha não carrega, ou se a URL
+    // do Apps Script não estiver configurada ainda) — pedido do usuário:
+    // "cria uma aba de procedimentos na planilha para que eu possa
+    // popular manualmente quando necessário, adicionar novos, alterar
+    // descrição". loadProcedureList() sobrescreve com o conteúdo real da
+    // planilha assim que carrega.
+    let PROCEDURE_OPTIONS = [
       'LumineSculpt',
       'Skinglow',
       'Toxina Botulínica',
@@ -1769,6 +1847,24 @@
       'Harmonização Glútea',
       'PEIM — Vasinhos',
     ];
+
+    /** Busca a lista de procedimentos da aba "Procedimentos" na planilha
+     * (via Apps Script, não a API pública do Sheets — assim a aba não
+     * precisa ser "Disponibilizada ao público" como a Leads/Financeiro).
+     * Se falhar ou a URL não estiver configurada, mantém o fallback acima. */
+    async function loadProcedureList() {
+      const settings = loadSettings();
+      if (!settings || !settings.scriptUrl) return;
+      try {
+        const res = await fetch(`${settings.scriptUrl}?action=procedures`);
+        const body = await res.json();
+        if (body.ok && Array.isArray(body.procedures) && body.procedures.length) {
+          PROCEDURE_OPTIONS = body.procedures.map(p => p.name);
+        }
+      } catch (err) {
+        console.error('Erro ao buscar procedimentos:', err);
+      }
+    }
 
     // Identifica o tipo de atendimento a partir do TÍTULO do evento do
     // Calendar — cobre tanto os criados pelo CRM (sempre com esse prefixo)
@@ -2290,6 +2386,7 @@
       fetchSheetsData();
       fetchCalendarEvents();
       fetchFinanceData();
+      loadProcedureList();
     }
 
     const WEEKDAY_LABELS_PT = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
@@ -2400,7 +2497,7 @@
         const time = ev.start.dateTime
           ? new Date(raw).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
           : 'Dia todo';
-        return `<div class="month-day-detail-row"><span class="month-day-detail-time">${time}</span><span>${agendaDisplayTitle(ev.summary)}</span></div>`;
+        return `<div class="month-day-detail-row" onclick="openAppointmentSummary('${ev.id}')" role="button" tabindex="0" style="cursor:pointer;"><span class="month-day-detail-time">${time}</span><span>${agendaDisplayTitle(ev.summary)}</span></div>`;
       }).join('');
 
       container.innerHTML = `<div style="font-weight:600;margin-bottom:6px;">${label}</div>${rows}`;
@@ -2629,9 +2726,9 @@
                 <button class="complete-btn complete-btn-danger" onclick="event.stopPropagation(); event.preventDefault(); openCancelModal('${ev.id}')" title="Desmarcar" aria-label="Desmarcar">✕</button>
               `;
             return `
-            <div class="agenda-event ${type ? type.className + '-border' : ''}${completed ? ' agenda-event-completed' : ''}">
+            <div class="agenda-event ${type ? type.className + '-border' : ''}${completed ? ' agenda-event-completed' : ''}" onclick="openAppointmentSummary('${ev.id}')" role="button" tabindex="0">
               <span class="agenda-event-time">${ev.time}</span>
-              <a class="agenda-event-summary" href="${ev.link}" target="_blank" rel="noopener">${agendaDisplayTitle(ev.summary)}</a>
+              <span class="agenda-event-summary">${agendaDisplayTitle(ev.summary)}</span>
               ${badge}
               <div class="agenda-event-actions">${action}</div>
             </div>
@@ -3229,6 +3326,9 @@
       document.getElementById('apPhone').value = (prefill && prefill.phone) || '';
       document.getElementById('apSource').value = (prefill && prefill.source) || 'INSTAGRAM';
       document.getElementById('apType').value = (prefill && prefill.type) || 'AVALIACAO';
+      document.getElementById('apClientSearch').value = '';
+      document.getElementById('apClientResults').innerHTML = '';
+      document.getElementById('apClientResults').style.display = 'none';
       document.getElementById('apProcedure').innerHTML = procedureOptionsHtml();
       document.getElementById('apProcedure').value = '';
       document.getElementById('apProcedureOther').value = '';
@@ -3242,6 +3342,58 @@
       document.getElementById('apFormStep').style.display = 'block';
       document.getElementById('apConfirmStep').style.display = 'none';
       document.getElementById('newAppointmentModal').classList.add('open');
+    }
+
+    // Busca de cliente já cadastrado dentro do Novo Agendamento (pedido do
+    // usuário 2026-09-24: "seja possível eu selecionar um cliente já
+    // existente na base, pode ser um cliente recorrente em outro
+    // procedimento"). Filtra allData (já carregado, sem nova chamada de
+    // rede) por nome OU telefone; ao escolher, só preenche identidade —
+    // tipo/procedimento/data continuam em branco pra escolher do zero,
+    // já que é isso que muda entre procedimentos do mesmo cliente.
+    function filterClientSearch() {
+      const input = document.getElementById('apClientSearch');
+      const results = document.getElementById('apClientResults');
+      const q = input.value.trim().toLowerCase();
+
+      if (!q) {
+        results.innerHTML = '';
+        results.style.display = 'none';
+        return;
+      }
+
+      const digits = q.replace(/\D/g, '');
+      const matches = allData.filter(l => {
+        const nameMatch = l.name && l.name.toLowerCase().includes(q);
+        const phoneMatch = digits && l.phone && l.phone.replace(/\D/g, '').includes(digits);
+        return nameMatch || phoneMatch;
+      }).slice(0, 8);
+
+      if (matches.length === 0) {
+        results.innerHTML = '<div class="client-search-empty">Nenhum cliente encontrado</div>';
+        results.style.display = 'block';
+        return;
+      }
+
+      results.innerHTML = matches.map(l => `
+        <div class="client-search-item" onclick="selectExistingClient('${l.phone}')">
+          <span class="client-search-name">${l.name || '(sem nome)'}</span>
+          <span class="client-search-phone">${formatPhoneShort(l.phone)}</span>
+        </div>
+      `).join('');
+      results.style.display = 'block';
+    }
+
+    function selectExistingClient(phone) {
+      const lead = allData.find(l => l.phone === phone);
+      if (!lead) return;
+
+      document.getElementById('apName').value = lead.name || '';
+      document.getElementById('apPhone').value = formatPhoneShort(lead.phone);
+      document.getElementById('apSource').value = lead.source || 'INSTAGRAM';
+      document.getElementById('apClientSearch').value = '';
+      document.getElementById('apClientResults').innerHTML = '';
+      document.getElementById('apClientResults').style.display = 'none';
     }
 
     // Opções de procedimento (portfólio real da clínica, ver
@@ -3778,6 +3930,73 @@
 
     let cancelContext = null;
 
+    // Resumo do Agendamento — pedido do usuário 2026-09-24: clicar no
+    // agendamento (não num botão de ação) mostra um resumo rápido, sem
+    // precisar entrar direto na edição. As ações rápidas reabrem os
+    // modais já existentes (mesma lógica que os botões da Agenda usam).
+    function openAppointmentSummary(eventId) {
+      const ev = allCalendarEvents.find(e => e.id === eventId);
+      if (!ev) return;
+
+      // Pode ser aberto por cima da Visão do Mês ou do Detalhe do Lead —
+      // fecha os dois antes, senão o modal de baixo fica visível junto
+      // (mesmo bug de dois modais abertos ao mesmo tempo já visto entre
+      // leadDetailModal/receivableModal nesta sessão).
+      document.getElementById('monthCalendarModal').classList.remove('open');
+      document.getElementById('leadDetailModal').classList.remove('open');
+      const summary = ev.summary;
+      const description = ev.description || '';
+
+      const type = detectAppointmentType(summary);
+      const info = parseEventInfo(summary, description);
+      const lead = allData.find(l => l.phone === info.phone);
+      const completed = isAppointmentCompleted(summary);
+      const statusInfo = completed ? getHistoryStatusLabel(summary) : null;
+
+      const startRaw = ev.start && (ev.start.dateTime || ev.start.date);
+      const endRaw = ev.end && (ev.end.dateTime || ev.end.date);
+      const startDate = startRaw ? new Date(startRaw) : null;
+      const endDate = endRaw ? new Date(endRaw) : null;
+      const dateLabel = startDate ? formatDateBR(localDateStr(startDate)) : '—';
+      const timeLabel = (startDate && endDate) ? `${localTimeStr(startDate)} – ${localTimeStr(endDate)}` : '—';
+
+      const wa = whatsappLink(info.phone);
+
+      const rows = [
+        ['Paciente', info.name || '—'],
+        ['Telefone', wa ? `<a href="${wa}" target="_blank" rel="noopener">💬 ${formatPhone(info.phone)}</a>` : formatPhone(info.phone)],
+        ['Origem', info.source || '—'],
+        ['Tipo', type ? `<span class="type-badge ${type.className}">${type.label}</span>` : '—'],
+        ...((lead && lead.procedure) ? [['Procedimento', lead.procedure]] : []),
+        ['Data', dateLabel],
+        ['Horário', timeLabel],
+        ['Status', statusInfo ? `${statusInfo.icon} ${statusInfo.label}` : '🔶 Agendado'],
+      ];
+
+      document.getElementById('asBody').innerHTML = rows.map(([label, value]) => `
+        <div class="ld-row"><span class="ld-label">${label}</span><span class="ld-value">${value}</span></div>
+      `).join('');
+
+      const actions = [];
+      if (!completed) {
+        actions.push(`<button class="btn" style="flex:1; min-width:120px;" onclick="closeAppointmentSummary(); openCompleteModal('${eventId}')">✅ Concluir</button>`);
+        actions.push(`<button class="btn secondary" style="flex:1; min-width:120px;" onclick="closeAppointmentSummary(); openEditAppointmentModal('${eventId}')">✏️ Editar</button>`);
+        actions.push(`<button class="btn secondary" style="flex:1; min-width:120px;" onclick="closeAppointmentSummary(); openCancelModal('${eventId}')">✕ Desmarcar</button>`);
+      } else {
+        actions.push(`<button class="btn secondary" style="flex:1; min-width:120px;" onclick="closeAppointmentSummary(); reopenEvent('${eventId}')">↩️ Reabrir</button>`);
+      }
+      if (ev.htmlLink) {
+        actions.push(`<a class="btn secondary" href="${ev.htmlLink}" target="_blank" rel="noopener" style="flex:1; min-width:120px; text-decoration:none; display:inline-flex; align-items:center; justify-content:center; text-align:center;">📅 Google Calendar</a>`);
+      }
+      document.getElementById('asActions').innerHTML = actions.join('');
+
+      document.getElementById('appointmentSummaryModal').classList.add('open');
+    }
+
+    function closeAppointmentSummary() {
+      document.getElementById('appointmentSummaryModal').classList.remove('open');
+    }
+
     function openCancelModal(eventId) {
       const settings = loadSettings();
       if (!settings || !settings.scriptUrl) {
@@ -3937,6 +4156,7 @@
         fetchSheetsData();
         fetchCalendarEvents();
         fetchFinanceData();
+        loadProcedureList();
       } else {
         showEmptyState();
         toggleSettings(); // Abrir config ao carregar se não tiver configurado

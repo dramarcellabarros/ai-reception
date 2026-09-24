@@ -126,6 +126,9 @@ function doGet(e) {
     if (e.parameter.action === 'availability') {
       return jsonResponse(getAvailability(e.parameter.fromDate, Number(e.parameter.daysAhead || 7), e.parameter.excludeEventId));
     }
+    if (e.parameter.action === 'procedures') {
+      return jsonResponse(getProcedures());
+    }
     return jsonResponse({ ok: false, error: 'Ação desconhecida' });
   } catch (err) {
     return jsonResponse({ ok: false, error: String(err) });
@@ -960,6 +963,55 @@ function cleanupTestData() {
   }
 
   Logger.log(`Limpeza concluída: ${eventsDeleted} evento(s) da Agenda, ${rowsDeleted} linha(s) da Planilha e ${financeRowsDeleted} linha(s) do Financeiro removidos.`);
+}
+
+// ============================================================
+// Procedimentos — lista editável manualmente na planilha (pedido do
+// usuário 2026-09-24: "cria uma aba de procedimentos na planilha para
+// que eu possa popular manualmente quando necessário, adicionar
+// novos, alterar descrição"). Substitui a lista fixa que antes vivia
+// só no código do Dashboard — a aba nasce já semeada com o portfólio
+// atual (knowledge/procedures.json) na primeira leitura, e dali em
+// diante quem manda é o conteúdo da planilha.
+// ============================================================
+
+const PROCEDURES_SHEET_NAME = 'Procedimentos';
+const PROCEDURES_COLUMNS = ['Nome', 'Descrição'];
+const DEFAULT_PROCEDURES = [
+  ['LumineSculpt', 'Método exclusivo de preenchimento full face, desenvolvido pela Dra. Marcella.'],
+  ['Skinglow', 'Método exclusivo com radiofrequência microagulhada e ativos.'],
+  ['Toxina Botulínica', 'Suaviza linhas de expressão e rugas com precisão milimétrica.'],
+  ['Preenchimento', 'Restitui volume, define contornos e realça traços com ácido hialurônico.'],
+  ['Harmonização Facial', 'Protocolo completo e personalizado que combina técnicas para equilibrar as proporções do rosto.'],
+  ['Bioestimuladores', 'Estimulam a produção natural de colágeno. Resultados progressivos e duradouros.'],
+  ['Enzimas', 'Enzimas lipolíticas para tratamento de gordura localizada.'],
+  ['Harmonização Glútea', 'Procedimento minimamente invasivo com bioestimuladores e preenchedores para definição e contorno.'],
+  ['PEIM — Vasinhos', 'Tratamento de telangiectasias (vasinhos) com microescleroterapia.'],
+];
+
+function getProceduresSheet() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = ss.getSheetByName(PROCEDURES_SHEET_NAME);
+  if (!sheet) {
+    sheet = ss.insertSheet(PROCEDURES_SHEET_NAME);
+    sheet.getRange(1, 1, 1, PROCEDURES_COLUMNS.length).setValues([PROCEDURES_COLUMNS]);
+    sheet.getRange(2, 1, DEFAULT_PROCEDURES.length, PROCEDURES_COLUMNS.length).setValues(DEFAULT_PROCEDURES);
+    sheet.setFrozenRows(1);
+  }
+  return sheet;
+}
+
+/** Lê a aba Procedimentos e devolve {name, description}, ignorando linhas com Nome vazio. */
+function getProcedures() {
+  const sheet = getProceduresSheet();
+  const data = sheet.getDataRange().getValues();
+  const procedures = [];
+  for (let i = 1; i < data.length; i++) {
+    const name = String(data[i][0] || '').trim();
+    if (!name) continue;
+    procedures.push({ name, description: String(data[i][1] || '').trim() });
+  }
+  return { ok: true, procedures };
 }
 
 // ============================================================
