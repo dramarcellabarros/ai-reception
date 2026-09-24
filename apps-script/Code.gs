@@ -60,15 +60,22 @@ const COLUMNS = [
 
 // Mesmo horário de funcionamento de config/business_rules.json#scheduling —
 // mudar lá também exige mudar aqui (Apps Script não lê o .env do projeto).
+// Ampliado de 09h-19h (seg-sex) / 09h-13h (sáb) para 08h-20h todo dia
+// útil, pedido do usuário 2026-09-24.
 const BUSINESS_HOURS = {
   0: null, // domingo
-  1: { open: '09:00', close: '19:00' },
-  2: { open: '09:00', close: '19:00' },
-  3: { open: '09:00', close: '19:00' },
-  4: { open: '09:00', close: '19:00' },
-  5: { open: '09:00', close: '19:00' },
-  6: { open: '09:00', close: '13:00' },
+  1: { open: '08:00', close: '20:00' },
+  2: { open: '08:00', close: '20:00' },
+  3: { open: '08:00', close: '20:00' },
+  4: { open: '08:00', close: '20:00' },
+  5: { open: '08:00', close: '20:00' },
+  6: { open: '08:00', close: '20:00' },
 };
+
+// Tamanho de cada período selecionável na agenda — pedido do usuário
+// 2026-09-24: antes só existiam blocos fixos de 1h; agora o Dashboard deixa
+// selecionar múltiplos períodos consecutivos (ex.: 2 períodos = 1h, 3 = 1h30).
+const SLOT_MINUTES = 30;
 
 function doPost(e) {
   try {
@@ -157,8 +164,12 @@ function createAppointment(payload) {
     return { ok: false, error: 'Esse horário já está ocupado na agenda. Escolha outro.' };
   }
 
+  // "Tipo:" não entra mais na descrição (pedido do usuário 2026-09-24,
+  // redundância percebida ao abrir o evento: o tipo já aparece no próprio
+  // título do evento — "${typeLabel} - Nome" — e como tag colorida no
+  // Dashboard e na coluna "Tipo de Atendimento" da planilha).
   const event = calendar.createEvent(`${typeLabel} - ${name}`, startDateTime, endDateTime, {
-    description: `Agendado via CRM. Telefone: ${phone}. Origem: ${source || '—'}. Tipo: ${typeLabel}.`,
+    description: `Agendado via CRM. Telefone: ${phone}. Origem: ${source || '—'}.`,
   });
 
   const confirmedAppointment = {
@@ -565,12 +576,18 @@ function getAvailability(fromDateStr, daysAhead) {
 
     const slots = [];
     let cursor = new Date(dayStart);
-    const now = new Date();
+    const slotMs = SLOT_MINUTES * 60000;
 
-    while (cursor.getTime() + 60 * 60000 <= dayEnd.getTime()) {
-      const slotEnd = new Date(cursor.getTime() + 60 * 60000);
+    // Não filtra mais por "cursor > now": pedido do usuário 2026-09-24, pra
+    // poder lançar um atendimento do próprio dia mesmo depois do horário já
+    // ter passado (ex.: esqueceu de registrar um atendimento da manhã e só
+    // vai lançar à tarde). Dias passados nunca entram aqui de qualquer
+    // forma — o loop de getAvailability só anda pra frente a partir de
+    // fromDate.
+    while (cursor.getTime() + slotMs <= dayEnd.getTime()) {
+      const slotEnd = new Date(cursor.getTime() + slotMs);
       const overlaps = events.some((ev) => ev.getStartTime() < slotEnd && ev.getEndTime() > cursor);
-      if (!overlaps && cursor > now) {
+      if (!overlaps) {
         slots.push({ start: Utilities.formatDate(cursor, TIME_ZONE, 'HH:mm'), end: Utilities.formatDate(slotEnd, TIME_ZONE, 'HH:mm') });
       }
       cursor = slotEnd;
