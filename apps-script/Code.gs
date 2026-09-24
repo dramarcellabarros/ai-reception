@@ -90,6 +90,9 @@ function doPost(e) {
     if (payload.action === 'updateLead') {
       return jsonResponse(updateLead(payload));
     }
+    if (payload.action === 'createLead') {
+      return jsonResponse(createLead(payload));
+    }
     if (payload.action === 'completeAppointment') {
       return jsonResponse(completeAppointment(payload));
     }
@@ -506,6 +509,29 @@ function updateLead(payload) {
       // Silencioso de propósito — a planilha já foi atualizada com sucesso.
     }
   }
+
+  return { ok: true };
+}
+
+/**
+ * Cria (ou atualiza, se o telefone já existir) um lead direto, sem passar
+ * por um agendamento — pedido do usuário 2026-09-24, pra registrar
+ * clientes que já fizeram o procedimento antes de existir um agendamento
+ * no CRM (ex.: histórico anterior). Diferente de updateLead (que falha de
+ * propósito se o telefone não existe): aqui a intenção é sempre
+ * "adicionar esta pessoa".
+ */
+function createLead(payload) {
+  const { phone, name, source, appointmentType, procedure } = payload;
+  if (!phone || !name) return { ok: false, error: 'Campos obrigatórios: phone, name.' };
+
+  upsertLeadRow({
+    phone,
+    name,
+    source: source || '',
+    appointmentType: appointmentType || '',
+    procedure: procedure || '',
+  });
 
   return { ok: true };
 }
@@ -971,6 +997,13 @@ function createReceivables(payload) {
   const createdAt = Utilities.formatDate(new Date(), TIME_ZONE, "yyyy-MM-dd'T'HH:mm:ss");
   const total = installments.length;
 
+  const todayStr = Utilities.formatDate(new Date(), TIME_ZONE, 'yyyy-MM-dd');
+
+  // installments[i].received (opcional): lançar um plano que já estava
+  // parcialmente pago antes de existir no CRM (pedido do usuário
+  // 2026-09-24 — ex.: cliente que já pagou as 3 primeiras de 6
+  // parcelas). Data de recebimento vira o vencimento da própria
+  // parcela (mais correto que "hoje" pra parcelas antigas já pagas).
   const rows = installments.map((inst, i) => [
     Utilities.getUuid(),
     phone,
@@ -981,8 +1014,8 @@ function createReceivables(payload) {
     inst.value,
     inst.dueDate,
     paymentMethod || '',
-    'A receber',
-    '',
+    inst.received ? 'Recebido' : 'A receber',
+    inst.received ? (inst.dueDate || todayStr) : '',
     createdAt,
   ]);
 

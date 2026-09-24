@@ -1223,6 +1223,7 @@
       <div class="search-box">
         <input type="text" id="search" placeholder="Buscar por nome, telefone ou email...">
       </div>
+      <button class="agenda-toggle-btn" onclick="openNewLeadModal()" title="Adicionar um lead direto, sem agendamento (ex.: histórico anterior ao CRM)">➕ Novo Lead</button>
     </div>
 
     <div class="filter-banner" id="filterBanner">
@@ -1468,6 +1469,51 @@
   </div>
 
   <!-- Modal de Detalhe do Lead -->
+  <!-- Modal de Novo Lead — adiciona um lead direto, sem passar por um
+       agendamento (pedido do usuário 2026-09-24, pra registrar clientes
+       que já fizeram o procedimento antes de existir no CRM). -->
+  <div class="modal" id="newLeadModal">
+    <div class="modal-content">
+      <span class="close-btn" onclick="closeNewLeadModal()">&times;</span>
+      <h2>➕ Novo Lead</h2>
+      <div id="newLeadError"></div>
+      <div class="form-group">
+        <label>Nome:</label>
+        <input type="text" id="nlName" placeholder="Nome completo" maxlength="80">
+      </div>
+      <div class="form-group">
+        <label>Telefone:</label>
+        <input type="tel" id="nlPhone" oninput="maskCellphoneInput(this)">
+      </div>
+      <div class="form-group">
+        <label>Origem:</label>
+        <select id="nlSource">
+          <option value="INSTAGRAM">Instagram</option>
+          <option value="WHATSAPP">WhatsApp</option>
+          <option value="SITE">Site</option>
+          <option value="OUTRO">Outro</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Tipo de atendimento:</label>
+        <select id="nlType" onchange="toggleProcedureVisibility('nlType', 'nlProcedureGroup')">
+          <option value="AVALIACAO">Avaliação</option>
+          <option value="PROCEDIMENTO">Procedimento</option>
+          <option value="RETORNO">Retorno</option>
+        </select>
+      </div>
+      <div class="form-group" id="nlProcedureGroup" style="display:none;">
+        <label>Procedimento:</label>
+        <select id="nlProcedure" onchange="toggleProcedureOther('nlProcedure', 'nlProcedureOther')"></select>
+        <input type="text" id="nlProcedureOther" placeholder="Qual procedimento?" maxlength="60" style="display:none; margin-top:8px;">
+      </div>
+      <button class="btn" id="nlSubmitBtn" onclick="submitNewLead()">💾 Adicionar Lead</button>
+      <p style="color: var(--cor-cinza-cacau); font-size: 12px; margin-top: 16px;">
+        ℹ️ Não cria agendamento nem evento na agenda — só o registro do lead. Depois é só abrir e lançar cobrança pelo painel dele.
+      </p>
+    </div>
+  </div>
+
   <!-- Modal de Lançar Cobrança (contas a receber, pedido do usuário
        2026-09-24) — divide o valor total em parcelas mensais iguais e
        mostra a prévia antes de gravar, mesmo padrão de "Revisar e
@@ -2632,6 +2678,80 @@
       }
     }
 
+    // --- Novo Lead (sem agendamento) ---
+
+    function openNewLeadModal() {
+      const settings = loadSettings();
+      if (!settings || !settings.scriptUrl) {
+        alert('Configure a "URL do Apps Script" em ⚙️ Config primeiro.');
+        return;
+      }
+      document.getElementById('nlName').value = '';
+      document.getElementById('nlPhone').value = '';
+      document.getElementById('nlSource').value = 'INSTAGRAM';
+      document.getElementById('nlType').value = 'AVALIACAO';
+      document.getElementById('nlProcedure').innerHTML = procedureOptionsHtml();
+      document.getElementById('nlProcedure').value = '';
+      document.getElementById('nlProcedureOther').value = '';
+      document.getElementById('nlProcedureOther').style.display = 'none';
+      toggleProcedureVisibility('nlType', 'nlProcedureGroup');
+      document.getElementById('newLeadError').innerHTML = '';
+      document.getElementById('newLeadModal').classList.add('open');
+    }
+
+    function closeNewLeadModal() {
+      document.getElementById('newLeadModal').classList.remove('open');
+    }
+
+    async function submitNewLead() {
+      const settings = loadSettings();
+      const name = document.getElementById('nlName').value.trim();
+      const phoneRaw = document.getElementById('nlPhone').value.trim();
+      const source = document.getElementById('nlSource').value;
+      const appointmentType = document.getElementById('nlType').value;
+      const procedure = getProcedureValue('nlType', 'nlProcedure', 'nlProcedureOther');
+
+      document.getElementById('newLeadError').innerHTML = '';
+
+      if (!name || !phoneRaw) {
+        document.getElementById('newLeadError').innerHTML = '<div class="form-error">⚠️ Preencha nome e telefone.</div>';
+        return;
+      }
+      const phone = normalizePhoneBR(phoneRaw);
+      if (phone.replace(/\D/g, '').length < 12) {
+        document.getElementById('newLeadError').innerHTML = '<div class="form-error">⚠️ Telefone inválido.</div>';
+        return;
+      }
+      if ((appointmentType === 'PROCEDIMENTO' || appointmentType === 'RETORNO') && !procedure) {
+        document.getElementById('newLeadError').innerHTML = '<div class="form-error">⚠️ Escolha qual procedimento.</div>';
+        return;
+      }
+
+      const btn = document.getElementById('nlSubmitBtn');
+      btn.disabled = true;
+      btn.textContent = '⏳ Adicionando...';
+
+      try {
+        const response = await fetch(settings.scriptUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({ action: 'createLead', phone, name, source, appointmentType, procedure })
+        });
+        const result = await response.json();
+        if (!result.ok) throw new Error(result.error || 'Erro desconhecido');
+
+        closeNewLeadModal();
+        showToast(`✅ Lead ${name} adicionado`);
+        await fetchSheetsData();
+        openLeadDetail(phone);
+      } catch (err) {
+        document.getElementById('newLeadError').innerHTML = `<div class="form-error">❌ ${err.message}</div>`;
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '💾 Adicionar Lead';
+      }
+    }
+
     // --- Lançar Cobrança (contas a receber) ---
 
     let receivableContext = null;
@@ -2709,11 +2829,19 @@
         installments,
       };
 
+      // Checkbox "já recebida" em cada parcela — pedido do usuário
+      // 2026-09-24: lançar um plano que já estava parcialmente pago antes
+      // de existir no CRM (ex.: cliente que já pagou as 3 primeiras de 6
+      // parcelas), sem precisar marcar uma por uma depois de criado.
       const rows = installments.map((inst, i) => `
         <div class="ld-row">
           <span class="ld-label">Parcela ${i + 1}/${installmentCount}</span>
           <span class="ld-value">${formatCurrencyBRL(inst.value)} — vence ${formatDateBR(inst.dueDate)}</span>
         </div>
+        <label style="display:flex; align-items:center; gap:6px; font-size:12.5px; color:var(--cor-cinza-cacau); margin:-6px 0 8px;">
+          <input type="checkbox" style="width:auto;" onchange="receivableContext.installments[${i}].received = this.checked">
+          Já recebida
+        </label>
       `).join('');
 
       document.getElementById('receivableConfirmBody').innerHTML = `
