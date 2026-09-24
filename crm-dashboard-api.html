@@ -2991,9 +2991,8 @@
       document.getElementById('receivableError').innerHTML = '';
       document.getElementById('receivableFormStep').style.display = 'block';
       document.getElementById('receivableConfirmStep').style.display = 'none';
-      document.getElementById('receivableModalTitle').textContent = receivableFromComplete
-        ? '💰 Registrar cobrança do atendimento'
-        : '💰 Lançar Cobrança';
+      document.getElementById('receivableModalTitle').textContent = (options && options.title)
+        || (receivableFromComplete ? '💰 Registrar cobrança do atendimento' : '💰 Lançar Cobrança');
       document.getElementById('recSkipBtn').style.display = receivableFromComplete ? 'block' : 'none';
 
       // Fecha visualmente o painel do lead por baixo (mesmo z-index, os
@@ -3900,6 +3899,18 @@
         closeNewAppointmentModal();
         showToast(`✅ Agendamento criado para ${name} — ${formatDateBR(date)} às ${start}`);
         refreshData();
+
+        // Pergunta se quer cobrar um sinal/pagamento já na criação do
+        // agendamento (pedido do usuário 2026-09-24: "avaliação que
+        // custa 100,00 com sinal de 50%") — mesmo modal e mesmo padrão
+        // "Pular"/"Lançar" já usado no fluxo de Concluir Atendimento. A
+        // 1ª parcela já nasce marcada "já recebida" (o sinal costuma ser
+        // cobrado na hora de marcar).
+        openReceivableModal(phone, {
+          fromComplete: true,
+          description: procedure,
+          title: '💰 Cobrar sinal ou valor do agendamento?',
+        });
       } catch (err) {
         showAppointmentError(`❌ ${err.message}`);
       } finally {
