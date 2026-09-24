@@ -1179,10 +1179,12 @@
 
     <div class="filter-banner" id="filterBanner">
       <span id="filterBannerText"></span>
-      <button onclick="filterByStatus('all')">✕ Limpar filtro</button>
+      <button onclick="clearStatusFilter()">✕ Limpar filtro</button>
     </div>
 
-    <div class="table-wrapper">
+    <div class="agenda-empty" id="tableHint">Toque em um dos cards acima ou busque um lead pra ver a lista completa.</div>
+
+    <div class="table-wrapper" id="tableWrapper" style="display:none;">
       <table id="leads-table">
         <thead>
           <tr>
@@ -1476,7 +1478,10 @@
     // próximos agendamentos" expande pro resto da janela carregada (+60
     // dias).
     let agendaShowFullRange = false;
-    let activeFilter = 'all';
+    // null = nenhum card selecionado (estado neutro, grid escondido —
+    // pedido do usuário 2026-09-24). 'all' agora é uma seleção de verdade
+    // (o card "Leads Totais" clicado), diferente do estado neutro inicial.
+    let activeFilter = null;
 
     const FILTER_LABELS = {
       all: 'Todos os leads',
@@ -1912,19 +1917,33 @@
 
     // Clique num card de estatística: filtra a tabela abaixo por aquela
     // classificação, sem recalcular os números dos cards (eles continuam
-    // mostrando o total geral, sempre). Clicar de novo no mesmo card (ou em
-    // "Leads Totais") remove o filtro.
+    // mostrando o total geral, sempre) — inclusive "Leads Totais", que
+    // agora é uma seleção de verdade (mostra tudo, sem filtro de status)
+    // e não só o estado neutro. Clicar de novo no mesmo card sempre
+    // remove a seleção e esconde o grid de novo (pedido do usuário
+    // 2026-09-24: grid só aparece ao clicar num card ou buscar).
     function filterByStatus(filter) {
-      activeFilter = (activeFilter === filter && filter !== 'all') ? 'all' : filter;
+      activeFilter = (activeFilter === filter) ? null : filter;
+      applyStatusFilterState();
+    }
 
+    // Botão "✕ Limpar filtro" do banner — volta pro estado neutro (grid
+    // escondido de novo), diferente de clicar no card "Leads Totais"
+    // (que é uma seleção de verdade, com o grid visível mostrando tudo).
+    function clearStatusFilter() {
+      activeFilter = null;
+      applyStatusFilterState();
+    }
+
+    function applyStatusFilterState() {
       document.querySelectorAll('.stat-card').forEach(card => card.classList.remove('active'));
-      if (activeFilter !== 'all') {
+      if (activeFilter !== null) {
         document.getElementById(`card-${activeFilter}`).classList.add('active');
       }
 
       const banner = document.getElementById('filterBanner');
       const bannerText = document.getElementById('filterBannerText');
-      if (activeFilter === 'all') {
+      if (activeFilter === null) {
         banner.classList.remove('visible');
       } else {
         const count = allData.filter(l => matchesStatusFilter(l, activeFilter)).length;
@@ -1934,7 +1953,7 @@
 
       applyFilters();
 
-      if (activeFilter !== 'all') {
+      if (activeFilter !== null) {
         document.querySelector('.table-wrapper').scrollIntoView({ behavior: 'smooth', block: 'start' });
       }
     }
@@ -1949,6 +1968,14 @@
           lead.phone.includes(query) ||
           lead.source.toLowerCase().includes(query))
       );
+
+      // Grid só aparece ao filtrar por um card ou buscar (pedido do
+      // usuário 2026-09-24) — sem isso, a lista inteira de leads ficava
+      // sempre visível na tela, mesmo sem nenhuma ação da usuária.
+      const shouldShowTable = activeFilter !== null || query.trim().length > 0;
+      document.getElementById('tableWrapper').style.display = shouldShowTable ? '' : 'none';
+      document.getElementById('tableHint').style.display = shouldShowTable ? 'none' : '';
+
       renderTable(filtered);
     }
 
