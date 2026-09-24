@@ -604,6 +604,22 @@
       font-size: 14px;
     }
 
+    .history-scope-toggle {
+      text-align: center;
+      padding: 12px 0 4px;
+    }
+
+    .history-scope-toggle a {
+      color: var(--cor-texto-marca);
+      font-size: 13px;
+      font-weight: 600;
+      text-decoration: none;
+    }
+
+    .history-scope-toggle a:hover {
+      text-decoration: underline;
+    }
+
     .table-wrapper {
       background: white;
       border-radius: 8px;
@@ -1451,6 +1467,15 @@
     let allData = [];
     let allCalendarEvents = [];
     let showAgendaHistory = false;
+    // Histórico só mostra hoje por padrão (pedido do usuário 2026-09-24,
+    // pensando em quando acumular bastante informação) — "Ver mais
+    // antigos" expande pro resto da janela carregada (-30 dias).
+    let historyShowAll = false;
+    // Agenda ativa só mostra a semana atual por padrão (pedido do usuário
+    // 2026-09-24, depois de a Visão do Mês já cobrir a visão macro) — "Ver
+    // próximos agendamentos" expande pro resto da janela carregada (+60
+    // dias).
+    let agendaShowFullRange = false;
     let activeFilter = 'all';
 
     const FILTER_LABELS = {
@@ -2092,7 +2117,31 @@
     // "📜 Ver histórico" alterna pra mostrar só os já concluídos.
     function toggleAgendaHistory() {
       showAgendaHistory = !showAgendaHistory;
+      historyShowAll = false;
+      agendaShowFullRange = false;
       renderAgenda();
+    }
+
+    function toggleHistoryScope() {
+      historyShowAll = !historyShowAll;
+      renderAgenda();
+    }
+
+    function toggleAgendaScope() {
+      agendaShowFullRange = !agendaShowFullRange;
+      renderAgenda();
+    }
+
+    // Domingo a sábado da semana de `date` — mesmo critério visual do
+    // grid da Visão do Mês (D S T Q Q S S, domingo primeiro).
+    function getWeekBounds(date) {
+      const start = new Date(date);
+      start.setHours(0, 0, 0, 0);
+      start.setDate(start.getDate() - start.getDay());
+      const end = new Date(start);
+      end.setDate(end.getDate() + 6);
+      end.setHours(23, 59, 59, 999);
+      return { start, end };
     }
 
     function renderAgenda() {
@@ -2100,15 +2149,69 @@
       const toggleBtn = document.getElementById('agendaToggleBtn');
       const title = document.getElementById('agendaTitle');
 
-      const events = allCalendarEvents.filter(e => isAppointmentCompleted(e.summary) === showAgendaHistory);
+      let events = allCalendarEvents.filter(e => isAppointmentCompleted(e.summary) === showAgendaHistory);
 
       title.textContent = showAgendaHistory ? '📜 Histórico de Atendimentos' : '📅 Agenda';
       toggleBtn.textContent = showAgendaHistory ? '← Voltar pra Agenda' : '📜 Ver histórico';
 
+      // Histórico só mostra hoje por padrão — com bastante informação
+      // acumulada ao longo do tempo, a lista inteira (até 30 dias pra
+      // trás) ficaria longa demais pra rolar toda vez só pra ver o
+      // atendimento de agora há pouco.
+      const todayStr = new Date().toDateString();
+      let hasOlderHistory = false;
+      if (showAgendaHistory) {
+        hasOlderHistory = events.some((e) => {
+          const raw = e.start && (e.start.dateTime || e.start.date);
+          return raw && new Date(raw).toDateString() !== todayStr;
+        });
+        if (!historyShowAll) {
+          events = events.filter((e) => {
+            const raw = e.start && (e.start.dateTime || e.start.date);
+            return raw && new Date(raw).toDateString() === todayStr;
+          });
+        }
+      }
+
+      // Agenda ativa só mostra a semana atual por padrão — a Visão do Mês
+      // (🗓️) já cobre a visão macro de dias ocupados, então a lista do
+      // dia a dia fica mais curta e mais fácil de rolar.
+      let hasMoreBeyondWeek = false;
+      if (!showAgendaHistory) {
+        const { start: weekStart, end: weekEnd } = getWeekBounds(new Date());
+        hasMoreBeyondWeek = events.some((e) => {
+          const raw = e.start && (e.start.dateTime || e.start.date);
+          if (!raw) return false;
+          const d = new Date(raw);
+          return d < weekStart || d > weekEnd;
+        });
+        if (!agendaShowFullRange) {
+          events = events.filter((e) => {
+            const raw = e.start && (e.start.dateTime || e.start.date);
+            if (!raw) return false;
+            const d = new Date(raw);
+            return d >= weekStart && d <= weekEnd;
+          });
+        }
+      }
+
+      const scopeToggleHtml = showAgendaHistory
+        ? (hasOlderHistory
+            ? `<div class="history-scope-toggle">
+                 <a href="#" onclick="event.preventDefault(); toggleHistoryScope();">${historyShowAll ? '← Mostrar só hoje' : 'Ver histórico mais antigo →'}</a>
+               </div>`
+            : '')
+        : (hasMoreBeyondWeek
+            ? `<div class="history-scope-toggle">
+                 <a href="#" onclick="event.preventDefault(); toggleAgendaScope();">${agendaShowFullRange ? '← Mostrar só esta semana' : 'Ver próximos agendamentos →'}</a>
+               </div>`
+            : '');
+
       if (events.length === 0) {
-        agendaList.innerHTML = showAgendaHistory
-          ? '<div class="agenda-empty">Nenhum atendimento concluído nos últimos 30 dias.</div>'
-          : '<div class="agenda-empty">Nenhum agendamento pendente nos próximos 60 dias.</div>';
+        const emptyMessage = showAgendaHistory
+          ? (historyShowAll ? 'Nenhum atendimento concluído nos últimos 30 dias.' : 'Nenhum atendimento concluído hoje.')
+          : (agendaShowFullRange ? 'Nenhum agendamento pendente nos próximos 60 dias.' : 'Nenhum agendamento pendente nesta semana.');
+        agendaList.innerHTML = `<div class="agenda-empty">${emptyMessage}</div>${scopeToggleHtml}`;
         return;
       }
 
@@ -2189,7 +2292,7 @@
           `;
           }).join('')}
         </div>
-      `).join('');
+      `).join('') + scopeToggleHtml;
     }
 
     // Painel de detalhe do lead — substitui o antigo botão "👁️" que só
