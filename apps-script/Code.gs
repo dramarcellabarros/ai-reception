@@ -933,7 +933,27 @@ function cleanupTestData() {
     }
   }
 
-  Logger.log(`Limpeza concluída: ${eventsDeleted} evento(s) da Agenda e ${rowsDeleted} linha(s) da Planilha removidos.`);
+  // Aba Financeiro (2026-09-24, não existia quando esta função foi
+  // criada) — mesmo critério, remove qualquer parcela lançada pra um
+  // nome "TESTE...". getFinanceSheet() cria a aba se não existir, então
+  // sempre confere se a aba já existia antes de mexer (senão criaria a
+  // aba do zero só pra não achar nada pra limpar).
+  let financeRowsDeleted = 0;
+  const financeSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(FINANCE_SHEET_NAME);
+  if (financeSheet) {
+    const financeData = financeSheet.getDataRange().getValues();
+    const financeHeaders = financeData[0];
+    const financeNameCol = financeHeaders.indexOf('Nome');
+    for (let i = financeData.length - 1; i >= 1; i--) {
+      const name = String(financeData[i][financeNameCol] || '');
+      if (name.startsWith('TESTE')) {
+        financeSheet.deleteRow(i + 1);
+        financeRowsDeleted++;
+      }
+    }
+  }
+
+  Logger.log(`Limpeza concluída: ${eventsDeleted} evento(s) da Agenda, ${rowsDeleted} linha(s) da Planilha e ${financeRowsDeleted} linha(s) do Financeiro removidos.`);
 }
 
 // ============================================================
