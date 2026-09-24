@@ -1133,11 +1133,16 @@
         </div>
         <div class="form-group">
           <label>Tipo de atendimento:</label>
-          <select id="apType">
+          <select id="apType" onchange="toggleProcedureVisibility('apType', 'apProcedureGroup')">
             <option value="AVALIACAO">Avaliação</option>
             <option value="PROCEDIMENTO">Procedimento</option>
             <option value="RETORNO">Retorno</option>
           </select>
+        </div>
+        <div class="form-group" id="apProcedureGroup" style="display:none;">
+          <label>Procedimento:</label>
+          <select id="apProcedure" onchange="toggleProcedureOther('apProcedure', 'apProcedureOther')"></select>
+          <input type="text" id="apProcedureOther" placeholder="Qual procedimento?" style="display:none; margin-top:8px;">
         </div>
         <div class="form-group">
           <label>Data:</label>
@@ -1178,30 +1183,6 @@
     </div>
   </div>
 
-  <!-- Modal de Remarcar Atendimento -->
-  <div class="modal" id="rescheduleModal">
-    <div class="modal-content">
-      <span class="close-btn" onclick="closeRescheduleModal()">&times;</span>
-      <h2>📅 Remarcar Atendimento</h2>
-      <div id="rescheduleError"></div>
-      <div class="lead-detail-grid" id="rescheduleInfo"></div>
-      <div class="form-group" style="margin-top:18px;">
-        <label>Nova data:</label>
-        <input type="date" id="rsDate" onchange="loadRescheduleSlots()">
-      </div>
-      <div class="form-group">
-        <label>Novo horário:</label>
-        <select id="rsSlot">
-          <option value="">Escolha uma data primeiro</option>
-        </select>
-      </div>
-      <button class="btn" id="rsSubmitBtn" onclick="submitReschedule()">💾 Confirmar Remarcação</button>
-      <p style="color: var(--cor-cinza-cacau); font-size: 12px; margin-top: 16px;">
-        ℹ️ Move o mesmo evento pra nova data/horário — não cria um novo.
-      </p>
-    </div>
-  </div>
-
   <!-- Modal de Desmarcar Atendimento -->
   <div class="modal" id="cancelModal">
     <div class="modal-content">
@@ -1217,24 +1198,56 @@
     </div>
   </div>
 
-  <!-- Modal de Editar Tipo de Atendimento (pedido do usuário 2026-09-24:
-       antes só dava pra corrigir um tipo escolhido errado desmarcando e
-       criando um agendamento novo do zero). -->
-  <div class="modal" id="typeEditModal">
+  <!-- Modal de Editar Agendamento — cobre o agendamento inteiro (pedido do
+       usuário 2026-09-24: "a edição deve envolver o agendamento inteiro,
+       assim como se eu alterar a data também altere no calendário").
+       Substitui os antigos modais separados de Remarcar (só data/hora) e
+       Editar Tipo (só tipo). Move o MESMO evento (mesmo id/link). -->
+  <div class="modal" id="editAppointmentModal">
     <div class="modal-content">
-      <span class="close-btn" onclick="closeTypeEditModal()">&times;</span>
-      <h2>🏷️ Editar Tipo de Atendimento</h2>
-      <div id="typeEditError"></div>
-      <div class="lead-detail-grid" id="typeEditInfo"></div>
-      <div class="form-group" style="margin-top:18px;">
-        <label>Novo tipo:</label>
-        <select id="typeEditSelect">
+      <span class="close-btn" onclick="closeEditAppointmentModal()">&times;</span>
+      <h2>✏️ Editar Agendamento</h2>
+      <div id="editAppointmentError"></div>
+      <div class="form-group">
+        <label>Nome:</label>
+        <input type="text" id="editName">
+      </div>
+      <div class="form-group">
+        <label>Origem:</label>
+        <select id="editSource">
+          <option value="INSTAGRAM">Instagram</option>
+          <option value="WHATSAPP">WhatsApp</option>
+          <option value="SITE">Site</option>
+          <option value="OUTRO">Outro</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Tipo de atendimento:</label>
+        <select id="editType" onchange="toggleProcedureVisibility('editType', 'editProcedureGroup')">
           <option value="AVALIACAO">Avaliação</option>
           <option value="PROCEDIMENTO">Procedimento</option>
           <option value="RETORNO">Retorno</option>
         </select>
       </div>
-      <button class="btn" id="typeEditSubmitBtn" onclick="submitTypeEdit()">💾 Salvar Tipo</button>
+      <div class="form-group" id="editProcedureGroup" style="display:none;">
+        <label>Procedimento:</label>
+        <select id="editProcedure" onchange="toggleProcedureOther('editProcedure', 'editProcedureOther')"></select>
+        <input type="text" id="editProcedureOther" placeholder="Qual procedimento?" style="display:none; margin-top:8px;">
+      </div>
+      <div class="form-group">
+        <label>Data:</label>
+        <input type="date" id="editDate" onchange="loadEditSlots()">
+      </div>
+      <div class="form-group">
+        <label>Horário — toque um ou mais períodos de 30min seguidos:</label>
+        <div id="editSlotPicker" class="slot-picker"><span class="slot-picker-empty">Escolha uma data primeiro</span></div>
+        <div id="editSlotSummary" class="slot-summary"></div>
+        <input type="hidden" id="editSlot" value="">
+      </div>
+      <button class="btn" id="editSubmitBtn" onclick="submitEditAppointment()">💾 Salvar Agendamento</button>
+      <p style="color: var(--cor-cinza-cacau); font-size: 12px; margin-top: 16px;">
+        ℹ️ Atualiza o mesmo evento na agenda (mesmo link) e a planilha juntos. Telefone não é editável aqui.
+      </p>
     </div>
   </div>
 
@@ -1322,6 +1335,23 @@
       PROCEDIMENTO: 'Procedimento',
       RETORNO: 'Retorno',
     };
+
+    // Portfólio real da clínica (knowledge/procedures.json — fonte: site
+    // oficial dramarcellabarros.com.br + confirmação direta da Dra.
+    // Marcella, 2026-09-22). Pedido do usuário 2026-09-24: quando o
+    // atendimento é Procedimento ou Retorno, registrar QUAL procedimento,
+    // não só a categoria genérica. "Outro" existe pra não travar um
+    // procedimento novo que ainda não esteja nesta lista.
+    const PROCEDURE_OPTIONS = [
+      'LumineSculpt',
+      'Skinglow',
+      'Toxina Botulínica',
+      'Preenchimento',
+      'Harmonização Facial',
+      'Bioestimuladores & Enzimas',
+      'Harmonização Glútea',
+      'PEIM — Vasinhos',
+    ];
 
     // Identifica o tipo de atendimento a partir do TÍTULO do evento do
     // Calendar — cobre tanto os criados pelo CRM (sempre com esse prefixo)
@@ -1573,6 +1603,7 @@
           leadStatus: row[headers.indexOf('Status')] || null,
           manualOnlyNote: row[headers.indexOf('Atendimento Manual (motivo)')] || '',
           appointmentType: row[headers.indexOf('Tipo de Atendimento')] || '',
+          procedure: row[headers.indexOf('Interesse/Procedimento')] || '',
           chosenSlot: tryParseJSON(row[headers.indexOf('Horário Escolhido (JSON)')]),
           confirmedAppointment: tryParseJSON(row[headers.indexOf('Agendamento Confirmado (JSON)')])
         }));
@@ -1885,8 +1916,7 @@
               : `
                 ${confirmBtn}
                 <button class="complete-btn" onclick="event.stopPropagation(); event.preventDefault(); openCompleteModal('${ev.id}')" title="Marcar como concluído" aria-label="Marcar como concluído">✅</button>
-                <button class="complete-btn" onclick="event.stopPropagation(); event.preventDefault(); openRescheduleModal('${ev.id}')" title="Remarcar" aria-label="Remarcar">📅</button>
-                <button class="complete-btn" onclick="event.stopPropagation(); event.preventDefault(); openTypeEditModal('${ev.id}')" title="Editar tipo de atendimento" aria-label="Editar tipo de atendimento">🏷️</button>
+                <button class="complete-btn" onclick="event.stopPropagation(); event.preventDefault(); openEditAppointmentModal('${ev.id}')" title="Editar agendamento" aria-label="Editar agendamento">✏️</button>
                 <button class="complete-btn complete-btn-danger" onclick="event.stopPropagation(); event.preventDefault(); openCancelModal('${ev.id}')" title="Desmarcar" aria-label="Desmarcar">✕</button>
               `;
             return `
@@ -1929,6 +1959,7 @@
         ['Telefone', wa ? `<a href="${wa}" target="_blank" rel="noopener">💬 ${formatPhone(lead.phone)}</a>` : formatPhone(lead.phone)],
         ['Origem', lead.source || '—'],
         ['Tipo de atendimento', typeStyle ? `<span class="type-badge ${typeStyle.className}">${typeStyle.label}</span>` : '—'],
+        ...(lead.procedure ? [['Procedimento', lead.procedure]] : []),
         ['Estado da conversa', `${translateConversationState(lead.conversationState)}<br><span style="font-weight:400;font-size:11px;color:var(--cor-cinza-cacau)">etapa interna da IA de atendimento, não é o status do agendamento</span>`],
         ['Status', statusText],
         ['Horário escolhido', lead.chosenSlot ? `${formatDateBR(lead.chosenSlot.date)} ${lead.chosenSlot.start}` : '—'],
@@ -2067,119 +2098,184 @@
       document.getElementById('apPhone').value = (prefill && prefill.phone) || '';
       document.getElementById('apSource').value = (prefill && prefill.source) || 'INSTAGRAM';
       document.getElementById('apType').value = (prefill && prefill.type) || 'AVALIACAO';
+      document.getElementById('apProcedure').innerHTML = procedureOptionsHtml();
+      document.getElementById('apProcedure').value = '';
+      document.getElementById('apProcedureOther').value = '';
+      document.getElementById('apProcedureOther').style.display = 'none';
+      toggleProcedureVisibility('apType', 'apProcedureGroup');
       const dateInput = document.getElementById('apDate');
       dateInput.value = '';
       dateInput.min = new Date().toISOString().slice(0, 10);
-      resetApSlotPicker('Escolha uma data primeiro');
+      apPicker.reset('Escolha uma data primeiro');
       document.getElementById('appointmentError').innerHTML = '';
       document.getElementById('apFormStep').style.display = 'block';
       document.getElementById('apConfirmStep').style.display = 'none';
       document.getElementById('newAppointmentModal').classList.add('open');
     }
 
+    // Opções de procedimento (portfólio real da clínica, ver
+    // PROCEDURE_OPTIONS) — "" força escolher algo antes de "Outro" surgir
+    // como opção de escape pra procedimento ainda não catalogado.
+    function procedureOptionsHtml() {
+      return '<option value="">Selecione...</option>'
+        + PROCEDURE_OPTIONS.map(p => `<option value="${p}">${p}</option>`).join('')
+        + '<option value="OUTRO">Outro</option>';
+    }
+
+    function toggleProcedureVisibility(typeSelectId, groupId) {
+      const type = document.getElementById(typeSelectId).value;
+      const show = type === 'PROCEDIMENTO' || type === 'RETORNO';
+      document.getElementById(groupId).style.display = show ? 'block' : 'none';
+    }
+
+    function toggleProcedureOther(selectId, otherId) {
+      document.getElementById(otherId).style.display = document.getElementById(selectId).value === 'OUTRO' ? 'block' : 'none';
+    }
+
+    // Type + os dois campos (select fixo / "Outro" livre) -> valor final
+    // de procedimento a gravar. Ignora tudo se o tipo não for
+    // Procedimento/Retorno, mesmo que os campos ainda tenham algo digitado
+    // de uma troca de tipo anterior.
+    function getProcedureValue(typeSelectId, selectId, otherId) {
+      const type = document.getElementById(typeSelectId).value;
+      if (type !== 'PROCEDIMENTO' && type !== 'RETORNO') return '';
+      const select = document.getElementById(selectId);
+      if (select.value === 'OUTRO') return document.getElementById(otherId).value.trim();
+      return select.value;
+    }
+
     function closeNewAppointmentModal() {
       document.getElementById('newAppointmentModal').classList.remove('open');
     }
 
-    // Estado do seletor de períodos de 30min do modal "Novo Agendamento"
-    // (pedido do usuário 2026-09-24). apDaySlots guarda os períodos livres
-    // do dia escolhido (na ordem, já sem os ocupados); apSlotStart/apSlotEnd
-    // são índices desse array — o intervalo [start, end] inclusive é a
-    // seleção atual. Funciona como um "clique no início, clique no fim":
-    // 1 clique seleciona um período (30min), um 2º clique adiante estende
-    // até ali (auto-preenche o meio), clicar antes do início recomeça a
-    // seleção, e clicar de novo no único selecionado desmarca.
-    let apDaySlots = [];
-    let apSlotStart = null;
-    let apSlotEnd = null;
+    // Fábrica do seletor de períodos de 30min — usada tanto no "Novo
+    // Agendamento" quanto no "Editar Agendamento" (pedido do usuário
+    // 2026-09-24: a edição precisa cobrir o agendamento inteiro, incluindo
+    // trocar data/horário com o mesmo seletor de múltiplos períodos). Cada
+    // instância guarda seu próprio estado — os dois modais nunca disputam a
+    // mesma seleção. `namespace` define os ids dos elementos no HTML
+    // (ex.: "ap" -> #apSlotPicker/#apSlotSummary/#apSlot).
+    //
+    // Interação "clique no início, clique no fim": 1 clique seleciona um
+    // período (30min); um 2º clique adiante estende até ali (auto-preenche
+    // o meio); clicar antes do início recomeça a seleção; clicar de novo
+    // no único selecionado desmarca.
+    function createSlotPicker(namespace) {
+      const pickerId = `${namespace}SlotPicker`;
+      const summaryId = `${namespace}SlotSummary`;
+      const hiddenId = `${namespace}Slot`;
 
-    function resetApSlotPicker(emptyMessage) {
-      apDaySlots = [];
-      apSlotStart = null;
-      apSlotEnd = null;
-      document.getElementById('apSlotPicker').innerHTML = `<span class="slot-picker-empty">${emptyMessage}</span>`;
-      document.getElementById('apSlotSummary').textContent = '';
-      document.getElementById('apSlot').value = '';
-    }
+      let daySlots = [];
+      let start = null;
+      let end = null;
 
-    async function loadAvailableSlots() {
-      const settings = loadSettings();
-      const date = document.getElementById('apDate').value;
-      if (!date) return;
+      function reset(emptyMessage) {
+        daySlots = [];
+        start = null;
+        end = null;
+        document.getElementById(pickerId).innerHTML = `<span class="slot-picker-empty">${emptyMessage}</span>`;
+        document.getElementById(summaryId).textContent = '';
+        document.getElementById(hiddenId).value = '';
+      }
 
-      resetApSlotPicker('Carregando horários...');
-      document.getElementById('appointmentError').innerHTML = '';
+      function render() {
+        document.getElementById(pickerId).innerHTML = daySlots.map((s, i) => {
+          const selected = start !== null && i >= start && i <= end;
+          return `<button type="button" class="slot-chip${selected ? ' selected' : ''}" onclick="${namespace}Picker.select(${i})">${s.start}</button>`;
+        }).join('');
+        updateSummary();
+      }
 
-      try {
-        const url = `${settings.scriptUrl}?action=availability&fromDate=${date}&daysAhead=1`;
-        const res = await fetch(url);
-        const body = await res.json();
+      // Os períodos livres do dia podem ter buracos (um horário já ocupado
+      // no meio não entra em daySlots) — sem checar isso, estender a
+      // seleção por cima de um buraco criaria um agendamento "de mentira"
+      // cobrindo um horário indisponível.
+      function isRangeContiguous(a, b) {
+        for (let i = a; i < b; i++) {
+          if (daySlots[i].end !== daySlots[i + 1].start) return false;
+        }
+        return true;
+      }
 
-        if (!body.ok) throw new Error(body.error || 'Erro ao buscar horários');
+      function select(index) {
+        if (start === null) {
+          start = index;
+          end = index;
+        } else if (index === start && start === end) {
+          start = null;
+          end = null;
+        } else if (index > start && isRangeContiguous(start, index)) {
+          end = index;
+        } else {
+          start = index;
+          end = index;
+        }
+        render();
+      }
 
-        const dayAvailability = (body.availability || []).find(d => d.date === date);
-        if (!dayAvailability || dayAvailability.slots.length === 0) {
-          resetApSlotPicker('Sem horários disponíveis nesse dia');
+      function updateSummary() {
+        const summary = document.getElementById(summaryId);
+        const hidden = document.getElementById(hiddenId);
+        if (start === null) {
+          summary.textContent = '';
+          hidden.value = '';
           return;
         }
-
-        apDaySlots = dayAvailability.slots;
-        renderApSlotPicker();
-      } catch (err) {
-        resetApSlotPicker('Erro ao carregar horários');
-        showAppointmentError(`❌ ${err.message}`);
+        const s = daySlots[start].start;
+        const e = daySlots[end].end;
+        hidden.value = `${s}|${e}`;
+        summary.innerHTML = `<strong>${s} às ${e}</strong> — ${formatDurationLabel(s, e)}`;
       }
-    }
 
-    function renderApSlotPicker() {
-      const picker = document.getElementById('apSlotPicker');
-      picker.innerHTML = apDaySlots.map((s, i) => {
-        const selected = apSlotStart !== null && i >= apSlotStart && i <= apSlotEnd;
-        return `<button type="button" class="slot-chip${selected ? ' selected' : ''}" onclick="selectApSlot(${i})">${s.start}</button>`;
-      }).join('');
-      updateApSlotSummary();
-    }
+      // excludeEventId (edição de um agendamento já existente): sem isso,
+      // o próprio horário atual do evento aparece como "ocupado" só por
+      // ele mesmo ainda estar lá.
+      async function load(scriptUrl, date, excludeEventId) {
+        if (!date) return;
+        reset('Carregando horários...');
+        try {
+          const excludeParam = excludeEventId ? `&excludeEventId=${encodeURIComponent(excludeEventId)}` : '';
+          const url = `${scriptUrl}?action=availability&fromDate=${date}&daysAhead=1${excludeParam}`;
+          const res = await fetch(url);
+          const body = await res.json();
+          if (!body.ok) throw new Error(body.error || 'Erro ao buscar horários');
 
-    function selectApSlot(index) {
-      if (apSlotStart === null) {
-        apSlotStart = index;
-        apSlotEnd = index;
-      } else if (index === apSlotStart && apSlotStart === apSlotEnd) {
-        apSlotStart = null;
-        apSlotEnd = null;
-      } else if (index > apSlotStart && isApRangeContiguous(apSlotStart, index)) {
-        apSlotEnd = index;
-      } else {
-        apSlotStart = index;
-        apSlotEnd = index;
+          const dayAvailability = (body.availability || []).find(d => d.date === date);
+          if (!dayAvailability || dayAvailability.slots.length === 0) {
+            reset('Sem horários disponíveis nesse dia');
+            return;
+          }
+          daySlots = dayAvailability.slots;
+          start = null;
+          end = null;
+          render();
+        } catch (err) {
+          reset('Erro ao carregar horários');
+          throw err;
+        }
       }
-      renderApSlotPicker();
-    }
 
-    // Os períodos livres do dia podem ter buracos (um horário já ocupado no
-    // meio não entra em apDaySlots) — sem checar isso, clicar num período
-    // depois de um buraco criaria um agendamento "de mentira" cobrindo um
-    // horário indisponível. Só permite estender a seleção se todo período
-    // entre start e end for realmente consecutivo no tempo.
-    function isApRangeContiguous(start, end) {
-      for (let i = start; i < end; i++) {
-        if (apDaySlots[i].end !== apDaySlots[i + 1].start) return false;
+      // Pré-seleciona um intervalo já conhecido (edição: abre com o
+      // horário atual do agendamento já marcado) — só aplica se os
+      // horários pedidos baterem exatamente com períodos livres da grade.
+      function preselect(startTime, endTime) {
+        const startIdx = daySlots.findIndex((s) => s.start === startTime);
+        const endIdx = daySlots.findIndex((s) => s.end === endTime);
+        if (startIdx === -1 || endIdx === -1 || endIdx < startIdx) return;
+        start = startIdx;
+        end = endIdx;
+        render();
       }
-      return true;
-    }
 
-    function updateApSlotSummary() {
-      const summary = document.getElementById('apSlotSummary');
-      const hidden = document.getElementById('apSlot');
-      if (apSlotStart === null) {
-        summary.textContent = '';
-        hidden.value = '';
-        return;
+      function hasSelection() {
+        return start !== null;
       }
-      const start = apDaySlots[apSlotStart].start;
-      const end = apDaySlots[apSlotEnd].end;
-      hidden.value = `${start}|${end}`;
-      summary.innerHTML = `<strong>${start} às ${end}</strong> — ${formatDurationLabel(start, end)}`;
+
+      function getDurationLabel() {
+        return start !== null ? formatDurationLabel(daySlots[start].start, daySlots[end].end) : '';
+      }
+
+      return { load, reset, select, preselect, hasSelection, getDurationLabel };
     }
 
     // Calcula a duração a partir dos horários reais (HH:mm) selecionados,
@@ -2194,6 +2290,20 @@
       if (hours === 0) return `${minutes}min`;
       if (minutes === 0) return `${hours}h`;
       return `${hours}h${minutes}`;
+    }
+
+    const apPicker = createSlotPicker('ap');
+    const editPicker = createSlotPicker('edit');
+
+    async function loadAvailableSlots() {
+      const settings = loadSettings();
+      const date = document.getElementById('apDate').value;
+      document.getElementById('appointmentError').innerHTML = '';
+      try {
+        await apPicker.load(settings.scriptUrl, date);
+      } catch (err) {
+        showAppointmentError(`❌ ${err.message}`);
+      }
     }
 
     function showAppointmentError(message) {
@@ -2220,6 +2330,12 @@
         return;
       }
 
+      const procedure = getProcedureValue('apType', 'apProcedure', 'apProcedureOther');
+      if ((type === 'PROCEDIMENTO' || type === 'RETORNO') && !procedure) {
+        showAppointmentError('⚠️ Escolha qual procedimento.');
+        return;
+      }
+
       const phone = normalizePhoneBR(phoneRaw);
       if (phone.replace(/\D/g, '').length < 12) {
         showAppointmentError('⚠️ Telefone inválido — digite DDD + número (ex: 15997892900) ou cole do WhatsApp (ex: +55 15 99789-2900).');
@@ -2232,13 +2348,14 @@
       const [start, end] = slotValue.split('|');
       const dateObj = new Date(`${date}T00:00:00`);
       const dateLabel = `${WEEKDAY_LABELS_PT[dateObj.getDay()]}, ${dateObj.toLocaleDateString('pt-BR')}`;
-      const durationLabel = apSlotStart !== null ? ` (${formatDurationLabel(start, end)})` : '';
+      const durationLabel = apPicker.hasSelection() ? ` (${apPicker.getDurationLabel()})` : '';
 
       const rows = [
         ['Nome', name],
         ['Telefone', formatPhone(phone)],
         ['Origem', source],
         ['Tipo', APPOINTMENT_TYPE_LABELS[type] || type],
+        ...(procedure ? [['Procedimento', procedure]] : []),
         ['Data', dateLabel],
         ['Horário', `${start} às ${end}${durationLabel}`],
       ];
@@ -2356,11 +2473,25 @@
       }
     }
 
-    // --- Remarcar (move o mesmo evento) ---
+    // --- Editar Agendamento (nome, origem, tipo, procedimento, data e
+    // horário juntos — move o mesmo evento, nunca cria um novo) ---
 
-    let rescheduleContext = null;
+    let editContext = null;
 
-    function openRescheduleModal(eventId) {
+    function localDateStr(date) {
+      const y = date.getFullYear();
+      const m = String(date.getMonth() + 1).padStart(2, '0');
+      const d = String(date.getDate()).padStart(2, '0');
+      return `${y}-${m}-${d}`;
+    }
+
+    function localTimeStr(date) {
+      const h = String(date.getHours()).padStart(2, '0');
+      const m = String(date.getMinutes()).padStart(2, '0');
+      return `${h}:${m}`;
+    }
+
+    function openEditAppointmentModal(eventId) {
       const settings = loadSettings();
       if (!settings || !settings.scriptUrl) {
         alert('Configure a "URL do Apps Script" em ⚙️ Config primeiro (ver apps-script/SETUP.md para gerar essa URL).');
@@ -2370,97 +2501,117 @@
 
       const ev = allCalendarEvents.find(e => e.id === eventId);
       if (!ev) return;
-      const summary = ev.summary;
-      const description = ev.description || '';
 
-      const type = detectAppointmentType(summary);
-      const info = parseEventInfo(summary, description);
-      rescheduleContext = { eventId };
+      const info = parseEventInfo(ev.summary, ev.description);
+      const type = detectAppointmentType(ev.summary);
+      const typeKey = type === APPOINTMENT_TYPE_STYLES.PROCEDIMENTO ? 'PROCEDIMENTO'
+        : type === APPOINTMENT_TYPE_STYLES.RETORNO ? 'RETORNO' : 'AVALIACAO';
 
-      document.getElementById('rescheduleInfo').innerHTML = `
-        <div class="ld-row"><span class="ld-label">Paciente</span><span class="ld-value">${info.name || '—'}</span></div>
-        <div class="ld-row"><span class="ld-label">Tipo</span><span class="ld-value">${type ? type.label : '—'}</span></div>
-      `;
-      document.getElementById('rescheduleError').innerHTML = '';
-      const dateInput = document.getElementById('rsDate');
-      dateInput.value = '';
+      // Procedimento não vem do evento do Calendar (só a categoria/tipo
+      // vem) — busca na planilha, já carregada em allData, pelo telefone.
+      const lead = allData.find(l => l.phone === info.phone);
+      const procedureValue = (lead && lead.procedure) || '';
+
+      editContext = { eventId };
+
+      document.getElementById('editAppointmentError').innerHTML = '';
+      document.getElementById('editName').value = info.name || '';
+      document.getElementById('editSource').value = info.source || 'INSTAGRAM';
+      document.getElementById('editType').value = typeKey;
+
+      document.getElementById('editProcedure').innerHTML = procedureOptionsHtml();
+      document.getElementById('editProcedureOther').value = '';
+      document.getElementById('editProcedureOther').style.display = 'none';
+      if (procedureValue && PROCEDURE_OPTIONS.includes(procedureValue)) {
+        document.getElementById('editProcedure').value = procedureValue;
+      } else if (procedureValue) {
+        document.getElementById('editProcedure').value = 'OUTRO';
+        document.getElementById('editProcedureOther').value = procedureValue;
+        document.getElementById('editProcedureOther').style.display = 'block';
+      } else {
+        document.getElementById('editProcedure').value = '';
+      }
+      toggleProcedureVisibility('editType', 'editProcedureGroup');
+
+      const startRaw = ev.start && (ev.start.dateTime || ev.start.date);
+      const endRaw = ev.end && (ev.end.dateTime || ev.end.date);
+      const startDate = startRaw ? new Date(startRaw) : null;
+      const endDate = endRaw ? new Date(endRaw) : null;
+
+      const dateInput = document.getElementById('editDate');
       dateInput.min = new Date().toISOString().slice(0, 10);
-      document.getElementById('rsSlot').innerHTML = '<option value="">Escolha uma data primeiro</option>';
-      document.getElementById('rsSlot').disabled = true;
-      document.getElementById('rescheduleModal').classList.add('open');
+      dateInput.value = startDate ? localDateStr(startDate) : '';
+
+      editPicker.reset('Carregando horários...');
+      document.getElementById('editAppointmentModal').classList.add('open');
+
+      // Já abre com o horário atual do agendamento pré-selecionado — o
+      // pedido do usuário foi "editar o agendamento inteiro", não recomeçar
+      // a escolha de horário do zero toda vez.
+      loadEditSlots().then(() => {
+        if (startDate && endDate) editPicker.preselect(localTimeStr(startDate), localTimeStr(endDate));
+      });
     }
 
-    function closeRescheduleModal() {
-      document.getElementById('rescheduleModal').classList.remove('open');
-      rescheduleContext = null;
+    function closeEditAppointmentModal() {
+      document.getElementById('editAppointmentModal').classList.remove('open');
+      editContext = null;
     }
 
-    async function loadRescheduleSlots() {
+    async function loadEditSlots() {
+      if (!editContext) return;
       const settings = loadSettings();
-      const date = document.getElementById('rsDate').value;
-      const slotSelect = document.getElementById('rsSlot');
-      if (!date) return;
-
-      slotSelect.innerHTML = '<option value="">Carregando horários...</option>';
-      slotSelect.disabled = true;
-      document.getElementById('rescheduleError').innerHTML = '';
-
+      const date = document.getElementById('editDate').value;
+      document.getElementById('editAppointmentError').innerHTML = '';
       try {
-        const url = `${settings.scriptUrl}?action=availability&fromDate=${date}&daysAhead=1`;
-        const res = await fetch(url);
-        const body = await res.json();
-        if (!body.ok) throw new Error(body.error || 'Erro ao buscar horários');
-
-        const dayAvailability = (body.availability || []).find(d => d.date === date);
-        if (!dayAvailability || dayAvailability.slots.length === 0) {
-          slotSelect.innerHTML = '<option value="">Sem horários disponíveis nesse dia</option>';
-          return;
-        }
-
-        slotSelect.innerHTML = dayAvailability.slots
-          .map(s => `<option value="${s.start}|${s.end}">${s.start} - ${s.end}</option>`)
-          .join('');
-        slotSelect.disabled = false;
+        await editPicker.load(settings.scriptUrl, date, editContext.eventId);
       } catch (err) {
-        slotSelect.innerHTML = '<option value="">Erro ao carregar horários</option>';
-        document.getElementById('rescheduleError').innerHTML = `<div class="form-error">❌ ${err.message}</div>`;
+        document.getElementById('editAppointmentError').innerHTML = `<div class="form-error">❌ ${err.message}</div>`;
       }
     }
 
-    async function submitReschedule() {
-      if (!rescheduleContext) return;
+    async function submitEditAppointment() {
+      if (!editContext) return;
       const settings = loadSettings();
-      const date = document.getElementById('rsDate').value;
-      const slotValue = document.getElementById('rsSlot').value;
+      const name = document.getElementById('editName').value.trim();
+      const source = document.getElementById('editSource').value;
+      const appointmentType = document.getElementById('editType').value;
+      const procedure = getProcedureValue('editType', 'editProcedure', 'editProcedureOther');
+      const date = document.getElementById('editDate').value;
+      const slotValue = document.getElementById('editSlot').value;
 
-      document.getElementById('rescheduleError').innerHTML = '';
-      if (!date || !slotValue) {
-        document.getElementById('rescheduleError').innerHTML = '<div class="form-error">⚠️ Escolha data e horário.</div>';
+      document.getElementById('editAppointmentError').innerHTML = '';
+      if (!name || !date || !slotValue) {
+        document.getElementById('editAppointmentError').innerHTML = '<div class="form-error">⚠️ Preencha nome, data e horário.</div>';
+        return;
+      }
+      if ((appointmentType === 'PROCEDIMENTO' || appointmentType === 'RETORNO') && !procedure) {
+        document.getElementById('editAppointmentError').innerHTML = '<div class="form-error">⚠️ Escolha qual procedimento.</div>';
         return;
       }
 
       const [start, end] = slotValue.split('|');
-      const btn = document.getElementById('rsSubmitBtn');
+      const btn = document.getElementById('editSubmitBtn');
       btn.disabled = true;
-      btn.textContent = '⏳ Remarcando...';
+      btn.textContent = '⏳ Salvando...';
 
       try {
         const response = await fetch(settings.scriptUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-          body: JSON.stringify({ action: 'rescheduleAppointment', eventId: rescheduleContext.eventId, date, start, end })
+          body: JSON.stringify({ action: 'editAppointment', eventId: editContext.eventId, name, source, appointmentType, procedure, date, start, end })
         });
         const result = await response.json();
         if (!result.ok) throw new Error(result.error || 'Erro desconhecido');
 
-        closeRescheduleModal();
-        showToast(`✅ Remarcado para ${formatDateBR(date)} às ${start}`);
+        closeEditAppointmentModal();
+        showToast(`✅ Agendamento de ${name} atualizado`);
         refreshData();
       } catch (err) {
-        document.getElementById('rescheduleError').innerHTML = `<div class="form-error">❌ ${err.message}</div>`;
+        document.getElementById('editAppointmentError').innerHTML = `<div class="form-error">❌ ${err.message}</div>`;
       } finally {
         btn.disabled = false;
-        btn.textContent = '💾 Confirmar Remarcação';
+        btn.textContent = '💾 Salvar Agendamento';
       }
     }
 
@@ -2525,69 +2676,6 @@
       }
     }
 
-    // Editar tipo de atendimento de um agendamento já criado (pedido do
-    // usuário 2026-09-24: corrigia um tipo errado desmarcando e criando
-    // tudo de novo, sem precisar disso).
-    let typeEditContext = null;
-
-    function openTypeEditModal(eventId) {
-      const settings = loadSettings();
-      if (!settings || !settings.scriptUrl) {
-        alert('Configure a "URL do Apps Script" em ⚙️ Config primeiro.');
-        return;
-      }
-      const ev = allCalendarEvents.find(e => e.id === eventId);
-      if (!ev) return;
-
-      const info = parseEventInfo(ev.summary, ev.description);
-      const currentType = detectAppointmentType(ev.summary);
-      typeEditContext = { eventId };
-
-      document.getElementById('typeEditInfo').innerHTML = `
-        <div class="ld-row"><span class="ld-label">Paciente</span><span class="ld-value">${info.name || '—'}</span></div>
-        <div class="ld-row"><span class="ld-label">Tipo atual</span><span class="ld-value">${currentType ? currentType.label : '—'}</span></div>
-      `;
-
-      const currentTypeKey = currentType === APPOINTMENT_TYPE_STYLES.PROCEDIMENTO ? 'PROCEDIMENTO'
-        : currentType === APPOINTMENT_TYPE_STYLES.RETORNO ? 'RETORNO' : 'AVALIACAO';
-      document.getElementById('typeEditSelect').value = currentTypeKey;
-      document.getElementById('typeEditError').innerHTML = '';
-      document.getElementById('typeEditModal').classList.add('open');
-    }
-
-    function closeTypeEditModal() {
-      document.getElementById('typeEditModal').classList.remove('open');
-      typeEditContext = null;
-    }
-
-    async function submitTypeEdit() {
-      if (!typeEditContext) return;
-      const settings = loadSettings();
-      const appointmentType = document.getElementById('typeEditSelect').value;
-      const btn = document.getElementById('typeEditSubmitBtn');
-      btn.disabled = true;
-      btn.textContent = '⏳ Salvando...';
-
-      try {
-        const response = await fetch(settings.scriptUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-          body: JSON.stringify({ action: 'updateAppointmentType', eventId: typeEditContext.eventId, appointmentType })
-        });
-        const result = await response.json();
-        if (!result.ok) throw new Error(result.error || 'Erro desconhecido');
-
-        closeTypeEditModal();
-        showToast(`✅ Tipo atualizado para ${APPOINTMENT_TYPE_LABELS[appointmentType]}`);
-        refreshData();
-      } catch (err) {
-        document.getElementById('typeEditError').innerHTML = `<div class="form-error">❌ ${err.message}</div>`;
-      } finally {
-        btn.disabled = false;
-        btn.textContent = '💾 Salvar Tipo';
-      }
-    }
-
     // Desfaz uma baixa/desmarcação/não-comparecimento — tira o prefixo do
     // título, o evento volta pra Agenda ativa como se nada tivesse
     // acontecido. Ação de baixo risco (não some com nenhum dado), então
@@ -2621,6 +2709,7 @@
       const phone = document.getElementById('apPhone').value.trim();
       const source = document.getElementById('apSource').value;
       const appointmentType = document.getElementById('apType').value;
+      const procedure = getProcedureValue('apType', 'apProcedure', 'apProcedureOther');
       const date = document.getElementById('apDate').value;
       const slotValue = document.getElementById('apSlot').value;
 
@@ -2642,7 +2731,7 @@
         const response = await fetch(settings.scriptUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-          body: JSON.stringify({ action: 'createAppointment', phone, name, source, appointmentType, date, start, end })
+          body: JSON.stringify({ action: 'createAppointment', phone, name, source, appointmentType, procedure, date, start, end })
         });
         const result = await response.json();
 

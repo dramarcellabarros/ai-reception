@@ -93,11 +93,8 @@ function doPost(e) {
     if (payload.action === 'completeAppointment') {
       return jsonResponse(completeAppointment(payload));
     }
-    if (payload.action === 'updateAppointmentType') {
-      return jsonResponse(updateAppointmentType(payload));
-    }
-    if (payload.action === 'rescheduleAppointment') {
-      return jsonResponse(rescheduleAppointmentAction(payload));
+    if (payload.action === 'editAppointment') {
+      return jsonResponse(editAppointment(payload));
     }
     if (payload.action === 'cancelAppointment') {
       return jsonResponse(cancelAppointmentAction(payload));
@@ -115,7 +112,7 @@ function doPost(e) {
 function doGet(e) {
   try {
     if (e.parameter.action === 'availability') {
-      return jsonResponse(getAvailability(e.parameter.fromDate, Number(e.parameter.daysAhead || 7)));
+      return jsonResponse(getAvailability(e.parameter.fromDate, Number(e.parameter.daysAhead || 7), e.parameter.excludeEventId));
     }
     return jsonResponse({ ok: false, error: 'Ação desconhecida' });
   } catch (err) {
@@ -141,7 +138,7 @@ const APPOINTMENT_TYPE_LABELS = {
 };
 
 function createAppointment(payload) {
-  const { phone, name, source, date, start, end, appointmentType } = payload;
+  const { phone, name, source, date, start, end, appointmentType, procedure } = payload;
   if (!phone || !name || !date || !start || !end) {
     return { ok: false, error: 'Campos obrigatórios: phone, name, date, start, end.' };
   }
@@ -189,6 +186,7 @@ function createAppointment(payload) {
     conversationState: 'CONFIRMED',
     leadStatus: '',
     appointmentType: typeLabel,
+    procedure: procedure || '',
     chosenSlot: { date, start, end },
     confirmedAppointment,
   });
@@ -273,20 +271,21 @@ function completeAppointment(payload) {
 }
 
 /**
- * Troca o tipo de atendimento (Avaliação/Procedimento/Retorno) de um
- * agendamento já criado — pedido do usuário 2026-09-24: antes disso, um
- * tipo escolhido errado só dava pra corrigir desmarcando e criando um
- * agendamento novo do zero. Reescreve só a parte do tipo no título do
- * evento (preserva o prefixo de status ✅/❌/🚫, se houver, e o nome do
- * paciente) e atualiza a coluna "Tipo de Atendimento" na planilha.
+ * Edita um agendamento já criado por inteiro (nome, origem, tipo,
+ * procedimento, data e horário) — pedido do usuário 2026-09-24: "a edição
+ * deve envolver o agendamento inteiro, assim como se eu alterar a data
+ * também altere no calendário". Substitui os antigos updateAppointmentType
+ * (só tipo) e rescheduleAppointmentAction (só data/hora) por uma única
+ * ação que atualiza o MESMO evento (mesmo id/link) e a planilha juntos,
+ * de forma consistente. Telefone não é editável aqui — ver nota em
+ * upsertLeadRow sobre o telefone ser a chave de busca da linha.
  */
-function updateAppointmentType(payload) {
-  const { eventId, appointmentType } = payload;
-  if (!eventId || !appointmentType) {
-    return { ok: false, error: 'Campos obrigatórios: eventId, appointmentType.' };
+function editAppointment(payload) {
+  const { eventId, name, source, appointmentType, procedure, date, start, end } = payload;
+  if (!eventId || !name || !date || !start || !end) {
+    return { ok: false, error: 'Campos obrigatórios: eventId, name, date, start, end.' };
   }
-  const typeLabel = APPOINTMENT_TYPE_LABELS[appointmentType];
-  if (!typeLabel) return { ok: false, error: 'Tipo de atendimento inválido.' };
+  const typeLabel = APPOINTMENT_TYPE_LABELS[appointmentType] || APPOINTMENT_TYPE_LABELS.AVALIACAO;
 
   const calendar = CalendarApp.getCalendarById(CALENDAR_ID);
   if (!calendar) return { ok: false, error: 'Agenda não encontrada — verifique CALENDAR_ID no script.' };
@@ -294,24 +293,50 @@ function updateAppointmentType(payload) {
   const event = calendar.getEventById(eventId);
   if (!event) return { ok: false, error: 'Evento não encontrado na agenda (pode já ter sido apagado).' };
 
-  const rawTitle = event.getTitle();
-  const statusPrefix = Object.values(STATUS_PREFIXES).find((p) => rawTitle.startsWith(p)) || '';
-  const bareTitle = stripStatusPrefix(rawTitle);
+  const newStart = parseLocalDateTime(date, start);
+  const newEnd = parseLocalDateTime(date, end);
+  if (newEnd <= newStart) return { ok: false, error: 'Horário de término precisa ser depois do início.' };
 
-  // Título segue "Tipo - Nome" ou "Tipo — Nome" — troca só o tipo, mantém
-  // o nome. Sem esse padrão (evento antigo/manual), usa o título inteiro
-  // como nome pra não perder informação.
-  const nameMatch = bareTitle.match(/^[^-—]+[-—]\s*(.+)$/);
-  const name = nameMatch ? nameMatch[1].trim() : bareTitle;
-
-  event.setTitle(`${statusPrefix ? statusPrefix + ' ' : ''}${typeLabel} - ${name}`);
-
-  const phoneMatch = (event.getDescription() || '').match(/Telefone:\s*(\+?\d+)/);
-  if (phoneMatch) {
-    upsertLeadRow({ phone: phoneMatch[1], appointmentType: typeLabel });
+  // Mesma checagem de conflito de createAppointment, excluindo o próprio
+  // evento (senão ele sempre "colidiria" consigo mesmo ao manter o mesmo
+  // horário).
+  const conflicting = calendar.getEvents(newStart, newEnd).filter((e) => e.getId() !== event.getId());
+  if (conflicting.length > 0) {
+    return { ok: false, error: 'Esse horário já está ocupado na agenda. Escolha outro.' };
   }
 
-  return { ok: true };
+  const rawTitle = event.getTitle();
+  const statusPrefix = Object.values(STATUS_PREFIXES).find((p) => rawTitle.startsWith(p)) || '';
+
+  event.setTitle(`${statusPrefix ? statusPrefix + ' ' : ''}${typeLabel} - ${name}`);
+  event.setTime(newStart, newEnd);
+
+  // Telefone não é campo editável aqui — preserva o que já estava gravado
+  // na descrição original do evento.
+  const phoneMatch = (event.getDescription() || '').match(/Telefone:\s*(\+?\d+)/);
+  const phone = phoneMatch ? phoneMatch[1] : '';
+  event.setDescription(`Agendado via CRM. Telefone: ${phone || '—'}. Origem: ${source || '—'}.`);
+
+  const confirmedAppointment = {
+    id: event.getId(),
+    htmlLink: buildEventHtmlLink(event.getId()),
+    start: { dateTime: formatIso(newStart), timeZone: TIME_ZONE },
+    end: { dateTime: formatIso(newEnd), timeZone: TIME_ZONE },
+  };
+
+  if (phone) {
+    upsertLeadRow({
+      phone,
+      name,
+      source: source || '',
+      appointmentType: typeLabel,
+      procedure: procedure || '',
+      chosenSlot: { date, start, end },
+      confirmedAppointment,
+    });
+  }
+
+  return { ok: true, event: confirmedAppointment };
 }
 
 /**
@@ -352,56 +377,6 @@ function reopenAppointment(payload) {
         htmlLink: buildEventHtmlLink(event.getId()),
         start: { dateTime: formatIso(event.getStartTime()), timeZone: TIME_ZONE },
         end: { dateTime: formatIso(event.getEndTime()), timeZone: TIME_ZONE },
-      },
-    });
-  }
-
-  return { ok: true };
-}
-
-/**
- * Remarca um atendimento existente para nova data/horário — atualiza o
- * MESMO evento (mesmo id/link, event.setTime), nunca cria um novo. Pedido
- * do usuário 2026-09-23.
- */
-function rescheduleAppointmentAction(payload) {
-  const { eventId, date, start, end } = payload;
-  if (!eventId || !date || !start || !end) {
-    return { ok: false, error: 'Campos obrigatórios: eventId, date, start, end.' };
-  }
-
-  const calendar = CalendarApp.getCalendarById(CALENDAR_ID);
-  if (!calendar) return { ok: false, error: 'Agenda não encontrada — verifique CALENDAR_ID no script.' };
-
-  const event = calendar.getEventById(eventId);
-  if (!event) return { ok: false, error: 'Evento não encontrado na agenda (pode já ter sido apagado).' };
-
-  const newStart = parseLocalDateTime(date, start);
-  const newEnd = parseLocalDateTime(date, end);
-  if (newEnd <= newStart) return { ok: false, error: 'Horário de término precisa ser depois do início.' };
-
-  // Mesma checagem de conflito de createAppointment, excluindo o próprio
-  // evento (senão ele sempre "colidiria" consigo mesmo).
-  const conflicting = calendar.getEvents(newStart, newEnd).filter((e) => e.getId() !== event.getId());
-  if (conflicting.length > 0) {
-    return { ok: false, error: 'Esse horário já está ocupado na agenda. Escolha outro.' };
-  }
-
-  event.setTime(newStart, newEnd);
-
-  // Atualiza o lead na planilha (se der pra identificar o telefone na
-  // descrição do evento), pra tabela/painel de detalhe do Dashboard
-  // ficarem coerentes com a nova data sem precisar editar a mão.
-  const phoneMatch = (event.getDescription() || '').match(/Telefone:\s*(\+?\d+)/);
-  if (phoneMatch) {
-    upsertLeadRow({
-      phone: phoneMatch[1],
-      chosenSlot: { date, start, end },
-      confirmedAppointment: {
-        id: event.getId(),
-        htmlLink: buildEventHtmlLink(event.getId()),
-        start: { dateTime: formatIso(newStart), timeZone: TIME_ZONE },
-        end: { dateTime: formatIso(newEnd), timeZone: TIME_ZONE },
       },
     });
   }
@@ -562,6 +537,7 @@ function upsertLeadRow(fields) {
     conversationState: 'Estado da Conversa',
     leadStatus: 'Status',
     appointmentType: 'Tipo de Atendimento',
+    procedure: 'Interesse/Procedimento',
   };
 
   const existingRow = rowIndex >= 0 ? data[rowIndex] : COLUMNS.map(() => '');
@@ -600,7 +576,7 @@ function upsertLeadRow(fields) {
  * aqui porque Apps Script não importa módulos do projeto Node — mudanças
  * numa precisam ser espelhadas na outra.
  */
-function getAvailability(fromDateStr, daysAhead) {
+function getAvailability(fromDateStr, daysAhead, excludeEventId) {
   const calendar = CalendarApp.getCalendarById(CALENDAR_ID);
   if (!calendar) return { ok: false, error: 'Agenda não encontrada.' };
 
@@ -617,7 +593,11 @@ function getAvailability(fromDateStr, daysAhead) {
     const dateStr = Utilities.formatDate(day, TIME_ZONE, 'yyyy-MM-dd');
     const dayStart = parseLocalDateTime(dateStr, hours.open);
     const dayEnd = parseLocalDateTime(dateStr, hours.close);
-    const events = calendar.getEvents(dayStart, dayEnd);
+    // excludeEventId (usado ao editar um agendamento já existente): sem
+    // isso, o próprio horário atual do evento aparecia como "ocupado" só
+    // por ele mesmo ainda estar lá, escondendo a opção óbvia de manter o
+    // mesmo horário.
+    const events = calendar.getEvents(dayStart, dayEnd).filter((ev) => ev.getId() !== excludeEventId);
 
     const slots = [];
     let cursor = new Date(dayStart);
