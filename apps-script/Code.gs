@@ -93,6 +93,9 @@ function doPost(e) {
     if (payload.action === 'completeAppointment') {
       return jsonResponse(completeAppointment(payload));
     }
+    if (payload.action === 'updateAppointmentType') {
+      return jsonResponse(updateAppointmentType(payload));
+    }
     if (payload.action === 'rescheduleAppointment') {
       return jsonResponse(rescheduleAppointmentAction(payload));
     }
@@ -267,6 +270,48 @@ function completeAppointment(payload) {
   const { eventId } = payload;
   if (!eventId) return { ok: false, error: 'Campo obrigatório: eventId.' };
   return markCalendarEvent(eventId, STATUS_PREFIXES.DONE);
+}
+
+/**
+ * Troca o tipo de atendimento (Avaliação/Procedimento/Retorno) de um
+ * agendamento já criado — pedido do usuário 2026-09-24: antes disso, um
+ * tipo escolhido errado só dava pra corrigir desmarcando e criando um
+ * agendamento novo do zero. Reescreve só a parte do tipo no título do
+ * evento (preserva o prefixo de status ✅/❌/🚫, se houver, e o nome do
+ * paciente) e atualiza a coluna "Tipo de Atendimento" na planilha.
+ */
+function updateAppointmentType(payload) {
+  const { eventId, appointmentType } = payload;
+  if (!eventId || !appointmentType) {
+    return { ok: false, error: 'Campos obrigatórios: eventId, appointmentType.' };
+  }
+  const typeLabel = APPOINTMENT_TYPE_LABELS[appointmentType];
+  if (!typeLabel) return { ok: false, error: 'Tipo de atendimento inválido.' };
+
+  const calendar = CalendarApp.getCalendarById(CALENDAR_ID);
+  if (!calendar) return { ok: false, error: 'Agenda não encontrada — verifique CALENDAR_ID no script.' };
+
+  const event = calendar.getEventById(eventId);
+  if (!event) return { ok: false, error: 'Evento não encontrado na agenda (pode já ter sido apagado).' };
+
+  const rawTitle = event.getTitle();
+  const statusPrefix = Object.values(STATUS_PREFIXES).find((p) => rawTitle.startsWith(p)) || '';
+  const bareTitle = stripStatusPrefix(rawTitle);
+
+  // Título segue "Tipo - Nome" ou "Tipo — Nome" — troca só o tipo, mantém
+  // o nome. Sem esse padrão (evento antigo/manual), usa o título inteiro
+  // como nome pra não perder informação.
+  const nameMatch = bareTitle.match(/^[^-—]+[-—]\s*(.+)$/);
+  const name = nameMatch ? nameMatch[1].trim() : bareTitle;
+
+  event.setTitle(`${statusPrefix ? statusPrefix + ' ' : ''}${typeLabel} - ${name}`);
+
+  const phoneMatch = (event.getDescription() || '').match(/Telefone:\s*(\+?\d+)/);
+  if (phoneMatch) {
+    upsertLeadRow({ phone: phoneMatch[1], appointmentType: typeLabel });
+  }
+
+  return { ok: true };
 }
 
 /**

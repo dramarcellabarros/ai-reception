@@ -1208,6 +1208,27 @@
     </div>
   </div>
 
+  <!-- Modal de Editar Tipo de Atendimento (pedido do usuário 2026-09-24:
+       antes só dava pra corrigir um tipo escolhido errado desmarcando e
+       criando um agendamento novo do zero). -->
+  <div class="modal" id="typeEditModal">
+    <div class="modal-content">
+      <span class="close-btn" onclick="closeTypeEditModal()">&times;</span>
+      <h2>🏷️ Editar Tipo de Atendimento</h2>
+      <div id="typeEditError"></div>
+      <div class="lead-detail-grid" id="typeEditInfo"></div>
+      <div class="form-group" style="margin-top:18px;">
+        <label>Novo tipo:</label>
+        <select id="typeEditSelect">
+          <option value="AVALIACAO">Avaliação</option>
+          <option value="PROCEDIMENTO">Procedimento</option>
+          <option value="RETORNO">Retorno</option>
+        </select>
+      </div>
+      <button class="btn" id="typeEditSubmitBtn" onclick="submitTypeEdit()">💾 Salvar Tipo</button>
+    </div>
+  </div>
+
   <!-- Modal de Detalhe do Lead -->
   <div class="modal" id="leadDetailModal">
     <div class="modal-content">
@@ -1332,6 +1353,17 @@
       if (text.startsWith('procedimento')) return APPOINTMENT_TYPE_STYLES.PROCEDIMENTO;
       if (text.startsWith('retorno')) return APPOINTMENT_TYPE_STYLES.RETORNO;
       return null;
+    }
+
+    // Título mostrado na Agenda sem o prefixo de tipo ("Avaliação - ") —
+    // pedido do usuário 2026-09-24: a tag colorida ao lado já mostra o
+    // tipo, então repetir "Avaliação" no próprio texto do título era uma
+    // duplicidade visual. O título completo continua intacto no evento
+    // real do Calendar (só a exibição aqui na Agenda muda).
+    function agendaDisplayTitle(summary) {
+      const withoutStatus = (summary || '').replace(/^[\s✅❌🚫]+/, '');
+      const m = withoutStatus.match(/^[^-—]+[-—]\s*(.+)$/);
+      return m ? m[1].trim() : withoutStatus;
     }
 
     // Extrai nome/telefone/origem de um evento do Calendar pra pré-preencher
@@ -1845,12 +1877,13 @@
                 ${confirmBtn}
                 <button class="complete-btn" onclick="event.stopPropagation(); event.preventDefault(); openCompleteModal('${ev.id}')" title="Marcar como concluído" aria-label="Marcar como concluído">✅</button>
                 <button class="complete-btn" onclick="event.stopPropagation(); event.preventDefault(); openRescheduleModal('${ev.id}')" title="Remarcar" aria-label="Remarcar">📅</button>
+                <button class="complete-btn" onclick="event.stopPropagation(); event.preventDefault(); openTypeEditModal('${ev.id}')" title="Editar tipo de atendimento" aria-label="Editar tipo de atendimento">🏷️</button>
                 <button class="complete-btn complete-btn-danger" onclick="event.stopPropagation(); event.preventDefault(); openCancelModal('${ev.id}')" title="Desmarcar" aria-label="Desmarcar">✕</button>
               `;
             return `
             <div class="agenda-event ${type ? type.className + '-border' : ''}${completed ? ' agenda-event-completed' : ''}">
               <span class="agenda-event-time">${ev.time}</span>
-              <a class="agenda-event-summary" href="${ev.link}" target="_blank" rel="noopener">${ev.summary}</a>
+              <a class="agenda-event-summary" href="${ev.link}" target="_blank" rel="noopener">${agendaDisplayTitle(ev.summary)}</a>
               ${badge}
               ${action}
             </div>
@@ -2480,6 +2513,69 @@
       } finally {
         btn.disabled = false;
         btn.textContent = '✕ Confirmar Desmarcação';
+      }
+    }
+
+    // Editar tipo de atendimento de um agendamento já criado (pedido do
+    // usuário 2026-09-24: corrigia um tipo errado desmarcando e criando
+    // tudo de novo, sem precisar disso).
+    let typeEditContext = null;
+
+    function openTypeEditModal(eventId) {
+      const settings = loadSettings();
+      if (!settings || !settings.scriptUrl) {
+        alert('Configure a "URL do Apps Script" em ⚙️ Config primeiro.');
+        return;
+      }
+      const ev = allCalendarEvents.find(e => e.id === eventId);
+      if (!ev) return;
+
+      const info = parseEventInfo(ev.summary, ev.description);
+      const currentType = detectAppointmentType(ev.summary);
+      typeEditContext = { eventId };
+
+      document.getElementById('typeEditInfo').innerHTML = `
+        <div class="ld-row"><span class="ld-label">Paciente</span><span class="ld-value">${info.name || '—'}</span></div>
+        <div class="ld-row"><span class="ld-label">Tipo atual</span><span class="ld-value">${currentType ? currentType.label : '—'}</span></div>
+      `;
+
+      const currentTypeKey = currentType === APPOINTMENT_TYPE_STYLES.PROCEDIMENTO ? 'PROCEDIMENTO'
+        : currentType === APPOINTMENT_TYPE_STYLES.RETORNO ? 'RETORNO' : 'AVALIACAO';
+      document.getElementById('typeEditSelect').value = currentTypeKey;
+      document.getElementById('typeEditError').innerHTML = '';
+      document.getElementById('typeEditModal').classList.add('open');
+    }
+
+    function closeTypeEditModal() {
+      document.getElementById('typeEditModal').classList.remove('open');
+      typeEditContext = null;
+    }
+
+    async function submitTypeEdit() {
+      if (!typeEditContext) return;
+      const settings = loadSettings();
+      const appointmentType = document.getElementById('typeEditSelect').value;
+      const btn = document.getElementById('typeEditSubmitBtn');
+      btn.disabled = true;
+      btn.textContent = '⏳ Salvando...';
+
+      try {
+        const response = await fetch(settings.scriptUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({ action: 'updateAppointmentType', eventId: typeEditContext.eventId, appointmentType })
+        });
+        const result = await response.json();
+        if (!result.ok) throw new Error(result.error || 'Erro desconhecido');
+
+        closeTypeEditModal();
+        showToast(`✅ Tipo atualizado para ${APPOINTMENT_TYPE_LABELS[appointmentType]}`);
+        refreshData();
+      } catch (err) {
+        document.getElementById('typeEditError').innerHTML = `<div class="form-error">❌ ${err.message}</div>`;
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '💾 Salvar Tipo';
       }
     }
 
