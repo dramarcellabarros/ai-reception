@@ -129,6 +129,9 @@ function doGet(e) {
     if (e.parameter.action === 'procedures') {
       return jsonResponse(getProcedures());
     }
+    if (e.parameter.action === 'clientHistory') {
+      return jsonResponse(getClientHistory(e.parameter.phone));
+    }
     return jsonResponse({ ok: false, error: 'Ação desconhecida' });
   } catch (err) {
     return jsonResponse({ ok: false, error: String(err) });
@@ -182,9 +185,14 @@ function createAppointment(payload) {
   // "Tipo:" não entra mais na descrição (pedido do usuário 2026-09-24,
   // redundância percebida ao abrir o evento: o tipo já aparece no próprio
   // título do evento — "${typeLabel} - Nome" — e como tag colorida no
-  // Dashboard e na coluna "Tipo de Atendimento" da planilha).
+  // Dashboard e na coluna "Tipo de Atendimento" da planilha). "Procedimento:"
+  // entra sim (pedido do usuário 2026-09-24, mais tarde: "histórico de
+  // procedimentos individuais já realizados") — é o único lugar que
+  // guarda QUAL procedimento foi feito em CADA agendamento; a coluna da
+  // planilha (Interesse/Procedimento) é só o valor mais recente,
+  // sobrescrito a cada agendamento, não serve como histórico.
   const event = calendar.createEvent(`${typeLabel} - ${name}`, startDateTime, endDateTime, {
-    description: `Agendado via CRM. Telefone: ${phone}. Origem: ${source || '—'}.`,
+    description: `Agendado via CRM. Telefone: ${phone}. Origem: ${source || '—'}. Procedimento: ${procedure || '—'}.`,
   });
 
   const confirmedAppointment = {
@@ -279,6 +287,58 @@ function stripStatusPrefix(title) {
   return t;
 }
 
+/**
+ * Histórico de procedimentos individuais já realizados por um cliente
+ * (pedido do usuário 2026-09-24: "acesso ao cadastro de clientes onde
+ * exibirá um histórico de procedimentos individuais já realizados").
+ * Varre a Agenda (não a planilha — o campo Interesse/Procedimento da
+ * planilha é só o valor mais recente, sobrescrito a cada agendamento) num
+ * intervalo amplo de 3 anos pra trás, filtra pelos eventos cuja descrição
+ * tem o mesmo telefone, e devolve só os marcados como ✅ Concluído (achado
+ * de verdade "já realizado", não agendado/desmarcado/não compareceu).
+ */
+function getClientHistory(phone) {
+  if (!phone) return { ok: false, error: 'Campo obrigatório: phone.' };
+
+  const calendar = CalendarApp.getCalendarById(CALENDAR_ID);
+  if (!calendar) return { ok: false, error: 'Agenda não encontrada — verifique CALENDAR_ID no script.' };
+
+  const bareDigits = String(phone).replace(/\D/g, '');
+  const rangeEnd = new Date();
+  rangeEnd.setDate(rangeEnd.getDate() + 1);
+  const rangeStart = new Date();
+  rangeStart.setFullYear(rangeStart.getFullYear() - 3);
+
+  const events = calendar.getEvents(rangeStart, rangeEnd);
+  const history = [];
+
+  events.forEach((ev) => {
+    const rawTitle = ev.getTitle() || '';
+    if (!rawTitle.trim().startsWith(STATUS_PREFIXES.DONE)) return; // só concluídos
+
+    const description = ev.getDescription() || '';
+    const phoneMatch = description.match(/Telefone:\s*(\+?\d+)/);
+    const evDigits = phoneMatch ? phoneMatch[1].replace(/\D/g, '') : '';
+    if (!evDigits || evDigits !== bareDigits) return;
+
+    const bareTitle = stripStatusPrefix(rawTitle);
+    const typeMatch = bareTitle.match(/^([^-—]+)[-—]/);
+    const procMatch = description.match(/Procedimento:\s*([^.]+)\./);
+    const procedure = procMatch ? procMatch[1].trim() : '';
+
+    history.push({
+      id: ev.getId(),
+      date: Utilities.formatDate(ev.getStartTime(), TIME_ZONE, 'yyyy-MM-dd'),
+      time: Utilities.formatDate(ev.getStartTime(), TIME_ZONE, 'HH:mm'),
+      type: typeMatch ? typeMatch[1].trim() : '',
+      procedure: (procedure && procedure !== '—') ? procedure : '',
+    });
+  });
+
+  history.sort((a, b) => (a.date + a.time < b.date + b.time ? 1 : -1));
+  return { ok: true, history };
+}
+
 function completeAppointment(payload) {
   const { eventId } = payload;
   if (!eventId) return { ok: false, error: 'Campo obrigatório: eventId.' };
@@ -330,7 +390,7 @@ function editAppointment(payload) {
   // na descrição original do evento.
   const phoneMatch = (event.getDescription() || '').match(/Telefone:\s*(\+?\d+)/);
   const phone = phoneMatch ? phoneMatch[1] : '';
-  event.setDescription(`Agendado via CRM. Telefone: ${phone || '—'}. Origem: ${source || '—'}.`);
+  event.setDescription(`Agendado via CRM. Telefone: ${phone || '—'}. Origem: ${source || '—'}. Procedimento: ${procedure || '—'}.`);
 
   const confirmedAppointment = {
     id: event.getId(),

@@ -1723,6 +1723,13 @@
       <h2 id="ldName">—</h2>
       <div class="lead-detail-grid" id="ldBody"></div>
 
+      <!-- Histórico de Procedimentos — pedido do usuário 2026-09-24:
+           "acesso ao cadastro de clientes onde exibirá um histórico de
+           procedimentos individuais já realizados". Só os agendamentos
+           marcados como ✅ Concluído (getClientHistory no Apps Script). -->
+      <h3 style="font-size: 14px; color: var(--cor-texto-marca); margin: 22px 0 12px; border-top: 1px solid var(--cor-creme-avela); padding-top: 18px;">📋 Histórico de Procedimentos</h3>
+      <div id="ldHistoryList"></div>
+
       <h3 style="font-size: 14px; color: var(--cor-texto-marca); margin: 22px 0 12px; border-top: 1px solid var(--cor-creme-avela); padding-top: 18px; display:flex; align-items:center; justify-content:space-between;">
         <span>💰 Financeiro</span>
         <button class="icon-btn-flat" onclick="openReceivableModal()" title="Lançar cobrança" aria-label="Lançar cobrança" style="width:26px;height:26px;font-size:15px;">+</button>
@@ -2784,6 +2791,7 @@
       `).join('');
 
       renderLeadFinanceList(phone);
+      renderLeadHistory(phone);
 
       // Preenche o formulário de edição com o estado atual do lead.
       document.getElementById('ldEditName').value = lead.name || '';
@@ -2847,6 +2855,58 @@
           </button>
         </div>
       `).join('');
+    }
+
+    // Histórico de procedimentos individuais já realizados (pedido do
+    // usuário 2026-09-24: "acesso ao cadastro de clientes onde exibirá um
+    // histórico de procedimentos individuais já realizados"). Não vem de
+    // um array pré-carregado como allFinance/allData — buscar histórico
+    // de TODOS os leads de uma vez seria caro (varre 3 anos de Agenda por
+    // cliente no Apps Script); busca sob demanda só quando o painel do
+    // lead abre.
+    async function renderLeadHistory(phone) {
+      const container = document.getElementById('ldHistoryList');
+      const settings = loadSettings();
+      if (!settings || !settings.scriptUrl) {
+        container.innerHTML = '<div class="agenda-empty" style="padding:8px 0;">⚙️ Configure a URL do Apps Script em ⚙️ Config para ver o histórico.</div>';
+        return;
+      }
+
+      container.innerHTML = '<div class="agenda-empty" style="padding:8px 0;">⏳ Carregando histórico...</div>';
+
+      try {
+        const res = await fetch(`${settings.scriptUrl}?action=clientHistory&phone=${encodeURIComponent(phone)}`);
+        const body = await res.json();
+        if (!body.ok) throw new Error(body.error || 'Erro ao buscar histórico');
+
+        // O painel pode ter fechado ou trocado de cliente enquanto a
+        // chamada estava no ar — não pisa num histórico que já não é mais
+        // o que está aberto.
+        if (currentDetailPhone !== phone) return;
+
+        const items = body.history || [];
+        if (items.length === 0) {
+          container.innerHTML = '<div class="agenda-empty" style="padding:8px 0;">Nenhum procedimento concluído registrado ainda.</div>';
+          return;
+        }
+
+        container.innerHTML = items.map(item => `
+          <div class="finance-row">
+            <div class="finance-row-main">
+              <span>${item.procedure || item.type || 'Atendimento'}</span>
+              <span class="finance-row-value" style="color:var(--cor-cinza-cacau); font-weight:400;">${formatDateBR(item.date)}</span>
+            </div>
+            <div class="finance-row-meta">
+              <span>${item.type || '—'}</span>
+              <span>${item.time || ''}</span>
+            </div>
+          </div>
+        `).join('');
+      } catch (err) {
+        if (currentDetailPhone !== phone) return;
+        console.error('Erro ao buscar histórico do cliente:', err);
+        container.innerHTML = '<div class="agenda-empty" style="padding:8px 0;">❌ Erro ao carregar histórico.</div>';
+      }
     }
 
     async function toggleReceivableStatus(id, newStatus) {
