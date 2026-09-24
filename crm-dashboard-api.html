@@ -1108,10 +1108,7 @@
         </div>
         <div class="form-group">
           <label>Telefone:</label>
-          <input type="tel" id="apPhone" placeholder="15997892900" maxlength="11">
-          <small style="color: var(--cor-cinza-cacau); margin-top: 5px; display: block;">
-            Só DDD + número, sem espaço nem +55 — isso é preenchido automático.
-          </small>
+          <input type="tel" id="apPhone">
         </div>
         <div class="form-group">
           <label>Origem:</label>
@@ -2213,7 +2210,7 @@
 
       const phone = normalizePhoneBR(phoneRaw);
       if (phone.replace(/\D/g, '').length < 12) {
-        showAppointmentError('⚠️ Telefone inválido — digite DDD + número, ex: 15997892900.');
+        showAppointmentError('⚠️ Telefone inválido — digite DDD + número (ex: 15997892900) ou cole do WhatsApp (ex: +55 15 99789-2900).');
         return;
       }
       // Grava o valor completo (+55...) de volta no campo, é o que
