@@ -853,7 +853,12 @@
 
     /* Visão do Mês — calendário em grade pra ver de longe quais dias
        estão ocupados (pedido do usuário 2026-09-24). */
+    /* Largura fixa (não só max-width) — sem isso o modal encolhia e
+       crescia de tamanho dependendo do conteúdo de cada mês (com/sem
+       detalhe do dia selecionado), ficando inconsistente entre um mês e
+       outro (reportado pelo usuário 2026-09-24). */
     .modal-content-wide {
+      width: 90%;
       max-width: 420px;
     }
 
