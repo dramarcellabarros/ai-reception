@@ -912,7 +912,13 @@ function cleanupTestData() {
     to.setDate(to.getDate() + 90);
     calendar.getEvents(from, to).forEach((event) => {
       const title = stripStatusPrefix(event.getTitle() || '');
-      if (title.startsWith('TESTE')) {
+      // .includes(), não .startsWith(): o título real é "Tipo - Nome"
+      // (ex.: "Avaliação - TESTE Sinal") — "TESTE" fica no meio, nunca no
+      // início. startsWith() nunca batia aqui, então essa parte da
+      // limpeza nunca removia nenhum evento de teste (achado no primeiro
+      // uso real desta função, 2026-09-24) — só Leads/Financeiro, que
+      // comparam o nome puro, sem esse prefixo.
+      if (title.includes('TESTE')) {
         event.deleteEvent();
         eventsDeleted++;
       }
