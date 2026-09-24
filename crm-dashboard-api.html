@@ -1600,8 +1600,8 @@
        Confirmar" do Novo Agendamento. -->
   <div class="modal" id="receivableModal">
     <div class="modal-content">
-      <span class="close-btn" onclick="closeReceivableModal()">&times;</span>
-      <h2>💰 Lançar Cobrança</h2>
+      <span class="close-btn" onclick="cancelReceivableFromComplete()">&times;</span>
+      <h2 id="receivableModalTitle">💰 Lançar Cobrança</h2>
       <div id="receivableError"></div>
 
       <div id="receivableFormStep">
@@ -1630,7 +1630,10 @@
             <option value="Outro">Outro</option>
           </select>
         </div>
-        <button class="btn" onclick="reviewReceivable()">Revisar →</button>
+        <div style="display:flex; gap:10px;">
+          <button class="btn secondary" id="recSkipBtn" onclick="skipReceivableAfterComplete()" style="display:none; flex:1;">Pular</button>
+          <button class="btn" onclick="reviewReceivable()" style="flex:1;">Revisar →</button>
+        </div>
       </div>
 
       <div id="receivableConfirmStep" style="display:none;">
@@ -1751,13 +1754,18 @@
     // atendimento é Procedimento ou Retorno, registrar QUAL procedimento,
     // não só a categoria genérica. "Outro" existe pra não travar um
     // procedimento novo que ainda não esteja nesta lista.
+    // "Bioestimuladores" e "Enzimas" separados em duas opções (pedido do
+    // usuário 2026-09-24) — o site/knowledge trata como uma categoria só
+    // ("Bioestimuladores & Enzimas"), mas na prática são cobranças/
+    // procedimentos distintos que ela quer registrar separadamente.
     const PROCEDURE_OPTIONS = [
       'LumineSculpt',
       'Skinglow',
       'Toxina Botulínica',
       'Preenchimento',
       'Harmonização Facial',
-      'Bioestimuladores & Enzimas',
+      'Bioestimuladores',
+      'Enzimas',
       'Harmonização Glútea',
       'PEIM — Vasinhos',
     ];
@@ -2947,18 +2955,35 @@
     }
 
     // --- Lançar Cobrança (contas a receber) ---
+    //
+    // phone-alvo é explícito (receivableTargetPhone), não só
+    // currentDetailPhone — pedido do usuário 2026-09-24: "quando o
+    // procedimento for realizado e no momento de baixar o atendimento já
+    // gatilhar o recebimento ali e lançar no financeiro" abre este mesmo
+    // modal a partir do fluxo de Concluir Atendimento, onde o painel do
+    // lead pode nem estar aberto.
 
     let receivableContext = null;
+    let receivableTargetPhone = null;
+    // true quando aberto a partir de "Concluir Atendimento" — pré-marca a
+    // 1ª parcela como já recebida (o pagamento costuma acontecer na hora
+    // do atendimento) e volta pro fluxo de baixa ao fechar, em vez de
+    // reabrir o painel do lead.
+    let receivableFromComplete = false;
 
-    function openReceivableModal() {
-      if (!currentDetailPhone) return;
+    function openReceivableModal(phone, options) {
+      const targetPhone = phone || currentDetailPhone;
+      if (!targetPhone) return;
       const settings = loadSettings();
       if (!settings || !settings.scriptUrl) {
         alert('Configure a "URL do Apps Script" em ⚙️ Config primeiro.');
         return;
       }
-      const lead = allData.find(l => l.phone === currentDetailPhone);
-      document.getElementById('recDescription').value = (lead && lead.procedure) || '';
+      receivableTargetPhone = targetPhone;
+      receivableFromComplete = Boolean(options && options.fromComplete);
+
+      const lead = allData.find(l => l.phone === targetPhone);
+      document.getElementById('recDescription').value = (options && options.description) || (lead && lead.procedure) || '';
       document.getElementById('recTotalValue').value = '';
       document.getElementById('recInstallments').value = 1;
       document.getElementById('recFirstDueDate').value = localDateStr(new Date());
@@ -2966,21 +2991,43 @@
       document.getElementById('receivableError').innerHTML = '';
       document.getElementById('receivableFormStep').style.display = 'block';
       document.getElementById('receivableConfirmStep').style.display = 'none';
+      document.getElementById('receivableModalTitle').textContent = receivableFromComplete
+        ? '💰 Registrar cobrança do atendimento'
+        : '💰 Lançar Cobrança';
+      document.getElementById('recSkipBtn').style.display = receivableFromComplete ? 'block' : 'none';
 
       // Fecha visualmente o painel do lead por baixo (mesmo z-index, os
       // dois "abertos" ao mesmo tempo faziam o de detalhe cobrir o de
       // cobrança) — currentDetailPhone continua guardado pra reabrir
-      // depois.
+      // depois, se for o caso.
       document.getElementById('leadDetailModal').classList.remove('open');
+      document.getElementById('completeModal').classList.remove('open');
       document.getElementById('receivableModal').classList.add('open');
     }
 
+    // Só fecha visualmente — nunca decide sozinha o que fazer com o
+    // encadeamento pendente (pendingChainPrefill). Isso é decisão de quem
+    // chama: skipReceivableAfterComplete e submitReceivable (sucesso)
+    // seguem pro próximo agendamento depois de chamar esta função;
+    // cancelReceivableFromComplete (botão ×) desiste de tudo.
     function closeReceivableModal() {
       document.getElementById('receivableModal').classList.remove('open');
       receivableContext = null;
-      // Volta pro painel do lead de onde veio.
-      if (currentDetailPhone) {
+      if (!receivableFromComplete && currentDetailPhone) {
         document.getElementById('leadDetailModal').classList.add('open');
+      }
+      receivableTargetPhone = null;
+      receivableFromComplete = false;
+    }
+
+    // Botão × do modal — diferente de "Pular", desiste de tudo, inclusive
+    // do encadeamento de agendamento pendente (se veio do fluxo de baixa).
+    function cancelReceivableFromComplete() {
+      const wasFromComplete = receivableFromComplete;
+      closeReceivableModal();
+      if (wasFromComplete) {
+        completeContext = null;
+        pendingChainPrefill = null;
       }
     }
 
@@ -3010,12 +3057,15 @@
         dueDate.setMonth(dueDate.getMonth() + i);
         const value = (i === installmentCount - 1) ? Math.round((totalValue - sumSoFar) * 100) / 100 : baseValue;
         sumSoFar += value;
-        installments.push({ dueDate: localDateStr(dueDate), value });
+        // Vindo do fluxo de baixa, a 1ª parcela já nasce recebida — o
+        // pagamento (ou a entrada) costuma acontecer na hora do
+        // atendimento, não precisa marcar de novo depois.
+        installments.push({ dueDate: localDateStr(dueDate), value, received: receivableFromComplete && i === 0 });
       }
 
-      const lead = allData.find(l => l.phone === currentDetailPhone);
+      const lead = allData.find(l => l.phone === receivableTargetPhone);
       receivableContext = {
-        phone: currentDetailPhone,
+        phone: receivableTargetPhone,
         name: (lead && lead.name) || '—',
         description,
         totalValue,
@@ -3033,7 +3083,7 @@
           <span class="ld-value">${formatCurrencyBRL(inst.value)} — vence ${formatDateBR(inst.dueDate)}</span>
         </div>
         <label style="display:flex; align-items:center; gap:6px; font-size:12.5px; color:var(--cor-cinza-cacau); margin:-6px 0 8px;">
-          <input type="checkbox" style="width:auto;" onchange="receivableContext.installments[${i}].received = this.checked">
+          <input type="checkbox" style="width:auto;" ${inst.received ? 'checked' : ''} onchange="receivableContext.installments[${i}].received = this.checked">
           Já recebida
         </label>
       `).join('');
@@ -3074,10 +3124,12 @@
 
         const count = receivableContext.installments.length;
         const name = receivableContext.name;
+        const wasFromComplete = receivableFromComplete;
         closeReceivableModal();
         showToast(`✅ ${count} parcela(s) lançada(s) para ${name}`);
         await fetchFinanceData();
         if (currentDetailPhone) renderLeadFinanceList(currentDetailPhone);
+        if (wasFromComplete) proceedAfterReceivableStep();
       } catch (err) {
         document.getElementById('receivableError').innerHTML = `<div class="form-error">❌ ${err.message}</div>`;
       } finally {
@@ -3479,7 +3531,8 @@
 
       const type = detectAppointmentType(summary);
       const info = parseEventInfo(summary, description);
-      completeContext = { eventId, ...info };
+      const lead = allData.find(l => l.phone === info.phone);
+      completeContext = { eventId, ...info, procedure: (lead && lead.procedure) || '' };
 
       document.getElementById('cmBody').innerHTML = `
         <div class="ld-row"><span class="ld-label">Paciente</span><span class="ld-value">${info.name || '—'}</span></div>
@@ -3522,6 +3575,12 @@
       completeContext = null;
     }
 
+    // Prefill do próximo agendamento (encadeamento avaliação->procedimento
+    // ou procedimento->retorno) pendente de abrir DEPOIS da etapa
+    // financeira — nunca antes dela, senão o modal de Novo Agendamento
+    // ficaria por cima escondendo a pergunta de cobrança.
+    let pendingChainPrefill = null;
+
     async function answerComplete(chain, nextType) {
       if (!completeContext) return;
       const settings = loadSettings();
@@ -3537,20 +3596,41 @@
         const result = await response.json();
         if (!result.ok) throw new Error(result.error || 'Erro desconhecido');
 
-        const { name, phone, source } = completeContext;
-        closeCompleteModal();
+        const { name, phone, source, procedure } = completeContext;
+        pendingChainPrefill = chain ? { name, phone, source, type: nextType } : null;
 
         if (chain) {
-          showToast(`✅ Concluído — agora escolha o horário do ${(APPOINTMENT_TYPE_LABELS[nextType] || '').toLowerCase()}`);
-          refreshData();
-          openNewAppointmentModal({ name, phone, source, type: nextType });
+          showToast(`✅ Concluído — depois de registrar a cobrança, escolha o horário do ${(APPOINTMENT_TYPE_LABELS[nextType] || '').toLowerCase()}`);
         } else {
           showToast(`✅ Atendimento de ${name} concluído`);
-          refreshData();
         }
+        refreshData();
+
+        // Pergunta se quer registrar a cobrança desse atendimento agora,
+        // já aproveitando o momento da baixa (pedido do usuário
+        // 2026-09-24: "no momento de baixar o atendimento já gatilhar o
+        // recebimento ali e lançar no financeiro"). "Pular" ou lançar
+        // seguem pro próximo agendamento do encadeamento depois, se houver.
+        openReceivableModal(phone, { fromComplete: true, description: procedure });
       } catch (err) {
         q.innerHTML = `<div class="form-error">❌ ${err.message}</div>`;
       }
+    }
+
+    // Chamado ao "Pular" a etapa financeira, ou depois de lançar com
+    // sucesso — segue pro próximo agendamento do encadeamento, se houver.
+    function proceedAfterReceivableStep() {
+      completeContext = null;
+      if (pendingChainPrefill) {
+        const prefill = pendingChainPrefill;
+        pendingChainPrefill = null;
+        openNewAppointmentModal(prefill);
+      }
+    }
+
+    function skipReceivableAfterComplete() {
+      closeReceivableModal();
+      proceedAfterReceivableStep();
     }
 
     // --- Editar Agendamento (nome, origem, tipo, procedimento, data e
