@@ -102,6 +102,15 @@ function doPost(e) {
     if (payload.action === 'reopenAppointment') {
       return jsonResponse(reopenAppointment(payload));
     }
+    if (payload.action === 'createReceivables') {
+      return jsonResponse(createReceivables(payload));
+    }
+    if (payload.action === 'markReceivableStatus') {
+      return jsonResponse(markReceivableStatus(payload));
+    }
+    if (payload.action === 'updateReceivable') {
+      return jsonResponse(updateReceivable(payload));
+    }
 
     return jsonResponse({ ok: false, error: 'Ação desconhecida: ' + payload.action });
   } catch (err) {
@@ -899,6 +908,135 @@ function cleanupTestData() {
   }
 
   Logger.log(`Limpeza concluída: ${eventsDeleted} evento(s) da Agenda e ${rowsDeleted} linha(s) da Planilha removidos.`);
+}
+
+// ============================================================
+// Financeiro — contas a receber vinculadas ao lead (pedido do usuário
+// 2026-09-24: "lançar as parcelas, informar o meio de pagamento,
+// relatório de recebidos e a receber vinculados aos lead" + "quero
+// lançar o que recebi em pix, cartao, dinheiro para depois saber
+// quanto recebi por período"). Aba nova "Financeiro" na mesma
+// planilha, criada sozinha na primeira escrita (mesmo princípio de
+// ensureSheetColumns) — cada parcela é uma linha, vinculada ao lead
+// pelo telefone. Controle manual (a usuária marca que recebeu), não é
+// cobrança automática de verdade.
+// ============================================================
+
+const FINANCE_SHEET_NAME = 'Financeiro';
+const FINANCE_COLUMNS = [
+  'ID',
+  'Telefone',
+  'Nome',
+  'Descrição',
+  'Valor Total Combinado',
+  'Parcela',
+  'Valor da Parcela',
+  'Vencimento',
+  'Meio de Pagamento',
+  'Status',
+  'Data de Recebimento',
+  'Criado em',
+];
+
+function getFinanceSheet() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = ss.getSheetByName(FINANCE_SHEET_NAME);
+  if (!sheet) {
+    sheet = ss.insertSheet(FINANCE_SHEET_NAME);
+    sheet.getRange(1, 1, 1, FINANCE_COLUMNS.length).setValues([FINANCE_COLUMNS]);
+    sheet.setFrozenRows(1);
+    return sheet;
+  }
+  const lastCol = sheet.getLastColumn();
+  if (lastCol < FINANCE_COLUMNS.length) {
+    const missing = FINANCE_COLUMNS.slice(lastCol);
+    sheet.getRange(1, lastCol + 1, 1, missing.length).setValues([missing]);
+  }
+  return sheet;
+}
+
+/**
+ * Lança N parcelas pra um lead — cada parcela vira uma linha na aba
+ * Financeiro. payload.installments já vem calculado pelo Dashboard
+ * ([{ dueDate, value }]), mostrado numa prévia antes de confirmar
+ * (mesmo padrão de "Revisar e Confirmar" do Novo Agendamento).
+ */
+function createReceivables(payload) {
+  const { phone, name, description, totalValue, paymentMethod, installments } = payload;
+  if (!phone || !name || !installments || !installments.length) {
+    return { ok: false, error: 'Campos obrigatórios: phone, name, installments.' };
+  }
+
+  const sheet = getFinanceSheet();
+  const createdAt = Utilities.formatDate(new Date(), TIME_ZONE, "yyyy-MM-dd'T'HH:mm:ss");
+  const total = installments.length;
+
+  const rows = installments.map((inst, i) => [
+    Utilities.getUuid(),
+    phone,
+    name,
+    description || '',
+    totalValue || '',
+    `${i + 1}/${total}`,
+    inst.value,
+    inst.dueDate,
+    paymentMethod || '',
+    'A receber',
+    '',
+    createdAt,
+  ]);
+
+  const startRow = sheet.getLastRow() + 1;
+  const range = sheet.getRange(startRow, 1, rows.length, FINANCE_COLUMNS.length);
+  range.setNumberFormat('@');
+  range.setValues(rows);
+
+  return { ok: true, count: rows.length };
+}
+
+/** Marca uma parcela como recebida (ou desfaz, volta pra "A receber"). */
+function markReceivableStatus(payload) {
+  const { id, status } = payload;
+  if (!id || !status) return { ok: false, error: 'Campos obrigatórios: id, status.' };
+
+  const sheet = getFinanceSheet();
+  const data = sheet.getDataRange().getValues();
+  const headers = data[0];
+  const idCol = headers.indexOf('ID');
+  const statusCol = headers.indexOf('Status');
+  const receivedCol = headers.indexOf('Data de Recebimento');
+
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][idCol]) === String(id)) {
+      sheet.getRange(i + 1, statusCol + 1).setValue(status);
+      sheet.getRange(i + 1, receivedCol + 1).setValue(
+        status === 'Recebido' ? Utilities.formatDate(new Date(), TIME_ZONE, 'yyyy-MM-dd') : ''
+      );
+      return { ok: true };
+    }
+  }
+  return { ok: false, error: 'Parcela não encontrada.' };
+}
+
+/** Edita valor, vencimento ou meio de pagamento de uma parcela já lançada. */
+function updateReceivable(payload) {
+  const { id, dueDate, value, paymentMethod } = payload;
+  if (!id) return { ok: false, error: 'Campo obrigatório: id.' };
+
+  const sheet = getFinanceSheet();
+  const data = sheet.getDataRange().getValues();
+  const headers = data[0];
+  const idCol = headers.indexOf('ID');
+
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][idCol]) === String(id)) {
+      if (dueDate !== undefined) sheet.getRange(i + 1, headers.indexOf('Vencimento') + 1).setValue(dueDate);
+      if (value !== undefined) sheet.getRange(i + 1, headers.indexOf('Valor da Parcela') + 1).setValue(value);
+      if (paymentMethod !== undefined) sheet.getRange(i + 1, headers.indexOf('Meio de Pagamento') + 1).setValue(paymentMethod);
+      return { ok: true };
+    }
+  }
+  return { ok: false, error: 'Parcela não encontrada.' };
 }
 
 function jsonResponse(obj) {

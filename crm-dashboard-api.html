@@ -994,6 +994,54 @@
       min-width: 42px;
     }
 
+    /* Contas a receber (pedido do usuário 2026-09-24) — linha de parcela
+       no painel do lead e no relatório financeiro. */
+    .finance-row {
+      border: 1px solid var(--cor-creme-avela);
+      border-radius: 6px;
+      padding: 10px 12px;
+      margin-bottom: 8px;
+      background: var(--cor-branco-perola);
+    }
+
+    .finance-row-main {
+      display: flex;
+      justify-content: space-between;
+      font-weight: 600;
+      font-size: 13.5px;
+      color: var(--cor-texto-marca);
+      margin-bottom: 4px;
+    }
+
+    .finance-row-value {
+      font-family: 'Courier New', monospace;
+    }
+
+    .finance-row-meta {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      font-size: 12px;
+      color: var(--cor-cinza-cacau);
+      margin-bottom: 8px;
+    }
+
+    .finance-status-badge {
+      padding: 1px 8px;
+      border-radius: 10px;
+      font-weight: 700;
+    }
+
+    .finance-status-paid {
+      background: #E3F0DC;
+      color: #4A7A3B;
+    }
+
+    .finance-status-pending {
+      background: var(--cor-rosa-sereno);
+      color: var(--cor-texto-marca);
+    }
+
     .form-error {
       background: #f8d7da;
       border: 1px solid #f5c6cb;
@@ -1420,11 +1468,66 @@
   </div>
 
   <!-- Modal de Detalhe do Lead -->
+  <!-- Modal de Lançar Cobrança (contas a receber, pedido do usuário
+       2026-09-24) — divide o valor total em parcelas mensais iguais e
+       mostra a prévia antes de gravar, mesmo padrão de "Revisar e
+       Confirmar" do Novo Agendamento. -->
+  <div class="modal" id="receivableModal">
+    <div class="modal-content">
+      <span class="close-btn" onclick="closeReceivableModal()">&times;</span>
+      <h2>💰 Lançar Cobrança</h2>
+      <div id="receivableError"></div>
+
+      <div id="receivableFormStep">
+        <div class="form-group">
+          <label>Descrição:</label>
+          <input type="text" id="recDescription" placeholder="Ex: Toxina Botulínica" maxlength="80">
+        </div>
+        <div class="form-group">
+          <label>Valor total combinado (R$):</label>
+          <input type="number" id="recTotalValue" min="0" step="0.01" placeholder="0,00">
+        </div>
+        <div class="form-group">
+          <label>Número de parcelas:</label>
+          <input type="number" id="recInstallments" min="1" max="24" value="1">
+        </div>
+        <div class="form-group">
+          <label>Data do 1º vencimento:</label>
+          <input type="date" id="recFirstDueDate">
+        </div>
+        <div class="form-group">
+          <label>Meio de pagamento:</label>
+          <select id="recPaymentMethod">
+            <option value="Pix">Pix</option>
+            <option value="Cartão">Cartão</option>
+            <option value="Dinheiro">Dinheiro</option>
+            <option value="Outro">Outro</option>
+          </select>
+        </div>
+        <button class="btn" onclick="reviewReceivable()">Revisar →</button>
+      </div>
+
+      <div id="receivableConfirmStep" style="display:none;">
+        <div id="receivableConfirmBody"></div>
+        <div style="display:flex; gap:10px; margin-top:20px;">
+          <button class="btn secondary" onclick="backToReceivableForm()">← Voltar</button>
+          <button class="btn" id="recSubmitBtn" onclick="submitReceivable()" style="flex:1;">✅ Confirmar e Lançar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="modal" id="leadDetailModal">
     <div class="modal-content">
       <span class="close-btn" onclick="closeLeadDetail()">&times;</span>
       <h2 id="ldName">—</h2>
       <div class="lead-detail-grid" id="ldBody"></div>
+
+      <h3 style="font-size: 14px; color: var(--cor-texto-marca); margin: 22px 0 12px; border-top: 1px solid var(--cor-creme-avela); padding-top: 18px; display:flex; align-items:center; justify-content:space-between;">
+        <span>💰 Financeiro</span>
+        <button class="icon-btn-flat" onclick="openReceivableModal()" title="Lançar cobrança" aria-label="Lançar cobrança" style="width:26px;height:26px;font-size:15px;">+</button>
+      </h3>
+      <div id="ldFinanceList"></div>
 
       <h3 style="font-size: 14px; color: var(--cor-texto-marca); margin: 22px 0 12px; border-top: 1px solid var(--cor-creme-avela); padding-top: 18px;">✏️ Editar</h3>
       <div id="ldEditError"></div>
@@ -1831,6 +1934,58 @@
       }
     }
 
+    // Contas a receber (pedido do usuário 2026-09-24) — lê a aba
+    // "Financeiro" pelo mesmo padrão de fetchSheetsData(). Essa aba só
+    // existe depois que alguém lança a primeira cobrança pelo Dashboard
+    // (ensureFinanceSheet no Apps Script cria sozinha) — antes disso a
+    // API responde erro 400 "Unable to parse range" por a aba não
+    // existir ainda, tratado aqui como "nenhuma cobrança lançada", não
+    // como falha real.
+    let allFinance = [];
+
+    async function fetchFinanceData() {
+      const settings = loadSettings();
+      if (!settings || !settings.spreadsheetId || !settings.apiKey) {
+        allFinance = [];
+        return;
+      }
+
+      try {
+        const url = `https://sheets.googleapis.com/v4/spreadsheets/${settings.spreadsheetId}/values/Financeiro?key=${settings.apiKey}`;
+        const response = await fetch(url);
+
+        if (!response.ok) {
+          allFinance = [];
+          return;
+        }
+
+        const result = await response.json();
+        const values = result.values || [];
+        if (values.length < 2) {
+          allFinance = [];
+          return;
+        }
+
+        const headers = values[0];
+        allFinance = values.slice(1).map(row => ({
+          id: row[headers.indexOf('ID')] || '',
+          phone: row[headers.indexOf('Telefone')] || '',
+          name: row[headers.indexOf('Nome')] || '',
+          description: row[headers.indexOf('Descrição')] || '',
+          totalValue: row[headers.indexOf('Valor Total Combinado')] || '',
+          installmentLabel: row[headers.indexOf('Parcela')] || '',
+          value: parseFloat(row[headers.indexOf('Valor da Parcela')]) || 0,
+          dueDate: row[headers.indexOf('Vencimento')] || '',
+          paymentMethod: row[headers.indexOf('Meio de Pagamento')] || '',
+          status: row[headers.indexOf('Status')] || 'A receber',
+          receivedDate: row[headers.indexOf('Data de Recebimento')] || '',
+        })).filter(r => r.id);
+      } catch (err) {
+        console.error('Erro ao buscar financeiro:', err);
+        allFinance = [];
+      }
+    }
+
     // Estado vazio de verdade — nunca inventa leads fictícios pra preencher
     // a tela. Usado quando falta configuração, a planilha ainda não tem
     // dados, ou a sincronização falhou (removido a pedido do usuário
@@ -1991,6 +2146,7 @@
     function refreshData() {
       fetchSheetsData();
       fetchCalendarEvents();
+      fetchFinanceData();
     }
 
     const WEEKDAY_LABELS_PT = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
@@ -2387,6 +2543,8 @@
         </div>
       `).join('');
 
+      renderLeadFinanceList(phone);
+
       // Preenche o formulário de edição com o estado atual do lead.
       document.getElementById('ldEditName').value = lead.name || '';
       document.getElementById('ldEditSource').value = lead.source || 'INSTAGRAM';
@@ -2414,6 +2572,196 @@
     function closeLeadDetail() {
       document.getElementById('leadDetailModal').classList.remove('open');
       currentDetailPhone = null;
+    }
+
+    function formatCurrencyBRL(value) {
+      const n = parseFloat(value) || 0;
+      return n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    }
+
+    // Contas a receber do lead (pedido do usuário 2026-09-24) — lista as
+    // parcelas já lançadas (allFinance, carregado por fetchFinanceData) e
+    // deixa marcar/desmarcar cada uma como recebida direto daqui.
+    function renderLeadFinanceList(phone) {
+      const container = document.getElementById('ldFinanceList');
+      const items = allFinance.filter(f => f.phone === phone);
+
+      if (items.length === 0) {
+        container.innerHTML = '<div class="agenda-empty" style="padding:8px 0;">Nenhuma cobrança lançada ainda.</div>';
+        return;
+      }
+
+      container.innerHTML = items.map(item => `
+        <div class="finance-row">
+          <div class="finance-row-main">
+            <span>${item.description || 'Cobrança'} — Parcela ${item.installmentLabel}</span>
+            <span class="finance-row-value">${formatCurrencyBRL(item.value)}</span>
+          </div>
+          <div class="finance-row-meta">
+            <span>Vence ${formatDateBR(item.dueDate)}</span>
+            <span>${item.paymentMethod || '—'}</span>
+            <span class="finance-status-badge ${item.status === 'Recebido' ? 'finance-status-paid' : 'finance-status-pending'}">${item.status}</span>
+          </div>
+          <button class="complete-btn" onclick="toggleReceivableStatus('${item.id}', '${item.status === 'Recebido' ? 'A receber' : 'Recebido'}')">
+            ${item.status === 'Recebido' ? '↩️ Desfazer' : '✅ Marcar recebido'}
+          </button>
+        </div>
+      `).join('');
+    }
+
+    async function toggleReceivableStatus(id, newStatus) {
+      const settings = loadSettings();
+      if (!settings || !settings.scriptUrl) {
+        alert('Configure a "URL do Apps Script" em ⚙️ Config primeiro.');
+        return;
+      }
+      try {
+        const response = await fetch(settings.scriptUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({ action: 'markReceivableStatus', id, status: newStatus })
+        });
+        const result = await response.json();
+        if (!result.ok) throw new Error(result.error || 'Erro desconhecido');
+
+        showToast(newStatus === 'Recebido' ? '✅ Marcado como recebido' : '↩️ Voltou pra "a receber"');
+        await fetchFinanceData();
+        if (currentDetailPhone) renderLeadFinanceList(currentDetailPhone);
+      } catch (err) {
+        alert(`❌ ${err.message}`);
+      }
+    }
+
+    // --- Lançar Cobrança (contas a receber) ---
+
+    let receivableContext = null;
+
+    function openReceivableModal() {
+      if (!currentDetailPhone) return;
+      const settings = loadSettings();
+      if (!settings || !settings.scriptUrl) {
+        alert('Configure a "URL do Apps Script" em ⚙️ Config primeiro.');
+        return;
+      }
+      const lead = allData.find(l => l.phone === currentDetailPhone);
+      document.getElementById('recDescription').value = (lead && lead.procedure) || '';
+      document.getElementById('recTotalValue').value = '';
+      document.getElementById('recInstallments').value = 1;
+      document.getElementById('recFirstDueDate').value = localDateStr(new Date());
+      document.getElementById('recPaymentMethod').value = 'Pix';
+      document.getElementById('receivableError').innerHTML = '';
+      document.getElementById('receivableFormStep').style.display = 'block';
+      document.getElementById('receivableConfirmStep').style.display = 'none';
+
+      // Fecha visualmente o painel do lead por baixo (mesmo z-index, os
+      // dois "abertos" ao mesmo tempo faziam o de detalhe cobrir o de
+      // cobrança) — currentDetailPhone continua guardado pra reabrir
+      // depois.
+      document.getElementById('leadDetailModal').classList.remove('open');
+      document.getElementById('receivableModal').classList.add('open');
+    }
+
+    function closeReceivableModal() {
+      document.getElementById('receivableModal').classList.remove('open');
+      receivableContext = null;
+      // Volta pro painel do lead de onde veio.
+      if (currentDetailPhone) {
+        document.getElementById('leadDetailModal').classList.add('open');
+      }
+    }
+
+    // Divide o valor total em parcelas mensais iguais, ajustando a última
+    // pra fechar exatamente o total (evita sobra/falta de centavos por
+    // arredondamento nas outras).
+    function reviewReceivable() {
+      const description = document.getElementById('recDescription').value.trim();
+      const totalValue = parseFloat(document.getElementById('recTotalValue').value);
+      const installmentCount = parseInt(document.getElementById('recInstallments').value, 10);
+      const firstDueDate = document.getElementById('recFirstDueDate').value;
+      const paymentMethod = document.getElementById('recPaymentMethod').value;
+
+      document.getElementById('receivableError').innerHTML = '';
+
+      if (!totalValue || totalValue <= 0 || !installmentCount || installmentCount < 1 || !firstDueDate) {
+        document.getElementById('receivableError').innerHTML = '<div class="form-error">⚠️ Preencha valor total, número de parcelas e data do 1º vencimento.</div>';
+        return;
+      }
+
+      const baseValue = Math.floor((totalValue / installmentCount) * 100) / 100;
+      const installments = [];
+      let sumSoFar = 0;
+      const firstDue = new Date(`${firstDueDate}T00:00:00`);
+      for (let i = 0; i < installmentCount; i++) {
+        const dueDate = new Date(firstDue);
+        dueDate.setMonth(dueDate.getMonth() + i);
+        const value = (i === installmentCount - 1) ? Math.round((totalValue - sumSoFar) * 100) / 100 : baseValue;
+        sumSoFar += value;
+        installments.push({ dueDate: localDateStr(dueDate), value });
+      }
+
+      const lead = allData.find(l => l.phone === currentDetailPhone);
+      receivableContext = {
+        phone: currentDetailPhone,
+        name: (lead && lead.name) || '—',
+        description,
+        totalValue,
+        paymentMethod,
+        installments,
+      };
+
+      const rows = installments.map((inst, i) => `
+        <div class="ld-row">
+          <span class="ld-label">Parcela ${i + 1}/${installmentCount}</span>
+          <span class="ld-value">${formatCurrencyBRL(inst.value)} — vence ${formatDateBR(inst.dueDate)}</span>
+        </div>
+      `).join('');
+
+      document.getElementById('receivableConfirmBody').innerHTML = `
+        <div class="ld-row"><span class="ld-label">Paciente</span><span class="ld-value">${receivableContext.name}</span></div>
+        <div class="ld-row"><span class="ld-label">Descrição</span><span class="ld-value">${description || '—'}</span></div>
+        <div class="ld-row"><span class="ld-label">Meio de pagamento</span><span class="ld-value">${paymentMethod}</span></div>
+        <div class="ld-row"><span class="ld-label">Valor total</span><span class="ld-value">${formatCurrencyBRL(totalValue)}</span></div>
+        <hr style="border:none;border-top:1px solid var(--cor-creme-avela);margin:10px 0;">
+        ${rows}
+      `;
+
+      document.getElementById('receivableFormStep').style.display = 'none';
+      document.getElementById('receivableConfirmStep').style.display = 'block';
+    }
+
+    function backToReceivableForm() {
+      document.getElementById('receivableConfirmStep').style.display = 'none';
+      document.getElementById('receivableFormStep').style.display = 'block';
+    }
+
+    async function submitReceivable() {
+      if (!receivableContext) return;
+      const settings = loadSettings();
+      const btn = document.getElementById('recSubmitBtn');
+      btn.disabled = true;
+      btn.textContent = '⏳ Lançando...';
+
+      try {
+        const response = await fetch(settings.scriptUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({ action: 'createReceivables', ...receivableContext })
+        });
+        const result = await response.json();
+        if (!result.ok) throw new Error(result.error || 'Erro desconhecido');
+
+        const count = receivableContext.installments.length;
+        const name = receivableContext.name;
+        closeReceivableModal();
+        showToast(`✅ ${count} parcela(s) lançada(s) para ${name}`);
+        await fetchFinanceData();
+        if (currentDetailPhone) renderLeadFinanceList(currentDetailPhone);
+      } catch (err) {
+        document.getElementById('receivableError').innerHTML = `<div class="form-error">❌ ${err.message}</div>`;
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '✅ Confirmar e Lançar';
+      }
     }
 
     function toggleManualOnlyReason() {
@@ -3175,6 +3523,7 @@
       if (loadSettings()) {
         fetchSheetsData();
         fetchCalendarEvents();
+        fetchFinanceData();
       } else {
         showEmptyState();
         toggleSettings(); // Abrir config ao carregar se não tiver configurado
