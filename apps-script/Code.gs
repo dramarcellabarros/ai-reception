@@ -597,7 +597,14 @@ function getAvailability(fromDateStr, daysAhead, excludeEventId) {
     // isso, o próprio horário atual do evento aparecia como "ocupado" só
     // por ele mesmo ainda estar lá, escondendo a opção óbvia de manter o
     // mesmo horário.
-    const events = calendar.getEvents(dayStart, dayEnd).filter((ev) => ev.getId() !== excludeEventId);
+    // Compara só a parte antes do "@": o Calendar REST API (usado pelo
+    // Dashboard pra listar eventos) devolve o id "puro"
+    // ("3kp8c6...cms"), enquanto CalendarApp.getId() aqui dentro do Apps
+    // Script devolve com sufixo ("3kp8c6...cms@google.com") — sem
+    // normalizar os dois, a comparação nunca batia e excludeEventId nunca
+    // excluía nada de verdade (achado do teste ao vivo 2026-09-24).
+    const bareExcludeId = excludeEventId ? String(excludeEventId).split('@')[0] : null;
+    const events = calendar.getEvents(dayStart, dayEnd).filter((ev) => ev.getId().split('@')[0] !== bareExcludeId);
 
     const slots = [];
     let cursor = new Date(dayStart);
