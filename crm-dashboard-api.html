@@ -918,6 +918,52 @@
       min-height: 14px;
     }
 
+    /* Calculadora de valor por procedimento (pedido do usuário
+       2026-09-25: "nesse cenário de vários procedimentos... preciso de
+       uma calculadora... para somar os procedimentos e devolver o valor
+       total") — painel que abre embaixo do campo Valor, um input por
+       procedimento já marcado na checklist acima, soma ao vivo. */
+    .procedure-calculator {
+      margin-top: 8px;
+      padding: 10px;
+      background: var(--cor-areia-suave);
+      border-radius: 6px;
+    }
+
+    .calculator-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 6px;
+      font-size: 13px;
+    }
+
+    .calculator-row input {
+      width: 90px;
+      padding: 6px 8px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 13px;
+      text-align: right;
+    }
+
+    .calculator-total {
+      display: flex;
+      justify-content: space-between;
+      font-weight: 700;
+      font-size: 14px;
+      color: var(--cor-texto-marca);
+      border-top: 1px solid var(--cor-creme-avela);
+      margin-top: 8px;
+      padding-top: 8px;
+    }
+
+    .calculator-empty {
+      font-size: 12.5px;
+      color: var(--cor-cinza-cacau);
+    }
+
     /* Busca de cliente já cadastrado no Novo Agendamento (pedido do
        usuário 2026-09-24: "selecionar um cliente já existente na base,
        pode ser um cliente recorrente em outro procedimento") — lista
@@ -1824,8 +1870,12 @@
           <div class="procedure-check-summary" id="recProcSummary"></div>
         </div>
         <div class="form-group">
-          <label>Valor total combinado (R$):</label>
+          <label style="display:flex; justify-content:space-between; align-items:center;">
+            <span>Valor total combinado (R$):</span>
+            <button type="button" class="icon-btn-flat" onclick="toggleProcedureCalculator('rec', 'recTotalValue')" title="Calculadora — somar valor de cada procedimento" aria-label="Calculadora" style="width:24px; height:24px; font-size:13px;">🧮</button>
+          </label>
           <input type="number" id="recTotalValue" min="0" step="0.01" placeholder="0,00">
+          <div class="procedure-calculator" id="recCalculator" style="display:none;"></div>
         </div>
         <div class="form-group">
           <label>Número de parcelas:</label>
@@ -1875,8 +1925,12 @@
         <div class="procedure-check-summary" id="cdProcSummary"></div>
       </div>
       <div class="form-group">
-        <label>Valor (R$):</label>
+        <label style="display:flex; justify-content:space-between; align-items:center;">
+          <span>Valor (R$):</span>
+          <button type="button" class="icon-btn-flat" onclick="toggleProcedureCalculator('cd', 'cdValue')" title="Calculadora — somar valor de cada procedimento" aria-label="Calculadora" style="width:24px; height:24px; font-size:13px;">🧮</button>
+        </label>
         <input type="number" id="cdValue" min="0" step="0.01" placeholder="0,00">
+        <div class="procedure-calculator" id="cdCalculator" style="display:none;"></div>
       </div>
       <div class="form-group">
         <label>Data:</label>
@@ -3278,6 +3332,7 @@
       onProcedureCheckChange('cd');
       document.getElementById('cdValue').value = '';
       document.getElementById('cdDate').value = localDateStr(new Date());
+      document.getElementById('cdCalculator').style.display = 'none';
       document.getElementById('carteiraDebitoError').innerHTML = '';
 
       // Mesmo cuidado de sempre: fecha visualmente o painel por baixo
@@ -3748,6 +3803,7 @@
       preSelectProcedures('rec', (options && options.description) || (lead && lead.procedure) || '');
       onProcedureCheckChange('rec');
       document.getElementById('recTotalValue').value = '';
+      document.getElementById('recCalculator').style.display = 'none';
       document.getElementById('recInstallments').value = 1;
       document.getElementById('recFirstDueDate').value = localDateStr(new Date());
       document.getElementById('recPaymentMethod').value = 'Pix';
@@ -4126,6 +4182,13 @@
       if (!summaryEl) return;
       const selected = getSelectedProcedures(namespace);
       summaryEl.textContent = selected.length ? selected.join(PROCEDURE_JOIN_SEPARATOR) : '';
+
+      // Se a calculadora estava aberta e a seleção de procedimentos
+      // mudou, ela ficaria com a lista errada (um input a mais/a menos
+      // do que o que está marcado agora) — mais simples fechar do que
+      // tentar sincronizar, a usuária reabre com um toque se precisar.
+      const calcPanel = document.getElementById(`${namespace}Calculator`);
+      if (calcPanel) calcPanel.style.display = 'none';
     }
 
     function resetProcedureChecklist(namespace) {
@@ -4180,6 +4243,58 @@
       const type = document.getElementById(typeSelectId).value;
       if (type !== 'PROCEDIMENTO' && type !== 'RETORNO') return '';
       return getProcedureValue(namespace);
+    }
+
+    // Calculadora de valor por procedimento (pedido do usuário
+    // 2026-09-25: pacotes com vários procedimentos distintos — em vez de
+    // somar de cabeça, um input por procedimento já marcado na checklist,
+    // soma ao vivo, "Usar este valor" joga o total no campo Valor. Usada
+    // em Lançar Cobrança ('rec' -> recTotalValue) e Carteira/Débito
+    // ('cd' -> cdValue) — os dois lugares com campo de valor + checklist
+    // de procedimentos juntos.
+    function toggleProcedureCalculator(namespace, targetFieldId) {
+      const panel = document.getElementById(`${namespace}Calculator`);
+      if (panel.style.display === 'block') {
+        panel.style.display = 'none';
+        return;
+      }
+
+      const selected = getSelectedProcedures(namespace);
+      if (selected.length === 0) {
+        panel.innerHTML = '<div class="calculator-empty">Marque os procedimentos acima primeiro.</div>';
+      } else {
+        const rows = selected.map((name, i) => `
+          <div class="calculator-row">
+            <span>${name}</span>
+            <input type="number" min="0" step="0.01" placeholder="0,00" class="calculator-input" data-namespace="${namespace}" oninput="updateCalculatorTotal('${namespace}')">
+          </div>
+        `).join('');
+        panel.innerHTML = `
+          ${rows}
+          <div class="calculator-total">
+            <span>Total</span>
+            <span id="${namespace}CalcTotal">R$ 0,00</span>
+          </div>
+          <button type="button" class="btn secondary" style="width:100%; margin-top:8px;" onclick="applyCalculatorTotal('${namespace}', '${targetFieldId}')">Usar este valor</button>
+        `;
+      }
+      panel.style.display = 'block';
+    }
+
+    function updateCalculatorTotal(namespace) {
+      const panel = document.getElementById(`${namespace}Calculator`);
+      const inputs = panel.querySelectorAll('.calculator-input');
+      let sum = 0;
+      inputs.forEach((inp) => { sum += parseFloat(inp.value) || 0; });
+      const totalEl = document.getElementById(`${namespace}CalcTotal`);
+      if (totalEl) totalEl.textContent = formatCurrencyBRL(sum);
+      return sum;
+    }
+
+    function applyCalculatorTotal(namespace, targetFieldId) {
+      const sum = updateCalculatorTotal(namespace);
+      document.getElementById(targetFieldId).value = sum.toFixed(2);
+      document.getElementById(`${namespace}Calculator`).style.display = 'none';
     }
 
     function closeNewAppointmentModal() {
