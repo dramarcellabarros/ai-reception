@@ -668,6 +668,24 @@
       text-transform: uppercase;
     }
 
+    /* Cabeçalhos clicáveis pra ordenar o grid de leads (pedido do usuário
+       2026-09-25: default = últimos lançados primeiro, clicar num
+       cabeçalho ordena por aquela coluna). */
+    .sortable-th {
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .sortable-th:hover {
+      background: rgba(255, 255, 255, 0.12);
+    }
+
+    .sort-indicator {
+      display: inline-block;
+      margin-left: 4px;
+      opacity: 0.85;
+    }
+
     tbody tr {
       border-bottom: 1px solid #f0ebe5;
       transition: background 0.2s;
@@ -934,6 +952,18 @@
       max-width: 420px;
     }
 
+    /* "Congela" o Relatório Financeiro na horizontal (pedido do usuário
+       2026-09-25, pensando em navegabilidade de tela) — o modal padrão
+       herda touch-action: pan-x pan-y, então um arraste lateral acidental
+       (comum em telas de toque, sobretudo perto da borda) podia mexer no
+       modal de lado. Aqui só sobra o scroll vertical, que é o único que
+       essa tela realmente precisa (a lista de parcelas do mês pode ficar
+       longa). */
+    #financeReportModal .modal-content {
+      overflow-x: hidden;
+      touch-action: pan-y;
+    }
+
     .month-nav {
       display: flex;
       align-items: center;
@@ -1108,15 +1138,22 @@
     .finance-summary-card {
       background: var(--cor-areia-suave);
       border-radius: 8px;
-      padding: 12px 8px;
+      padding: 12px 6px;
       text-align: center;
+      /* Item de grid não encolhe abaixo do tamanho do próprio conteúdo por
+         padrão (min-width: auto implícito) — sem isso, um valor largo tipo
+         "R$ 1.863,33" empurrava a grid de 3 colunas pra fora do modal em
+         telas estreitas (achado ao vivo 2026-09-25, card "Atrasado"
+         cortado). */
+      min-width: 0;
     }
 
     .finance-summary-value {
-      font-size: 17px;
+      font-size: 15px;
       font-weight: 700;
       color: var(--cor-texto-marca);
       font-family: 'Courier New', monospace;
+      word-break: break-word;
     }
 
     .finance-summary-label {
@@ -1350,13 +1387,13 @@
       <table id="leads-table">
         <thead>
           <tr>
-            <th>Nome</th>
-            <th>Telefone</th>
-            <th>Origem</th>
-            <th>Tipo</th>
-            <th>Estado</th>
-            <th>Status</th>
-            <th>Horário</th>
+            <th class="sortable-th" onclick="sortLeadsBy('name')">Nome<span class="sort-indicator" id="sortInd-name"></span></th>
+            <th class="sortable-th" onclick="sortLeadsBy('phone')">Telefone<span class="sort-indicator" id="sortInd-phone"></span></th>
+            <th class="sortable-th" onclick="sortLeadsBy('source')">Origem<span class="sort-indicator" id="sortInd-source"></span></th>
+            <th class="sortable-th" onclick="sortLeadsBy('type')">Tipo<span class="sort-indicator" id="sortInd-type"></span></th>
+            <th class="sortable-th" onclick="sortLeadsBy('state')">Estado<span class="sort-indicator" id="sortInd-state"></span></th>
+            <th class="sortable-th" onclick="sortLeadsBy('status')">Status<span class="sort-indicator" id="sortInd-status"></span></th>
+            <th class="sortable-th" onclick="sortLeadsBy('slot')">Horário<span class="sort-indicator" id="sortInd-slot"></span></th>
             <th>Ações</th>
           </tr>
         </thead>
@@ -2392,6 +2429,17 @@
       }
     }
 
+    // Extraído do template do grid pra ser reaproveitado também na
+    // ordenação por coluna (sortLeadsBy) — assim a ordem alfabética da
+    // coluna Status bate com o texto que aparece na tela, não com os
+    // valores internos (leadStatus/conversationState).
+    function getLeadStatusLabel(lead) {
+      return lead.leadStatus === 'não compareceu' ? 'Não compareceu'
+        : lead.leadStatus === 'desmarcado' ? 'Desmarcado'
+        : lead.confirmedAppointment ? 'Confirmado'
+        : lead.leadStatus || 'Ativo';
+    }
+
     function renderTable(data) {
       const tbody = document.getElementById('table-body');
       if (data.length === 0) {
@@ -2415,7 +2463,7 @@
           <td>${translateConversationState(lead.conversationState)}</td>
           <td>
             <span class="status-badge status-${getStatusClass(lead)}">
-              ${lead.leadStatus === 'não compareceu' ? 'Não compareceu' : lead.leadStatus === 'desmarcado' ? 'Desmarcado' : lead.confirmedAppointment ? 'Confirmado' : lead.leadStatus || 'Ativo'}
+              ${getLeadStatusLabel(lead)}
             </span>
           </td>
           <td class="slot-cell">${lead.chosenSlot ? formatDateBR(lead.chosenSlot.date) + ' ' + lead.chosenSlot.start : '—'}</td>
@@ -2484,6 +2532,68 @@
 
     // Combina o texto de busca com o filtro de card ativo — os dois nunca
     // mexem nos números dos cards, só no que aparece na tabela.
+    // Ordenação do grid de leads (pedido do usuário 2026-09-25): default =
+    // últimos lançados primeiro; clicar num cabeçalho ordena por aquela
+    // coluna (alfabética pra texto, cronológica pra Horário), clicar de
+    // novo inverte. getValue usa o mesmo texto exibido na tela (não os
+    // códigos internos) pra ordem alfabética bater com o que a usuária vê
+    // — por isso 'state'/'status' passam pelos mesmos helpers que o
+    // renderTable usa (translateConversationState/getLeadStatusLabel).
+    const LEADS_SORT_COLUMNS = {
+      name: (l) => l.name || '',
+      phone: (l) => l.phone || '',
+      source: (l) => l.source || '',
+      type: (l) => l.appointmentType || '',
+      state: (l) => translateConversationState(l.conversationState) || '',
+      status: (l) => getLeadStatusLabel(l) || '',
+      // "YYYY-MM-DD HH:MM" ordena certo como string, sem precisar parsear
+      // Date — mais simples e sem fuso horário envolvido.
+      slot: (l) => l.chosenSlot ? `${l.chosenSlot.date} ${l.chosenSlot.start}` : '',
+    };
+
+    let leadsSortColumn = null; // null = default (últimos lançados primeiro)
+    let leadsSortDirection = 'asc';
+
+    function sortLeadsBy(key) {
+      if (leadsSortColumn === key) {
+        leadsSortDirection = leadsSortDirection === 'asc' ? 'desc' : 'asc';
+      } else {
+        leadsSortColumn = key;
+        leadsSortDirection = 'asc';
+      }
+      updateSortIndicators();
+      applyFilters();
+    }
+
+    function updateSortIndicators() {
+      Object.keys(LEADS_SORT_COLUMNS).forEach((key) => {
+        const el = document.getElementById(`sortInd-${key}`);
+        if (!el) return;
+        el.textContent = leadsSortColumn === key ? (leadsSortDirection === 'asc' ? ' ▲' : ' ▼') : '';
+      });
+    }
+
+    function applyLeadsSort(list) {
+      // Sem coluna escolhida: mais recentes lançados primeiro — allData
+      // vem na ordem da planilha (linha nova sempre no fim), então
+      // inverter dá exatamente isso sem precisar guardar timestamp.
+      if (!leadsSortColumn) return list.slice().reverse();
+
+      // Direção entra dentro do comparator (não como reverse() no fim) —
+      // um reverse() cego jogaria os vazios pro início no modo
+      // descendente, contradizendo "vazio sempre no fim".
+      const getValue = LEADS_SORT_COLUMNS[leadsSortColumn];
+      return list.slice().sort((a, b) => {
+        const va = getValue(a);
+        const vb = getValue(b);
+        if (va === '' && vb === '') return 0;
+        if (va === '') return 1; // vazio sempre no fim, nas duas direções
+        if (vb === '') return -1;
+        const cmp = String(va).localeCompare(String(vb), 'pt-BR', { sensitivity: 'base', numeric: true });
+        return leadsSortDirection === 'desc' ? -cmp : cmp;
+      });
+    }
+
     function applyFilters() {
       const query = document.getElementById('search').value.toLowerCase();
       const filtered = allData.filter(lead =>
@@ -2500,7 +2610,7 @@
       document.getElementById('tableWrapper').style.display = shouldShowTable ? '' : 'none';
       document.getElementById('tableHint').style.display = shouldShowTable ? 'none' : '';
 
-      renderTable(filtered);
+      renderTable(applyLeadsSort(filtered));
     }
 
     function showError(message) {
