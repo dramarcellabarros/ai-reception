@@ -129,12 +129,6 @@
       right: 16px;
     }
 
-    .header-finance-btn {
-      position: absolute;
-      top: 12px;
-      right: 54px;
-    }
-
     .header-left {
       display: flex;
       align-items: center;
@@ -145,6 +139,14 @@
       height: 52px;
       width: auto;
       flex-shrink: 0;
+      transition: opacity 0.2s;
+    }
+
+    /* Logo agora linka pro site oficial (pedido do usuário 2026-09-25) —
+       opacidade no hover é o único jeito de sinalizar "isso é clicável"
+       sem mudar o visual do logo em si. */
+    .header-logo:hover {
+      opacity: 0.85;
     }
 
     .header-left h1 {
@@ -159,19 +161,36 @@
       margin-top: 5px;
     }
 
+    /* Agrupa a barra de módulos (ícones de ação) e a pílula de status —
+       dois elementos visuais distintos lado a lado, não mais uma pílula
+       só (pedido do usuário 2026-09-25: "como se fosse uma barra de
+       módulos de um sistema", depois de mover 💰 e 🗓️ pra cá). */
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .module-bar {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px;
+      background: rgba(255,255,255,0.15);
+      border-radius: 20px;
+    }
+
     .status-indicator {
       display: flex;
       align-items: center;
       gap: 8px;
       font-size: 14px;
-      padding: 6px 8px 6px 16px;
-      background: rgba(255,255,255,0.2);
-      border-radius: 20px;
     }
 
-    /* Novo Agendamento e Atualizar viram icone dentro da propria pilula de
-       status, pra economizar altura (pedido do usuario 2026-09-23: antes
-       ficavam numa barra propria, empurrando o resto da tela pra baixo). */
+    /* Novo Agendamento, Financeiro e Visão do Mês viram ícone dentro da
+       barra de módulos, pra economizar altura (pedido do usuario
+       2026-09-23: antes ficavam numa barra propria, empurrando o resto
+       da tela pra baixo). */
     .icon-btn {
       display: flex;
       align-items: center;
@@ -201,12 +220,12 @@
       align-items: center;
       gap: 8px;
       border: none;
-      background: none;
+      background: rgba(255,255,255,0.15);
       color: inherit;
       font: inherit;
-      padding: 4px;
+      padding: 8px 14px 8px 12px;
       margin: 0;
-      border-radius: 14px;
+      border-radius: 20px;
       cursor: pointer;
       transition: background 0.2s;
     }
@@ -1319,16 +1338,29 @@
 <body>
   <header>
     <button class="icon-btn header-config-btn" onclick="toggleSettings()" title="Config" aria-label="Config">⚙️</button>
-    <button class="icon-btn header-finance-btn" onclick="openFinanceReport()" title="Relatório Financeiro" aria-label="Relatório Financeiro">💰</button>
     <div class="header-left">
-      <img src="assets/logo-branco.png" alt="Marcella Barros" class="header-logo">
+      <a href="https://dramarcellabarros.com.br" target="_blank" rel="noopener" title="Visitar site da Dra. Marcella Barros">
+        <img src="assets/logo-branco.png" alt="Marcella Barros" class="header-logo">
+      </a>
       <div>
         <h1>CRM — Dra. Marcella Barros</h1>
         <p>Gestão de Leads e Agendamentos</p>
       </div>
     </div>
-    <div class="status-indicator">
-      <button class="icon-btn icon-btn-primary" onclick="openNewAppointmentModal()" title="Novo Agendamento" aria-label="Novo Agendamento">➕</button>
+    <!-- Barra de módulos + status — pedido do usuário 2026-09-25: com o
+         status mais curto (só a hora, sem "atualizado"), sobrou espaço
+         nessa linha pra reunir os atalhos mais usados num lugar só, fácil
+         de acessar sem precisar rolar a tela (antes 💰 vivia isolado no
+         canto do cabeçalho e 🗓️ vivia lá embaixo, dentro do cabeçalho da
+         Agenda) — "como se fosse uma barra de módulos de um sistema":
+         grupo de ícones separado da pílula de status, não tudo misturado
+         numa pílula só. -->
+    <div class="header-actions">
+      <div class="module-bar">
+        <button class="icon-btn icon-btn-primary" onclick="openNewAppointmentModal()" title="Novo Agendamento" aria-label="Novo Agendamento">➕</button>
+        <button class="icon-btn" onclick="openFinanceReport()" title="Relatório Financeiro" aria-label="Relatório Financeiro">💰</button>
+        <button class="icon-btn" onclick="openMonthCalendar()" title="Visão do Mês" aria-label="Visão do Mês">🗓️</button>
+      </div>
       <button class="status-refresh" onclick="refreshData()" title="Toque para atualizar" aria-label="Atualizar dados">
         <span class="status-dot" id="statusDot"></span>
         <span id="statusText">Conectando...</span>
@@ -1347,7 +1379,6 @@
         <h2 id="agendaTitle">📅 Agenda</h2>
         <span style="display:flex; align-items:center; gap:12px;">
           <span class="agenda-status" id="agendaStatus"></span>
-          <button class="agenda-toggle-btn" onclick="openMonthCalendar()" title="Visão do mês" aria-label="Visão do mês">🗓️</button>
           <button class="agenda-toggle-btn" id="agendaToggleBtn" onclick="toggleAgendaHistory()">📜 Ver histórico</button>
         </span>
       </div>
