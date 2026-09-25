@@ -1522,7 +1522,7 @@
 
     <div class="controls">
       <div class="search-box">
-        <input type="text" id="search" placeholder="Buscar por nome, telefone ou email...">
+        <input type="text" id="search" placeholder="Buscar por nome, telefone ou email..." autocorrect="off" spellcheck="false">
       </div>
       <button class="agenda-toggle-btn" onclick="openNewLeadModal()" title="Adicionar um lead direto, sem agendamento (ex.: histórico anterior ao CRM)">➕ Novo Lead</button>
     </div>
@@ -1612,13 +1612,13 @@
       <div id="apFormStep">
         <div class="form-group" style="position:relative;">
           <label>Cliente já cadastrado (opcional):</label>
-          <input type="text" id="apClientSearch" placeholder="Buscar por nome ou telefone..." oninput="filterClientSearch()" autocomplete="off">
+          <input type="text" id="apClientSearch" placeholder="Buscar por nome ou telefone..." oninput="filterClientSearch()" autocomplete="off" autocorrect="off" spellcheck="false">
           <div id="apClientResults" class="client-search-results"></div>
           <p style="color: var(--cor-cinza-cacau); font-size: 12px; margin-top: 6px;">Use pra um cliente recorrente agendando outro procedimento — preenche Nome/Telefone/Origem abaixo.</p>
         </div>
         <div class="form-group">
           <label>Nome:</label>
-          <input type="text" id="apName" placeholder="Nome completo" maxlength="80">
+          <input type="text" id="apName" placeholder="Nome completo" maxlength="80" autocorrect="off" spellcheck="false">
         </div>
         <div class="form-group">
           <label>Telefone:</label>
@@ -1712,7 +1712,7 @@
       <div id="editAppointmentError"></div>
       <div class="form-group">
         <label>Nome:</label>
-        <input type="text" id="editName" maxlength="80">
+        <input type="text" id="editName" maxlength="80" autocorrect="off" spellcheck="false">
       </div>
       <div class="form-group">
         <label>Origem:</label>
@@ -1818,7 +1818,7 @@
       <div id="newLeadError"></div>
       <div class="form-group">
         <label>Nome:</label>
-        <input type="text" id="nlName" placeholder="Nome completo" maxlength="80">
+        <input type="text" id="nlName" placeholder="Nome completo" maxlength="80" autocorrect="off" spellcheck="false">
       </div>
       <div class="form-group">
         <label>Telefone:</label>
@@ -2005,7 +2005,7 @@
       <div id="ldEditError"></div>
       <div class="form-group">
         <label>Nome:</label>
-        <input type="text" id="ldEditName" maxlength="80">
+        <input type="text" id="ldEditName" maxlength="80" autocorrect="off" spellcheck="false">
       </div>
       <div class="form-group">
         <label>Origem:</label>
