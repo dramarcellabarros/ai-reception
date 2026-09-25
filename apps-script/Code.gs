@@ -114,6 +114,12 @@ function doPost(e) {
     if (payload.action === 'updateReceivable') {
       return jsonResponse(updateReceivable(payload));
     }
+    if (payload.action === 'addCarteiraDebito') {
+      return jsonResponse(addCarteiraDebito(payload));
+    }
+    if (payload.action === 'addCarteiraCredito') {
+      return jsonResponse(addCarteiraCredito(payload));
+    }
 
     return jsonResponse({ ok: false, error: 'Ação desconhecida: ' + payload.action });
   } catch (err) {
@@ -1022,7 +1028,24 @@ function cleanupTestData() {
     }
   }
 
-  Logger.log(`Limpeza concluída: ${eventsDeleted} evento(s) da Agenda, ${rowsDeleted} linha(s) da Planilha e ${financeRowsDeleted} linha(s) do Financeiro removidos.`);
+  // Aba Carteira (2026-09-25, não existia quando esta função foi criada)
+  // — mesmo critério das outras abas financeiras.
+  let carteiraRowsDeleted = 0;
+  const carteiraSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(CARTEIRA_SHEET_NAME);
+  if (carteiraSheet) {
+    const carteiraData = carteiraSheet.getDataRange().getValues();
+    const carteiraHeaders = carteiraData[0];
+    const carteiraNameCol = carteiraHeaders.indexOf('Nome');
+    for (let i = carteiraData.length - 1; i >= 1; i--) {
+      const name = String(carteiraData[i][carteiraNameCol] || '');
+      if (name.startsWith('TESTE')) {
+        carteiraSheet.deleteRow(i + 1);
+        carteiraRowsDeleted++;
+      }
+    }
+  }
+
+  Logger.log(`Limpeza concluída: ${eventsDeleted} evento(s) da Agenda, ${rowsDeleted} linha(s) da Planilha, ${financeRowsDeleted} linha(s) do Financeiro e ${carteiraRowsDeleted} linha(s) da Carteira removidos.`);
 }
 
 // ============================================================
@@ -1208,6 +1231,92 @@ function updateReceivable(payload) {
     }
   }
   return { ok: false, error: 'Parcela não encontrada.' };
+}
+
+// ============================================================
+// Carteira — saldo devedor corrente por cliente (pedido do usuário
+// 2026-09-25: clientes recorrentes semanais que fecham um procedimento
+// novo a cada visita, com valores variáveis, e vão pagando aos poucos —
+// "vira um bolão", não um plano de parcelas fixas com data e valor
+// combinados de antemão como o Financeiro acima serve). Modelo de
+// razão/extrato: cada linha é um Débito (procedimento fechado, soma no
+// saldo devedor) ou um Crédito (pagamento feito, subtrai do saldo
+// devedor). O saldo devedor NUNCA é guardado — é sempre recalculado como
+// soma(Débitos) - soma(Créditos) até a data. Isso resolve os três casos
+// pedidos sem nenhuma lógica especial, só a soma:
+//   - Pagamento parcial (deve 180, paga 100): saldo fica positivo (80),
+//     continua devendo.
+//   - Pagamento a mais (deve 180, paga 200): saldo fica negativo (-20),
+//     que abate automaticamente o próximo Débito lançado — "diluído nas
+//     próximas parcelas" sem precisar rastrear de onde veio o crédito.
+//   - Pagamento adiantado: a data do Crédito é a data real que a usuária
+//     informar, não amarrada a nenhum vencimento.
+// ============================================================
+
+const CARTEIRA_SHEET_NAME = 'Carteira';
+const CARTEIRA_COLUMNS = [
+  'ID',
+  'Telefone',
+  'Nome',
+  'Tipo',
+  'Descrição',
+  'Valor',
+  'Meio de Pagamento',
+  'Data',
+  'Criado em',
+];
+
+function getCarteiraSheet() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = ss.getSheetByName(CARTEIRA_SHEET_NAME);
+  if (!sheet) {
+    sheet = ss.insertSheet(CARTEIRA_SHEET_NAME);
+    sheet.getRange(1, 1, 1, CARTEIRA_COLUMNS.length).setValues([CARTEIRA_COLUMNS]);
+    sheet.setFrozenRows(1);
+    return sheet;
+  }
+  const lastCol = sheet.getLastColumn();
+  if (lastCol < CARTEIRA_COLUMNS.length) {
+    const missing = CARTEIRA_COLUMNS.slice(lastCol);
+    sheet.getRange(1, lastCol + 1, 1, missing.length).setValues([missing]);
+  }
+  return sheet;
+}
+
+/** Lança um débito na carteira do cliente — novo procedimento fechado, soma no saldo devedor. */
+function addCarteiraDebito(payload) {
+  const { phone, name, description, value, date } = payload;
+  if (!phone || !name || !description || !value) {
+    return { ok: false, error: 'Campos obrigatórios: phone, name, description, value.' };
+  }
+  const sheet = getCarteiraSheet();
+  const id = Utilities.getUuid();
+  const createdAt = Utilities.formatDate(new Date(), TIME_ZONE, "yyyy-MM-dd'T'HH:mm:ss");
+  const dateStr = date || Utilities.formatDate(new Date(), TIME_ZONE, 'yyyy-MM-dd');
+  const range = sheet.getRange(sheet.getLastRow() + 1, 1, 1, CARTEIRA_COLUMNS.length);
+  range.setNumberFormat('@');
+  range.setValues([[id, phone, name, 'Débito', description, value, '', dateStr, createdAt]]);
+  return { ok: true, id };
+}
+
+/**
+ * Registra um pagamento (crédito) na carteira do cliente — parcial, exato
+ * ou a mais, sem distinção nenhuma no lançamento em si: o saldo devedor
+ * (soma dos débitos menos soma dos créditos) é que reflete o resultado.
+ */
+function addCarteiraCredito(payload) {
+  const { phone, name, value, paymentMethod, date } = payload;
+  if (!phone || !name || !value) {
+    return { ok: false, error: 'Campos obrigatórios: phone, name, value.' };
+  }
+  const sheet = getCarteiraSheet();
+  const id = Utilities.getUuid();
+  const createdAt = Utilities.formatDate(new Date(), TIME_ZONE, "yyyy-MM-dd'T'HH:mm:ss");
+  const dateStr = date || Utilities.formatDate(new Date(), TIME_ZONE, 'yyyy-MM-dd');
+  const range = sheet.getRange(sheet.getLastRow() + 1, 1, 1, CARTEIRA_COLUMNS.length);
+  range.setNumberFormat('@');
+  range.setValues([[id, phone, name, 'Crédito', 'Pagamento', value, paymentMethod || '', dateStr, createdAt]]);
+  return { ok: true, id };
 }
 
 function jsonResponse(obj) {

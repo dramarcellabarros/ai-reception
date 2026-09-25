@@ -1717,6 +1717,64 @@
     </div>
   </div>
 
+  <!-- Modal de Débito na Carteira — novo procedimento fechado por um
+       cliente recorrente semanal (pedido do usuário 2026-09-25). Soma no
+       saldo devedor da Carteira; não tem parcela nem vencimento, é só
+       "isso entrou na conta dele". -->
+  <div class="modal" id="carteiraDebitoModal">
+    <div class="modal-content">
+      <span class="close-btn" onclick="closeCarteiraDebitoModal()">&times;</span>
+      <h2>💳 Lançar Débito na Carteira</h2>
+      <div id="carteiraDebitoError"></div>
+      <div class="form-group">
+        <label>Descrição (procedimento):</label>
+        <input type="text" id="cdDescription" placeholder="Ex: Toxina Botulínica" maxlength="80">
+      </div>
+      <div class="form-group">
+        <label>Valor (R$):</label>
+        <input type="number" id="cdValue" min="0" step="0.01" placeholder="0,00">
+      </div>
+      <div class="form-group">
+        <label>Data:</label>
+        <input type="date" id="cdDate">
+      </div>
+      <button class="btn" id="cdSubmitBtn" onclick="submitCarteiraDebito()">✅ Lançar Débito</button>
+      <p style="color: var(--cor-cinza-cacau); font-size: 12px; margin-top: 16px;">ℹ️ Soma no saldo devedor da Carteira — não é uma parcela com vencimento.</p>
+    </div>
+  </div>
+
+  <!-- Modal de Crédito na Carteira — pagamento feito pelo cliente (pedido
+       do usuário 2026-09-25). Parcial, exato ou a mais — sem distinção no
+       lançamento, o saldo devedor (soma débitos - soma créditos) é que
+       reflete o resultado automaticamente. -->
+  <div class="modal" id="carteiraCreditoModal">
+    <div class="modal-content">
+      <span class="close-btn" onclick="closeCarteiraCreditoModal()">&times;</span>
+      <h2>💵 Registrar Pagamento na Carteira</h2>
+      <div id="carteiraCreditoError"></div>
+      <div id="ccBalancePreview" style="margin-bottom:14px;"></div>
+      <div class="form-group">
+        <label>Valor pago (R$):</label>
+        <input type="number" id="ccValue" min="0" step="0.01" placeholder="0,00" oninput="updateCarteiraCreditoPreview()">
+      </div>
+      <div class="form-group">
+        <label>Meio de pagamento:</label>
+        <select id="ccPaymentMethod">
+          <option value="Pix">Pix</option>
+          <option value="Cartão">Cartão</option>
+          <option value="Dinheiro">Dinheiro</option>
+          <option value="Outro">Outro</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Data do pagamento:</label>
+        <input type="date" id="ccDate">
+      </div>
+      <button class="btn" id="ccSubmitBtn" onclick="submitCarteiraCredito()">✅ Registrar Pagamento</button>
+      <p style="color: var(--cor-cinza-cacau); font-size: 12px; margin-top: 16px;">ℹ️ Pagou menos que o saldo? Fica devendo o restante. Pagou mais? O excedente vira crédito, abatido no próximo débito.</p>
+    </div>
+  </div>
+
   <div class="modal" id="leadDetailModal">
     <div class="modal-content">
       <span class="close-btn" onclick="closeLeadDetail()">&times;</span>
@@ -1729,6 +1787,22 @@
            marcados como ✅ Concluído (getClientHistory no Apps Script). -->
       <h3 style="font-size: 14px; color: var(--cor-texto-marca); margin: 22px 0 12px; border-top: 1px solid var(--cor-creme-avela); padding-top: 18px;">📋 Histórico de Procedimentos</h3>
       <div id="ldHistoryList"></div>
+
+      <!-- Carteira — saldo devedor corrente (pedido do usuário 2026-09-25:
+           clientes recorrentes semanais que fecham procedimento novo toda
+           visita, valores variáveis, pagam aos poucos — "vira um bolão",
+           diferente do Financeiro abaixo, que é pra plano fechado de
+           parcelas com valor e data certos). Saldo = soma dos débitos
+           menos soma dos créditos, sempre recalculado (renderLeadCarteira). -->
+      <h3 style="font-size: 14px; color: var(--cor-texto-marca); margin: 22px 0 12px; border-top: 1px solid var(--cor-creme-avela); padding-top: 18px; display:flex; align-items:center; justify-content:space-between;">
+        <span>💳 Carteira</span>
+        <span style="display:flex; gap:6px;">
+          <button class="icon-btn-flat" onclick="openCarteiraDebitoModal()" title="Lançar débito (novo procedimento)" aria-label="Lançar débito" style="width:26px;height:26px;font-size:15px;">+</button>
+          <button class="icon-btn-flat" onclick="openCarteiraCreditoModal()" title="Registrar pagamento" aria-label="Registrar pagamento" style="width:26px;height:26px;font-size:15px;">💵</button>
+        </span>
+      </h3>
+      <div id="ldCarteiraSaldo"></div>
+      <div id="ldCarteiraList"></div>
 
       <h3 style="font-size: 14px; color: var(--cor-texto-marca); margin: 22px 0 12px; border-top: 1px solid var(--cor-creme-avela); padding-top: 18px; display:flex; align-items:center; justify-content:space-between;">
         <span>💰 Financeiro</span>
@@ -2232,6 +2306,55 @@
       }
     }
 
+    // Carteira — saldo devedor corrente por cliente (pedido do usuário
+    // 2026-09-25: clientes recorrentes semanais, valores variáveis, sem
+    // parcelas fixas — "vira um bolão"). Cada linha é um Débito (novo
+    // procedimento fechado) ou Crédito (pagamento feito); o saldo devedor
+    // nunca vem pronto da planilha, é sempre soma(Débitos)-soma(Créditos)
+    // calculada aqui (ver renderLeadCarteira). Mesmo tratamento gracioso
+    // de allFinance pra quando a aba ainda não existe (erro 400).
+    let allCarteira = [];
+
+    async function fetchCarteiraData() {
+      const settings = loadSettings();
+      if (!settings || !settings.spreadsheetId || !settings.apiKey) {
+        allCarteira = [];
+        return;
+      }
+
+      try {
+        const url = `https://sheets.googleapis.com/v4/spreadsheets/${settings.spreadsheetId}/values/Carteira?key=${settings.apiKey}`;
+        const response = await fetch(url);
+
+        if (!response.ok) {
+          allCarteira = [];
+          return;
+        }
+
+        const result = await response.json();
+        const values = result.values || [];
+        if (values.length < 2) {
+          allCarteira = [];
+          return;
+        }
+
+        const headers = values[0];
+        allCarteira = values.slice(1).map(row => ({
+          id: row[headers.indexOf('ID')] || '',
+          phone: row[headers.indexOf('Telefone')] || '',
+          name: row[headers.indexOf('Nome')] || '',
+          type: row[headers.indexOf('Tipo')] || '',
+          description: row[headers.indexOf('Descrição')] || '',
+          value: parseCurrencyCell(row[headers.indexOf('Valor')]),
+          paymentMethod: row[headers.indexOf('Meio de Pagamento')] || '',
+          date: row[headers.indexOf('Data')] || '',
+        })).filter(r => r.id);
+      } catch (err) {
+        console.error('Erro ao buscar carteira:', err);
+        allCarteira = [];
+      }
+    }
+
     // Estado vazio de verdade — nunca inventa leads fictícios pra preencher
     // a tela. Usado quando falta configuração, a planilha ainda não tem
     // dados, ou a sincronização falhou (removido a pedido do usuário
@@ -2393,6 +2516,7 @@
       fetchSheetsData();
       fetchCalendarEvents();
       fetchFinanceData();
+      fetchCarteiraData();
       loadProcedureList();
     }
 
@@ -2792,6 +2916,7 @@
 
       renderLeadFinanceList(phone);
       renderLeadHistory(phone);
+      renderLeadCarteira(phone);
 
       // Preenche o formulário de edição com o estado atual do lead.
       document.getElementById('ldEditName').value = lead.name || '';
@@ -2855,6 +2980,225 @@
           </button>
         </div>
       `).join('');
+    }
+
+    // Saldo devedor da Carteira (pedido do usuário 2026-09-25) — sempre
+    // recalculado a partir do extrato, nunca guardado: soma(Débitos) -
+    // soma(Créditos). Positivo = cliente deve; negativo = crédito a favor
+    // do cliente (pagou a mais — abate automaticamente no próximo débito).
+    function getCarteiraBalance(phone) {
+      return allCarteira
+        .filter(c => c.phone === phone)
+        .reduce((sum, c) => sum + (c.type === 'Crédito' ? -c.value : c.value), 0);
+    }
+
+    // Carteira do lead — saldo corrente + extrato (débitos = procedimentos
+    // fechados, créditos = pagamentos feitos). Pedido do usuário
+    // 2026-09-25: clientes recorrentes semanais com valores variáveis, sem
+    // parcelas fixas — diferente do Financeiro acima, que é pra plano
+    // fechado.
+    function renderLeadCarteira(phone) {
+      const saldoEl = document.getElementById('ldCarteiraSaldo');
+      const listEl = document.getElementById('ldCarteiraList');
+      const entries = allCarteira.filter(c => c.phone === phone).sort((a, b) => (a.date < b.date ? 1 : -1));
+      const balance = getCarteiraBalance(phone);
+
+      saldoEl.innerHTML = `
+        <div class="finance-summary-card ${balance > 0 ? 'finance-summary-overdue' : (balance < 0 ? 'finance-summary-received' : '')}" style="margin-bottom:10px;">
+          <div class="finance-summary-value">${formatCurrencyBRL(Math.abs(balance))}</div>
+          <div class="finance-summary-label">${balance > 0 ? 'Saldo devedor' : (balance < 0 ? 'Crédito a favor do cliente' : 'Quitado')}</div>
+        </div>
+      `;
+
+      if (entries.length === 0) {
+        listEl.innerHTML = '<div class="agenda-empty" style="padding:8px 0;">Nenhum lançamento na carteira ainda.</div>';
+        return;
+      }
+
+      listEl.innerHTML = entries.map(entry => `
+        <div class="finance-row">
+          <div class="finance-row-main">
+            <span>${entry.type === 'Débito' ? '➕' : '➖'} ${entry.description || entry.type}</span>
+            <span class="finance-row-value">${formatCurrencyBRL(entry.value)}</span>
+          </div>
+          <div class="finance-row-meta">
+            <span>${formatDateBR(entry.date)}</span>
+            ${entry.paymentMethod ? `<span>${entry.paymentMethod}</span>` : ''}
+            <span class="finance-status-badge ${entry.type === 'Débito' ? 'finance-status-pending' : 'finance-status-paid'}">${entry.type}</span>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    let carteiraTargetPhone = null;
+    let carteiraTargetName = null;
+
+    function openCarteiraDebitoModal() {
+      const phone = currentDetailPhone;
+      if (!phone) return;
+      const settings = loadSettings();
+      if (!settings || !settings.scriptUrl) {
+        alert('Configure a "URL do Apps Script" em ⚙️ Config primeiro.');
+        return;
+      }
+      const lead = allData.find(l => l.phone === phone);
+      carteiraTargetPhone = phone;
+      carteiraTargetName = (lead && lead.name) || '';
+
+      document.getElementById('cdDescription').value = (lead && lead.procedure) || '';
+      document.getElementById('cdValue').value = '';
+      document.getElementById('cdDate').value = localDateStr(new Date());
+      document.getElementById('carteiraDebitoError').innerHTML = '';
+
+      // Mesmo cuidado de sempre: fecha visualmente o painel por baixo
+      // (dois modais "open" ao mesmo tempo, o de cima cobre o de baixo,
+      // já foi bug real nesta sessão entre leadDetailModal e outros).
+      document.getElementById('leadDetailModal').classList.remove('open');
+      document.getElementById('carteiraDebitoModal').classList.add('open');
+    }
+
+    function closeCarteiraDebitoModal() {
+      document.getElementById('carteiraDebitoModal').classList.remove('open');
+      carteiraTargetPhone = null;
+      carteiraTargetName = null;
+    }
+
+    async function submitCarteiraDebito() {
+      if (!carteiraTargetPhone) return;
+      const settings = loadSettings();
+      const description = document.getElementById('cdDescription').value.trim();
+      const value = parseFloat(document.getElementById('cdValue').value);
+      const date = document.getElementById('cdDate').value;
+      const errorEl = document.getElementById('carteiraDebitoError');
+      errorEl.innerHTML = '';
+
+      if (!description) {
+        errorEl.innerHTML = '<div class="form-error">❌ Informe a descrição do procedimento.</div>';
+        return;
+      }
+      if (!value || value <= 0) {
+        errorEl.innerHTML = '<div class="form-error">❌ Informe um valor válido.</div>';
+        return;
+      }
+
+      const btn = document.getElementById('cdSubmitBtn');
+      btn.disabled = true;
+      btn.textContent = '⏳ Lançando...';
+
+      try {
+        const response = await fetch(settings.scriptUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({ action: 'addCarteiraDebito', phone: carteiraTargetPhone, name: carteiraTargetName, description, value, date })
+        });
+        const result = await response.json();
+        if (!result.ok) throw new Error(result.error || 'Erro desconhecido');
+
+        const phone = carteiraTargetPhone;
+        const name = carteiraTargetName;
+        closeCarteiraDebitoModal();
+        showToast(`✅ Débito de ${formatCurrencyBRL(value)} lançado na carteira de ${name}`);
+        await fetchCarteiraData();
+        openLeadDetail(phone);
+      } catch (err) {
+        errorEl.innerHTML = `<div class="form-error">❌ ${err.message}</div>`;
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '✅ Lançar Débito';
+      }
+    }
+
+    function openCarteiraCreditoModal() {
+      const phone = currentDetailPhone;
+      if (!phone) return;
+      const settings = loadSettings();
+      if (!settings || !settings.scriptUrl) {
+        alert('Configure a "URL do Apps Script" em ⚙️ Config primeiro.');
+        return;
+      }
+      const lead = allData.find(l => l.phone === phone);
+      carteiraTargetPhone = phone;
+      carteiraTargetName = (lead && lead.name) || '';
+
+      document.getElementById('ccValue').value = '';
+      document.getElementById('ccPaymentMethod').value = 'Pix';
+      document.getElementById('ccDate').value = localDateStr(new Date());
+      document.getElementById('carteiraCreditoError').innerHTML = '';
+      updateCarteiraCreditoPreview();
+
+      document.getElementById('leadDetailModal').classList.remove('open');
+      document.getElementById('carteiraCreditoModal').classList.add('open');
+    }
+
+    function closeCarteiraCreditoModal() {
+      document.getElementById('carteiraCreditoModal').classList.remove('open');
+      carteiraTargetPhone = null;
+      carteiraTargetName = null;
+    }
+
+    // Prévia ao vivo do saldo antes de confirmar (pedido implícito do
+    // usuário — ele descreveu 3 cenários de resultado diferentes conforme
+    // o valor pago: parcial, exato, a mais; mostrar o resultado antes de
+    // confirmar evita lançar errado). Recalcula a cada tecla digitada.
+    function updateCarteiraCreditoPreview() {
+      if (!carteiraTargetPhone) return;
+      const current = getCarteiraBalance(carteiraTargetPhone);
+      const value = parseFloat(document.getElementById('ccValue').value) || 0;
+      const after = current - value;
+      const el = document.getElementById('ccBalancePreview');
+      el.innerHTML = `
+        <div class="finance-summary-grid" style="grid-template-columns: repeat(2, 1fr);">
+          <div class="finance-summary-card">
+            <div class="finance-summary-value">${formatCurrencyBRL(current)}</div>
+            <div class="finance-summary-label">Saldo atual</div>
+          </div>
+          <div class="finance-summary-card ${after > 0 ? 'finance-summary-overdue' : (after < 0 ? 'finance-summary-received' : '')}">
+            <div class="finance-summary-value">${formatCurrencyBRL(Math.abs(after))}</div>
+            <div class="finance-summary-label">${after > 0 ? 'Vai ficar devendo' : (after < 0 ? 'Crédito a favor' : 'Quitado')}</div>
+          </div>
+        </div>
+      `;
+    }
+
+    async function submitCarteiraCredito() {
+      if (!carteiraTargetPhone) return;
+      const settings = loadSettings();
+      const value = parseFloat(document.getElementById('ccValue').value);
+      const paymentMethod = document.getElementById('ccPaymentMethod').value;
+      const date = document.getElementById('ccDate').value;
+      const errorEl = document.getElementById('carteiraCreditoError');
+      errorEl.innerHTML = '';
+
+      if (!value || value <= 0) {
+        errorEl.innerHTML = '<div class="form-error">❌ Informe um valor válido.</div>';
+        return;
+      }
+
+      const btn = document.getElementById('ccSubmitBtn');
+      btn.disabled = true;
+      btn.textContent = '⏳ Registrando...';
+
+      try {
+        const response = await fetch(settings.scriptUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({ action: 'addCarteiraCredito', phone: carteiraTargetPhone, name: carteiraTargetName, value, paymentMethod, date })
+        });
+        const result = await response.json();
+        if (!result.ok) throw new Error(result.error || 'Erro desconhecido');
+
+        const phone = carteiraTargetPhone;
+        const name = carteiraTargetName;
+        closeCarteiraCreditoModal();
+        showToast(`✅ Pagamento de ${formatCurrencyBRL(value)} registrado para ${name}`);
+        await fetchCarteiraData();
+        openLeadDetail(phone);
+      } catch (err) {
+        errorEl.innerHTML = `<div class="form-error">❌ ${err.message}</div>`;
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '✅ Registrar Pagamento';
+      }
     }
 
     // Histórico de procedimentos individuais já realizados (pedido do
@@ -3045,11 +3389,22 @@
       // uma parcela vencida em agosto mas paga em setembro conta como
       // recebimento de setembro.
       const receivedInMonth = allFinance.filter(f => f.status === 'Recebido' && f.receivedDate && f.receivedDate.startsWith(monthValue));
-      const receivedTotal = receivedInMonth.reduce((s, f) => s + f.value, 0);
+      // Créditos da Carteira (pedido do usuário 2026-09-25) também são
+      // dinheiro recebido de verdade — sem somar aqui, "Recebido no mês"
+      // ficaria incompleto pra clientes que pagam pela Carteira em vez de
+      // parcelas fixas. Carteira não tem vencimento/atraso (não é plano
+      // fechado), então só entra nesse total, não em "A receber"/"Atrasado".
+      const carteiraCreditsInMonth = allCarteira.filter(c => c.type === 'Crédito' && c.date && c.date.startsWith(monthValue));
+      const receivedTotal = receivedInMonth.reduce((s, f) => s + f.value, 0)
+        + carteiraCreditsInMonth.reduce((s, c) => s + c.value, 0);
       const receivedByMethod = {};
       receivedInMonth.forEach(f => {
         const key = f.paymentMethod || 'Outro';
         receivedByMethod[key] = (receivedByMethod[key] || 0) + f.value;
+      });
+      carteiraCreditsInMonth.forEach(c => {
+        const key = c.paymentMethod || 'Outro';
+        receivedByMethod[key] = (receivedByMethod[key] || 0) + c.value;
       });
 
       // A receber vencendo no mês (ainda não recebido).
@@ -3091,7 +3446,27 @@
         .filter(f => (f.receivedDate && f.receivedDate.startsWith(monthValue)) || (f.dueDate && f.dueDate.startsWith(monthValue)))
         .sort((a, b) => (a.dueDate || '').localeCompare(b.dueDate || ''));
 
-      if (monthItems.length === 0) {
+      // Pagamentos de Carteira do mês entram na mesma lista (pedido do
+      // usuário 2026-09-25) — mostrados com layout próprio, já que não têm
+      // vencimento/parcela/status (não são plano fechado).
+      const carteiraCreditRows = carteiraCreditsInMonth
+        .slice()
+        .sort((a, b) => (a.date || '').localeCompare(b.date || ''))
+        .map(c => `
+          <div class="finance-row">
+            <div class="finance-row-main">
+              <span>💳 ${c.name} — Pagamento na Carteira</span>
+              <span class="finance-row-value">${formatCurrencyBRL(c.value)}</span>
+            </div>
+            <div class="finance-row-meta">
+              <span>${formatDateBR(c.date)}</span>
+              <span>${c.paymentMethod || '—'}</span>
+              <span class="finance-status-badge finance-status-paid">Recebido</span>
+            </div>
+          </div>
+        `).join('');
+
+      if (monthItems.length === 0 && carteiraCreditRows === '') {
         listEl.innerHTML = '<div class="agenda-empty">Nenhuma parcela nesse mês.</div>';
         return;
       }
@@ -3108,7 +3483,7 @@
             <span class="finance-status-badge ${item.status === 'Recebido' ? 'finance-status-paid' : 'finance-status-pending'}">${item.status}</span>
           </div>
         </div>
-      `).join('');
+      `).join('') + carteiraCreditRows;
     }
 
     // --- Lançar Cobrança (contas a receber) ---
@@ -4216,6 +4591,7 @@
         fetchSheetsData();
         fetchCalendarEvents();
         fetchFinanceData();
+        fetchCarteiraData();
         loadProcedureList();
       } else {
         showEmptyState();
