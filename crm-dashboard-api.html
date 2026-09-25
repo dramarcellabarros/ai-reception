@@ -1130,7 +1130,13 @@
 
     .finance-summary-grid {
       display: grid;
-      grid-template-columns: repeat(3, 1fr);
+      /* auto-fit em vez de repeat(3, 1fr) fixo (pedido do usuário
+         2026-09-25 — a correção anterior, só min-width:0 + word-break,
+         parou o vazamento lateral mas deixou "R$ 1.171,25" quebrando no
+         meio do número, feio): cada card pede um mínimo confortável e o
+         próprio grid decide quantos cabem por linha — em telas estreitas
+         vira 2+1 em vez de forçar 3 espremidos. */
+      grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
       gap: 8px;
       margin-top: 10px;
     }
@@ -2255,7 +2261,7 @@
         }));
 
         const now = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-        setStatus(true, `✅ ${allData.length} leads · atualizado às ${now}`);
+        setStatus(true, now);
         updateStats(allData);
         applyFilters();
         clearError();
