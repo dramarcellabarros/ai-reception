@@ -878,6 +878,46 @@
       color: var(--cor-cinza-cacau);
     }
 
+    /* Checklist de procedimentos (pedido do usuário 2026-09-25:
+       "preciso de seleções múltiplas... clientes que fazem pacote com
+       vários procedimentos distintos... corporal e facial ao mesmo
+       tempo") — substitui o <select> de escolha única nos 5 lugares que
+       registram procedimento (Novo Agendamento, Editar Agendamento,
+       Novo Lead, Lançar Cobrança, Carteira/Débito). */
+    .procedure-checklist {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px 14px;
+      max-height: 180px;
+      overflow-y: auto;
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      background: white;
+    }
+
+    .procedure-check-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      font-weight: 400;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    .procedure-check-item input[type="checkbox"] {
+      width: auto;
+      cursor: pointer;
+    }
+
+    .procedure-check-summary {
+      font-size: 12px;
+      color: var(--cor-cinza-cacau);
+      margin-top: 6px;
+      min-height: 14px;
+    }
+
     /* Busca de cliente já cadastrado no Novo Agendamento (pedido do
        usuário 2026-09-24: "selecionar um cliente já existente na base,
        pode ser um cliente recorrente em outro procedimento") — lista
@@ -1556,9 +1596,9 @@
           </select>
         </div>
         <div class="form-group" id="apProcedureGroup" style="display:none;">
-          <label>Procedimento:</label>
-          <select id="apProcedure" onchange="toggleProcedureOther('apProcedure', 'apProcedureOther')"></select>
-          <input type="text" id="apProcedureOther" placeholder="Qual procedimento?" maxlength="60" style="display:none; margin-top:8px;">
+          <label>Procedimento(s):</label>
+          <div class="procedure-checklist" id="apProcedureChecklist"></div>
+          <div class="procedure-check-summary" id="apProcSummary"></div>
         </div>
         <div class="form-group">
           <label>Data:</label>
@@ -1646,9 +1686,9 @@
         </select>
       </div>
       <div class="form-group" id="editProcedureGroup" style="display:none;">
-        <label>Procedimento:</label>
-        <select id="editProcedure" onchange="toggleProcedureOther('editProcedure', 'editProcedureOther')"></select>
-        <input type="text" id="editProcedureOther" placeholder="Qual procedimento?" maxlength="60" style="display:none; margin-top:8px;">
+        <label>Procedimento(s):</label>
+        <div class="procedure-checklist" id="editProcedureChecklist"></div>
+        <div class="procedure-check-summary" id="editProcSummary"></div>
       </div>
       <div class="form-group">
         <label>Data:</label>
@@ -1756,9 +1796,9 @@
         </select>
       </div>
       <div class="form-group" id="nlProcedureGroup" style="display:none;">
-        <label>Procedimento:</label>
-        <select id="nlProcedure" onchange="toggleProcedureOther('nlProcedure', 'nlProcedureOther')"></select>
-        <input type="text" id="nlProcedureOther" placeholder="Qual procedimento?" maxlength="60" style="display:none; margin-top:8px;">
+        <label>Procedimento(s):</label>
+        <div class="procedure-checklist" id="nlProcedureChecklist"></div>
+        <div class="procedure-check-summary" id="nlProcSummary"></div>
       </div>
       <button class="btn" id="nlSubmitBtn" onclick="submitNewLead()">💾 Adicionar Lead</button>
       <p style="color: var(--cor-cinza-cacau); font-size: 12px; margin-top: 16px;">
@@ -1779,8 +1819,9 @@
 
       <div id="receivableFormStep">
         <div class="form-group">
-          <label>Descrição:</label>
-          <input type="text" id="recDescription" placeholder="Ex: Toxina Botulínica" maxlength="80">
+          <label>Procedimento(s):</label>
+          <div class="procedure-checklist" id="recProcedureChecklist"></div>
+          <div class="procedure-check-summary" id="recProcSummary"></div>
         </div>
         <div class="form-group">
           <label>Valor total combinado (R$):</label>
@@ -1829,8 +1870,9 @@
       <h2>💳 Lançar Débito na Carteira</h2>
       <div id="carteiraDebitoError"></div>
       <div class="form-group">
-        <label>Descrição (procedimento):</label>
-        <input type="text" id="cdDescription" placeholder="Ex: Toxina Botulínica" maxlength="80">
+        <label>Procedimento(s):</label>
+        <div class="procedure-checklist" id="cdProcedureChecklist"></div>
+        <div class="procedure-check-summary" id="cdProcSummary"></div>
       </div>
       <div class="form-group">
         <label>Valor (R$):</label>
@@ -3231,7 +3273,9 @@
       carteiraTargetPhone = phone;
       carteiraTargetName = (lead && lead.name) || '';
 
-      document.getElementById('cdDescription').value = (lead && lead.procedure) || '';
+      document.getElementById('cdProcedureChecklist').innerHTML = procedureChecklistHtml('cd');
+      preSelectProcedures('cd', (lead && lead.procedure) || '');
+      onProcedureCheckChange('cd');
       document.getElementById('cdValue').value = '';
       document.getElementById('cdDate').value = localDateStr(new Date());
       document.getElementById('carteiraDebitoError').innerHTML = '';
@@ -3252,14 +3296,14 @@
     async function submitCarteiraDebito() {
       if (!carteiraTargetPhone) return;
       const settings = loadSettings();
-      const description = document.getElementById('cdDescription').value.trim();
+      const description = getProcedureValue('cd');
       const value = parseFloat(document.getElementById('cdValue').value);
       const date = document.getElementById('cdDate').value;
       const errorEl = document.getElementById('carteiraDebitoError');
       errorEl.innerHTML = '';
 
       if (!description) {
-        errorEl.innerHTML = '<div class="form-error">❌ Informe a descrição do procedimento.</div>';
+        errorEl.innerHTML = '<div class="form-error">❌ Marque pelo menos um procedimento.</div>';
         return;
       }
       if (!value || value <= 0) {
@@ -3474,10 +3518,9 @@
       document.getElementById('nlPhone').value = '';
       document.getElementById('nlSource').value = 'INSTAGRAM';
       document.getElementById('nlType').value = 'AVALIACAO';
-      document.getElementById('nlProcedure').innerHTML = procedureOptionsHtml();
-      document.getElementById('nlProcedure').value = '';
-      document.getElementById('nlProcedureOther').value = '';
-      document.getElementById('nlProcedureOther').style.display = 'none';
+      document.getElementById('nlProcedureChecklist').innerHTML = procedureChecklistHtml('nl');
+      resetProcedureChecklist('nl');
+      onProcedureCheckChange('nl');
       toggleProcedureVisibility('nlType', 'nlProcedureGroup');
       document.getElementById('newLeadError').innerHTML = '';
       document.getElementById('newLeadModal').classList.add('open');
@@ -3493,7 +3536,7 @@
       const phoneRaw = document.getElementById('nlPhone').value.trim();
       const source = document.getElementById('nlSource').value;
       const appointmentType = document.getElementById('nlType').value;
-      const procedure = getProcedureValue('nlType', 'nlProcedure', 'nlProcedureOther');
+      const procedure = getGatedProcedureValue('nlType', 'nl');
 
       document.getElementById('newLeadError').innerHTML = '';
 
@@ -3701,7 +3744,9 @@
       receivableFromComplete = Boolean(options && options.fromComplete);
 
       const lead = allData.find(l => l.phone === targetPhone);
-      document.getElementById('recDescription').value = (options && options.description) || (lead && lead.procedure) || '';
+      document.getElementById('recProcedureChecklist').innerHTML = procedureChecklistHtml('rec');
+      preSelectProcedures('rec', (options && options.description) || (lead && lead.procedure) || '');
+      onProcedureCheckChange('rec');
       document.getElementById('recTotalValue').value = '';
       document.getElementById('recInstallments').value = 1;
       document.getElementById('recFirstDueDate').value = localDateStr(new Date());
@@ -3752,7 +3797,7 @@
     // pra fechar exatamente o total (evita sobra/falta de centavos por
     // arredondamento nas outras).
     function reviewReceivable() {
-      const description = document.getElementById('recDescription').value.trim();
+      const description = getProcedureValue('rec');
       const totalValue = parseFloat(document.getElementById('recTotalValue').value);
       const installmentCount = parseInt(document.getElementById('recInstallments').value, 10);
       const firstDueDate = document.getElementById('recFirstDueDate').value;
@@ -3760,6 +3805,10 @@
 
       document.getElementById('receivableError').innerHTML = '';
 
+      if (!description) {
+        document.getElementById('receivableError').innerHTML = '<div class="form-error">⚠️ Marque pelo menos um procedimento.</div>';
+        return;
+      }
       if (!totalValue || totalValue <= 0 || !installmentCount || installmentCount < 1 || !firstDueDate) {
         document.getElementById('receivableError').innerHTML = '<div class="form-error">⚠️ Preencha valor total, número de parcelas e data do 1º vencimento.</div>';
         return;
@@ -3950,10 +3999,9 @@
       document.getElementById('apClientSearch').value = '';
       document.getElementById('apClientResults').innerHTML = '';
       document.getElementById('apClientResults').style.display = 'none';
-      document.getElementById('apProcedure').innerHTML = procedureOptionsHtml();
-      document.getElementById('apProcedure').value = '';
-      document.getElementById('apProcedureOther').value = '';
-      document.getElementById('apProcedureOther').style.display = 'none';
+      document.getElementById('apProcedureChecklist').innerHTML = procedureChecklistHtml('ap');
+      resetProcedureChecklist('ap');
+      onProcedureCheckChange('ap');
       toggleProcedureVisibility('apType', 'apProcedureGroup');
       const dateInput = document.getElementById('apDate');
       dateInput.value = '';
@@ -4017,35 +4065,121 @@
       document.getElementById('apClientResults').style.display = 'none';
     }
 
-    // Opções de procedimento (portfólio real da clínica, ver
-    // PROCEDURE_OPTIONS) — "" força escolher algo antes de "Outro" surgir
-    // como opção de escape pra procedimento ainda não catalogado.
-    function procedureOptionsHtml() {
-      return '<option value="">Selecione...</option>'
-        + PROCEDURE_OPTIONS.map(p => `<option value="${p}">${p}</option>`).join('')
-        + '<option value="OUTRO">Outro</option>';
-    }
-
     function toggleProcedureVisibility(typeSelectId, groupId) {
       const type = document.getElementById(typeSelectId).value;
       const show = type === 'PROCEDIMENTO' || type === 'RETORNO';
       document.getElementById(groupId).style.display = show ? 'block' : 'none';
     }
 
-    function toggleProcedureOther(selectId, otherId) {
-      document.getElementById(otherId).style.display = document.getElementById(selectId).value === 'OUTRO' ? 'block' : 'none';
+    // Checklist de procedimentos — substitui o <select> de escolha única
+    // (pedido do usuário 2026-09-25: "preciso de seleções múltiplas...
+    // clientes que fazem pacote com vários procedimentos distintos...
+    // corporal e facial ao mesmo tempo"). Reaproveitado nos 5 lugares que
+    // registram procedimento: Novo Agendamento ('ap'), Editar Agendamento
+    // ('edit'), Novo Lead ('nl'), Lançar Cobrança ('rec') e Carteira/
+    // Débito ('cd'). Guarda como uma ÚNICA STRING combinada
+    // ("Toxina Botulínica + Preenchimento") em vez de mudar o schema da
+    // planilha/Calendar — todo lugar que já lê esse campo como texto
+    // simples continua funcionando sem alteração nenhuma.
+    const PROCEDURE_JOIN_SEPARATOR = ' + ';
+
+    function procedureChecklistHtml(namespace) {
+      const items = PROCEDURE_OPTIONS.map((p, i) => `
+        <label class="procedure-check-item">
+          <input type="checkbox" id="${namespace}Proc_${i}" value="${p}" onchange="onProcedureCheckChange('${namespace}')">
+          <span>${p}</span>
+        </label>
+      `).join('');
+      return `
+        ${items}
+        <label class="procedure-check-item">
+          <input type="checkbox" id="${namespace}ProcOtherCheck" onchange="toggleProcedureOtherCheck('${namespace}')">
+          <span>Outro</span>
+        </label>
+        <input type="text" id="${namespace}ProcOtherText" placeholder="Qual procedimento?" maxlength="60" style="display:none; width:100%; margin-top:6px;" oninput="onProcedureCheckChange('${namespace}')">
+      `;
     }
 
-    // Type + os dois campos (select fixo / "Outro" livre) -> valor final
-    // de procedimento a gravar. Ignora tudo se o tipo não for
-    // Procedimento/Retorno, mesmo que os campos ainda tenham algo digitado
-    // de uma troca de tipo anterior.
-    function getProcedureValue(typeSelectId, selectId, otherId) {
+    function toggleProcedureOtherCheck(namespace) {
+      const checked = document.getElementById(`${namespace}ProcOtherCheck`).checked;
+      document.getElementById(`${namespace}ProcOtherText`).style.display = checked ? 'block' : 'none';
+      onProcedureCheckChange(namespace);
+    }
+
+    function getSelectedProcedures(namespace) {
+      const names = PROCEDURE_OPTIONS.filter((p, i) => {
+        const el = document.getElementById(`${namespace}Proc_${i}`);
+        return el && el.checked;
+      });
+      const otherCheck = document.getElementById(`${namespace}ProcOtherCheck`);
+      if (otherCheck && otherCheck.checked) {
+        const otherText = document.getElementById(`${namespace}ProcOtherText`).value.trim();
+        if (otherText) names.push(otherText);
+      }
+      return names;
+    }
+
+    // Live: mostra o que já foi marcado, já que a descrição não é mais um
+    // campo de texto visível diretamente.
+    function onProcedureCheckChange(namespace) {
+      const summaryEl = document.getElementById(`${namespace}ProcSummary`);
+      if (!summaryEl) return;
+      const selected = getSelectedProcedures(namespace);
+      summaryEl.textContent = selected.length ? selected.join(PROCEDURE_JOIN_SEPARATOR) : '';
+    }
+
+    function resetProcedureChecklist(namespace) {
+      PROCEDURE_OPTIONS.forEach((p, i) => {
+        const el = document.getElementById(`${namespace}Proc_${i}`);
+        if (el) el.checked = false;
+      });
+      const otherCheck = document.getElementById(`${namespace}ProcOtherCheck`);
+      if (otherCheck) otherCheck.checked = false;
+      const otherText = document.getElementById(`${namespace}ProcOtherText`);
+      if (otherText) { otherText.value = ''; otherText.style.display = 'none'; }
+    }
+
+    // Pré-marca os checkboxes a partir de uma string já salva (edição) —
+    // quebra pelo separador e casa com PROCEDURE_OPTIONS; o que não bate
+    // (registro antigo digitado livre, ou nome fora do catálogo atual)
+    // vira texto em "Outro", sem perder informação.
+    function preSelectProcedures(namespace, combinedValue) {
+      resetProcedureChecklist(namespace);
+      if (!combinedValue) return;
+      const parts = combinedValue.split(PROCEDURE_JOIN_SEPARATOR).map(s => s.trim()).filter(Boolean);
+      const leftovers = [];
+      parts.forEach((part) => {
+        const idx = PROCEDURE_OPTIONS.indexOf(part);
+        if (idx >= 0) {
+          const el = document.getElementById(`${namespace}Proc_${idx}`);
+          if (el) el.checked = true;
+        } else {
+          leftovers.push(part);
+        }
+      });
+      if (leftovers.length) {
+        const otherCheck = document.getElementById(`${namespace}ProcOtherCheck`);
+        const otherText = document.getElementById(`${namespace}ProcOtherText`);
+        if (otherCheck) otherCheck.checked = true;
+        if (otherText) {
+          otherText.value = leftovers.join(PROCEDURE_JOIN_SEPARATOR);
+          otherText.style.display = 'block';
+        }
+      }
+    }
+
+    function getProcedureValue(namespace) {
+      return getSelectedProcedures(namespace).join(PROCEDURE_JOIN_SEPARATOR);
+    }
+
+    // Type + checklist -> valor final de procedimento a gravar. Ignora
+    // tudo se o tipo não for Procedimento/Retorno, mesmo que a checklist
+    // ainda tenha algo marcado de uma troca de tipo anterior (mesmo
+    // comportamento de antes, só a leitura do valor que mudou).
+    function getGatedProcedureValue(typeSelectId, namespace) {
       const type = document.getElementById(typeSelectId).value;
       if (type !== 'PROCEDIMENTO' && type !== 'RETORNO') return '';
-      const select = document.getElementById(selectId);
-      if (select.value === 'OUTRO') return document.getElementById(otherId).value.trim();
-      return select.value;
+      return getProcedureValue(namespace);
     }
 
     function closeNewAppointmentModal() {
@@ -4234,9 +4368,9 @@
         return;
       }
 
-      const procedure = getProcedureValue('apType', 'apProcedure', 'apProcedureOther');
+      const procedure = getGatedProcedureValue('apType', 'ap');
       if ((type === 'PROCEDIMENTO' || type === 'RETORNO') && !procedure) {
-        showAppointmentError('⚠️ Escolha qual procedimento.');
+        showAppointmentError('⚠️ Marque pelo menos um procedimento.');
         return;
       }
 
@@ -4451,18 +4585,9 @@
       document.getElementById('editSource').value = info.source || 'INSTAGRAM';
       document.getElementById('editType').value = typeKey;
 
-      document.getElementById('editProcedure').innerHTML = procedureOptionsHtml();
-      document.getElementById('editProcedureOther').value = '';
-      document.getElementById('editProcedureOther').style.display = 'none';
-      if (procedureValue && PROCEDURE_OPTIONS.includes(procedureValue)) {
-        document.getElementById('editProcedure').value = procedureValue;
-      } else if (procedureValue) {
-        document.getElementById('editProcedure').value = 'OUTRO';
-        document.getElementById('editProcedureOther').value = procedureValue;
-        document.getElementById('editProcedureOther').style.display = 'block';
-      } else {
-        document.getElementById('editProcedure').value = '';
-      }
+      document.getElementById('editProcedureChecklist').innerHTML = procedureChecklistHtml('edit');
+      preSelectProcedures('edit', procedureValue);
+      onProcedureCheckChange('edit');
       toggleProcedureVisibility('editType', 'editProcedureGroup');
 
       const startRaw = ev.start && (ev.start.dateTime || ev.start.date);
@@ -4508,7 +4633,7 @@
       const name = document.getElementById('editName').value.trim();
       const source = document.getElementById('editSource').value;
       const appointmentType = document.getElementById('editType').value;
-      const procedure = getProcedureValue('editType', 'editProcedure', 'editProcedureOther');
+      const procedure = getGatedProcedureValue('editType', 'edit');
       const date = document.getElementById('editDate').value;
       const slotValue = document.getElementById('editSlot').value;
 
@@ -4708,7 +4833,7 @@
       const phone = document.getElementById('apPhone').value.trim();
       const source = document.getElementById('apSource').value;
       const appointmentType = document.getElementById('apType').value;
-      const procedure = getProcedureValue('apType', 'apProcedure', 'apProcedureOther');
+      const procedure = getGatedProcedureValue('apType', 'ap');
       const date = document.getElementById('apDate').value;
       const slotValue = document.getElementById('apSlot').value;
 
