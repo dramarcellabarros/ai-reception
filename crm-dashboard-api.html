@@ -1831,15 +1831,8 @@
            diferente do Financeiro abaixo, que é pra plano fechado de
            parcelas com valor e data certos). Saldo = soma dos débitos
            menos soma dos créditos, sempre recalculado (renderLeadCarteira). -->
-      <h3 style="font-size: 14px; color: var(--cor-texto-marca); margin: 22px 0 12px; border-top: 1px solid var(--cor-creme-avela); padding-top: 18px; display:flex; align-items:center; justify-content:space-between;">
-        <span>💳 Carteira</span>
-        <span style="display:flex; gap:6px;">
-          <button class="icon-btn-flat" onclick="openCarteiraDebitoModal()" title="Lançar débito (novo procedimento)" aria-label="Lançar débito" style="width:26px;height:26px;font-size:15px;">+</button>
-          <button class="icon-btn-flat" onclick="openCarteiraCreditoModal()" title="Registrar pagamento" aria-label="Registrar pagamento" style="width:26px;height:26px;font-size:15px;">💵</button>
-        </span>
-      </h3>
-      <div id="ldCarteiraSaldo"></div>
-      <div id="ldCarteiraList"></div>
+      <h3 style="font-size: 14px; color: var(--cor-texto-marca); margin: 22px 0 12px; border-top: 1px solid var(--cor-creme-avela); padding-top: 18px;">💳 Carteira</h3>
+      <div id="ldCarteiraBody"></div>
 
       <h3 style="font-size: 14px; color: var(--cor-texto-marca); margin: 22px 0 12px; border-top: 1px solid var(--cor-creme-avela); padding-top: 18px; display:flex; align-items:center; justify-content:space-between;">
         <span>💰 Financeiro</span>
@@ -3107,25 +3100,31 @@
     // 2026-09-25: clientes recorrentes semanais com valores variáveis, sem
     // parcelas fixas — diferente do Financeiro acima, que é pra plano
     // fechado.
+    //
+    // Opt-in por cliente (pedido do usuário 2026-09-25: "certifique que o
+    // procedimento carteira são para clientes que optam por isso, os que
+    // pagam no pix, cartão, dinheiro não existe necessidade de exibir a
+    // opção"). Não existe um campo separado "usa carteira" na planilha —
+    // o próprio fato de já ter algum lançamento (allCarteira) É a marca de
+    // opt-in. Cliente sem nenhum lançamento vê só uma linha discreta com
+    // opção de ativar, não o card de saldo + botões que a maioria (que só
+    // paga na hora, via Financeiro) nunca vai usar.
     function renderLeadCarteira(phone) {
-      const saldoEl = document.getElementById('ldCarteiraSaldo');
-      const listEl = document.getElementById('ldCarteiraList');
+      const bodyEl = document.getElementById('ldCarteiraBody');
       const entries = allCarteira.filter(c => c.phone === phone).sort((a, b) => (a.date < b.date ? 1 : -1));
-      const balance = getCarteiraBalance(phone);
-
-      saldoEl.innerHTML = `
-        <div class="finance-summary-card ${balance > 0 ? 'finance-summary-overdue' : (balance < 0 ? 'finance-summary-received' : '')}" style="margin-bottom:10px;">
-          <div class="finance-summary-value">${formatCurrencyBRL(Math.abs(balance))}</div>
-          <div class="finance-summary-label">${balance > 0 ? 'Saldo devedor' : (balance < 0 ? 'Crédito a favor do cliente' : 'Quitado')}</div>
-        </div>
-      `;
 
       if (entries.length === 0) {
-        listEl.innerHTML = '<div class="agenda-empty" style="padding:8px 0;">Nenhum lançamento na carteira ainda.</div>';
+        bodyEl.innerHTML = `
+          <div class="agenda-empty" style="padding:8px 0; display:flex; align-items:center; justify-content:space-between; gap:10px;">
+            <span>Este cliente não usa carteira.</span>
+            <button class="icon-btn-flat" onclick="openCarteiraDebitoModal()" title="Ativar carteira pra este cliente" aria-label="Ativar carteira" style="width:26px;height:26px;font-size:15px;flex-shrink:0;">+</button>
+          </div>
+        `;
         return;
       }
 
-      listEl.innerHTML = entries.map(entry => `
+      const balance = getCarteiraBalance(phone);
+      const extratoHtml = entries.map(entry => `
         <div class="finance-row">
           <div class="finance-row-main">
             <span>${entry.type === 'Débito' ? '➕' : '➖'} ${entry.description || entry.type}</span>
@@ -3138,6 +3137,18 @@
           </div>
         </div>
       `).join('');
+
+      bodyEl.innerHTML = `
+        <div style="display:flex; justify-content:flex-end; gap:6px; margin-bottom:10px;">
+          <button class="icon-btn-flat" onclick="openCarteiraDebitoModal()" title="Lançar débito (novo procedimento)" aria-label="Lançar débito" style="width:26px;height:26px;font-size:15px;">+</button>
+          <button class="icon-btn-flat" onclick="openCarteiraCreditoModal()" title="Registrar pagamento" aria-label="Registrar pagamento" style="width:26px;height:26px;font-size:15px;">💵</button>
+        </div>
+        <div class="finance-summary-card ${balance > 0 ? 'finance-summary-overdue' : (balance < 0 ? 'finance-summary-received' : '')}" style="margin-bottom:10px;">
+          <div class="finance-summary-value">${formatCurrencyBRL(Math.abs(balance))}</div>
+          <div class="finance-summary-label">${balance > 0 ? 'Saldo devedor' : (balance < 0 ? 'Crédito a favor do cliente' : 'Quitado')}</div>
+        </div>
+        ${extratoHtml}
+      `;
     }
 
     let carteiraTargetPhone = null;
