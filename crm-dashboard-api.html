@@ -4238,6 +4238,27 @@
       const overdue = allFinance.filter(f => f.status !== 'Recebido' && f.dueDate && f.dueDate < todayStr);
       const overdueTotal = overdue.reduce((s, f) => s + f.value, 0);
 
+      // Saldo devedor em aberto na Carteira, por cliente (pedido do
+      // usuário 2026-09-26: "um novo card para os recebimentos em
+      // abertos provenientes dos procedimentos em carteira, que não tem
+      // data de vencimento"). Igual Atrasado, é sempre "hoje" — saldo
+      // corrente, não um histórico de mês (a Carteira não tem
+      // vencimento pra escopar por período). Lista os procedimentos
+      // (Débitos) de cada cliente junto, não só o nome — pedido do
+      // usuário: "deve exibir logicamente o valor em aberto e
+      // procedimentos, etc".
+      const carteiraOpenBalances = Array.from(new Set(allCarteira.map(c => c.phone)))
+        .map((phone) => {
+          const entry = allCarteira.find(c => c.phone === phone);
+          const procedures = Array.from(new Set(
+            allCarteira.filter(c => c.phone === phone && c.type === 'Débito').map(c => c.description).filter(Boolean)
+          ));
+          return { phone, name: entry ? entry.name : '—', balance: getCarteiraBalance(phone), procedures };
+        })
+        .filter(b => b.balance > 0)
+        .sort((a, b) => b.balance - a.balance);
+      const carteiraOpenTotal = carteiraOpenBalances.reduce((s, b) => s + b.balance, 0);
+
       const methodRows = Object.keys(receivedByMethod).sort().map(method => `
         <div class="finance-summary-method">
           <span>${PAYMENT_METHOD_ICONS[method] || '📄'} ${method}</span>
@@ -4258,6 +4279,10 @@
           <div class="finance-summary-card ${overdueTotal > 0 ? 'finance-summary-overdue' : ''} ${financeReportFilter === 'atrasado' ? 'finance-summary-card-active' : ''}" onclick="filterFinanceReport('atrasado')" role="button" tabindex="0">
             <div class="finance-summary-value">${formatCurrencyBRL(overdueTotal)}</div>
             <div class="finance-summary-label">Atrasado (hoje)</div>
+          </div>
+          <div class="finance-summary-card ${carteiraOpenTotal > 0 ? 'finance-summary-overdue' : ''} ${financeReportFilter === 'carteira-aberto' ? 'finance-summary-card-active' : ''}" onclick="filterFinanceReport('carteira-aberto')" role="button" tabindex="0">
+            <div class="finance-summary-value">${formatCurrencyBRL(carteiraOpenTotal)}</div>
+            <div class="finance-summary-label">Em aberto na Carteira</div>
           </div>
         </div>
         <div class="finance-summary-methods">${methodRows}</div>
@@ -4294,6 +4319,23 @@
         </div>
       `;
 
+      // Card "Em aberto na Carteira" — uma linha por CLIENTE (não por
+      // transação, diferente dos outros grupos), já que o que existe é
+      // um saldo corrente, não parcelas avulsas. Clicar leva direto pra
+      // ficha do cliente (onde dá pra ver o extrato completo e lançar
+      // um pagamento), não pra um modal de detalhe de transação única.
+      const carteiraBalanceRowHtml = (b) => `
+        <div class="finance-row" onclick="closeFinanceReport(); openLeadDetail('${b.phone}')" role="button" tabindex="0" style="cursor:pointer;">
+          <div class="finance-row-main">
+            <span>💳 ${b.name}</span>
+            <span class="finance-row-value">${formatCurrencyBRL(b.balance)}</span>
+          </div>
+          <div class="finance-row-meta">
+            <span>${b.procedures.length ? b.procedures.join(', ') : 'Procedimento não informado'}</span>
+          </div>
+        </div>
+      `;
+
       // Clicar num card filtra a lista abaixo pra só aquele grupo (pedido
       // do usuário 2026-09-26: "quando eu clicar no financeiro e nos
       // cards eu quero que liste em grid o que foi recebido, a receber e
@@ -4317,6 +4359,15 @@
         titleEl.textContent = '⚠️ Atrasado (hoje)';
         itemsToShow = overdue;
         emptyMessage = 'Nenhuma parcela atrasada. 🎉';
+      } else if (financeReportFilter === 'carteira-aberto') {
+        // Formato de dado diferente dos outros grupos (1 linha por
+        // cliente, não por transação) — sai cedo em vez de entrar no
+        // fluxo genérico de itemsToShow/financeRowHtml.
+        titleEl.textContent = '💳 Em aberto na Carteira';
+        listEl.innerHTML = carteiraOpenBalances.length
+          ? carteiraOpenBalances.map(carteiraBalanceRowHtml).join('')
+          : '<div class="agenda-empty">Nenhum saldo em aberto na Carteira. 🎉</div>';
+        return;
       } else {
         titleEl.textContent = 'Parcelas do mês';
         itemsToShow = allFinance.filter(f => (f.receivedDate && f.receivedDate.startsWith(monthValue)) || (f.dueDate && f.dueDate.startsWith(monthValue)));
