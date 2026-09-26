@@ -3036,12 +3036,17 @@
       const query = document.getElementById('leadSearchInput').value.trim().toLowerCase();
       const resultsEl = document.getElementById('leadSearchResults');
 
-      const filtered = query
+      // Ordenado por nome (pedido do usuário 2026-09-26) — não tinha
+      // nenhuma ordenação, mostrava na ordem bruta da planilha; pra achar
+      // e escolher entre vários resultados (ex.: "De" -> Debora, Denis,
+      // Denise) faz mais sentido alfabético do que ordem de cadastro.
+      const filtered = (query
         ? allData.filter(l =>
             l.name.toLowerCase().includes(query) ||
             l.phone.includes(query) ||
             l.source.toLowerCase().includes(query))
-        : allData;
+        : allData.slice()
+      ).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' }));
 
       if (filtered.length === 0) {
         resultsEl.innerHTML = '<div class="agenda-empty">Nenhum lead encontrado.</div>';
