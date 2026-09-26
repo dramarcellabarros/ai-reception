@@ -2784,24 +2784,15 @@
       document.getElementById('tableHint').style.display = shouldShowTable ? 'none' : '';
 
       renderTable(applyLeadsSort(filtered));
-      return filtered;
     }
 
-    // Pedido do usuário 2026-09-25: "mostrar a ficha sempre que houver 1
-    // resultado, mesmo digitando pouco" — quando a BUSCA (não um clique
-    // em card) resultar em exatamente 1 lead, abre o painel de detalhe
-    // direto, sem precisar clicar na linha da tabela. Só dispara a partir
-    // do próprio campo de busca (não de todo applyFilters() genérico,
-    // chamado também por refreshData()) — senão um refresh automático em
-    // segundo plano reabriria a ficha mesmo depois da usuária ter fechado
-    // ela de propósito.
-    function onSearchInput() {
-      const filtered = applyFilters();
-      const query = document.getElementById('search').value.trim();
-      if (query && filtered.length === 1 && currentDetailPhone !== filtered[0].phone) {
-        openLeadDetail(filtered[0].phone);
-      }
-    }
+    // Pedido do usuário 2026-09-25 (revisado): a ideia inicial era abrir
+    // a ficha sozinha quando a busca resultasse em 1 lead só, mas o uso
+    // real é digitar pouco (ex.: "De") e ver a LISTA de quem bate (Debora,
+    // Denis, Denise) pra escolher — não abrir uma ficha específica
+    // automaticamente. O que resolve de verdade é só garantir que a lista
+    // filtrada fique visível junto com o teclado (ver scrollSearchIntoView
+    // logo abaixo), sem precisar rolar a tela manualmente.
 
     // Atalho "📇 Cadastro de Leads" na barra de módulos (pedido do usuário
     // 2026-09-25: "quero ao lado do incluir um ícone de cadastro de leads
@@ -5157,7 +5148,7 @@
     }
 
     // Event listeners
-    document.getElementById('search').addEventListener('input', onSearchInput);
+    document.getElementById('search').addEventListener('input', applyFilters);
 
     // Realinha o campo de busca assim que o teclado do celular abre —
     // pedido do usuário 2026-09-25. Focus sozinho não basta: o teclado
