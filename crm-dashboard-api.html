@@ -544,6 +544,24 @@
       flex-basis: 100%;
     }
 
+    /* Histórico simplificado numa linha só (pedido do usuário 2026-09-25:
+       "exibir mais simplificado em uma linha apenas sem descrição
+       'concluído', 'desmarcado'") — só o ícone de status + reabrir, sem
+       texto e sem forçar quebra de linha. O item ativo (com até 4 botões:
+       confirmar/concluir/editar/desmarcar) continua quebrando linha —
+       aquele caso genuinamente precisa, pra não misturar tantos botões
+       com o título. */
+    .agenda-event-completed .agenda-event-actions {
+      flex-basis: auto;
+    }
+
+    .complete-btn-compact {
+      min-width: 30px;
+      min-height: 30px;
+      padding: 4px 8px;
+      font-size: 12px;
+    }
+
     .complete-btn {
       font-size: 13px;
       font-weight: 600;
@@ -1472,6 +1490,7 @@
     <div class="header-actions">
       <div class="module-bar">
         <button class="icon-btn icon-btn-primary" onclick="openNewAppointmentModal()" title="Novo Agendamento" aria-label="Novo Agendamento">➕</button>
+        <button class="icon-btn" onclick="goToLeadSearch()" title="Cadastro de Leads — pesquisar" aria-label="Cadastro de Leads">📇</button>
         <button class="icon-btn" onclick="openFinanceReport()" title="Relatório Financeiro" aria-label="Relatório Financeiro">💰</button>
         <button class="icon-btn" onclick="openMonthCalendar()" title="Visão do Mês" aria-label="Visão do Mês">🗓️</button>
       </div>
@@ -2784,6 +2803,19 @@
       }
     }
 
+    // Atalho "📇 Cadastro de Leads" na barra de módulos (pedido do usuário
+    // 2026-09-25: "quero ao lado do incluir um ícone de cadastro de leads
+    // onde eu possa pesquisar, lado direito do novo") — rola até o campo
+    // de busca de leads e já foca nele, pronta pra digitar. Não força a
+    // grade a aparecer sozinha (continua só aparecendo ao buscar/filtrar,
+    // pedido de 2026-09-24) — é só um atalho pra chegar rápido no campo,
+    // sem precisar rolar a tela manualmente.
+    function goToLeadSearch() {
+      const search = document.getElementById('search');
+      search.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      search.focus();
+    }
+
     function showError(message) {
       const container = document.getElementById('errorContainer');
       container.innerHTML = `<div class="error">${message}</div>`;
@@ -3129,8 +3161,8 @@
               : '';
 
             const action = completed
-              ? `<span class="complete-done" title="${statusInfo.label}">${statusInfo.icon} ${statusInfo.label}</span>
-                 <button class="complete-btn" onclick="event.stopPropagation(); event.preventDefault(); reopenEvent('${ev.id}')" title="Reabrir (desfaz)" aria-label="Reabrir">↩️</button>`
+              ? `<span class="complete-done" title="${statusInfo.label}">${statusInfo.icon}</span>
+                 <button class="complete-btn complete-btn-compact" onclick="event.stopPropagation(); event.preventDefault(); reopenEvent('${ev.id}')" title="Reabrir (desfaz) — ${statusInfo.label}" aria-label="Reabrir">↩️</button>`
               : `
                 ${confirmBtn}
                 <button class="complete-btn" onclick="event.stopPropagation(); event.preventDefault(); openCompleteModal('${ev.id}')" title="Marcar como concluído" aria-label="Marcar como concluído">✅</button>
