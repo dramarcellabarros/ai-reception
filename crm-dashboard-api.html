@@ -2810,9 +2810,20 @@
     // grade a aparecer sozinha (continua só aparecendo ao buscar/filtrar,
     // pedido de 2026-09-24) — é só um atalho pra chegar rápido no campo,
     // sem precisar rolar a tela manualmente.
+    // Alinha o campo de busca no TOPO da área visível, não no centro
+    // (pedido do usuário 2026-09-25: "no mobile... fica a janela da
+    // agenda/lead e teclado embaixo, não consigo visualizar se minha
+    // pesquisa está sendo correta" — o teclado do celular consome a
+    // metade de baixo da tela; alinhar ao topo sobra o máximo de espaço
+    // possível abaixo do campo pros resultados aparecerem por cima do
+    // teclado, não escondidos atrás dele).
+    function scrollSearchIntoView() {
+      document.getElementById('search').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
     function goToLeadSearch() {
       const search = document.getElementById('search');
-      search.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      scrollSearchIntoView();
       search.focus();
     }
 
@@ -5147,6 +5158,23 @@
 
     // Event listeners
     document.getElementById('search').addEventListener('input', onSearchInput);
+
+    // Realinha o campo de busca assim que o teclado do celular abre —
+    // pedido do usuário 2026-09-25. Focus sozinho não basta: o teclado
+    // ainda está animando quando o evento dispara, então rolar ali usa a
+    // altura ANTIGA da tela (antes do teclado encolher a área visível).
+    // visualViewport.resize dispara DEPOIS que o teclado já abriu/fechou
+    // de verdade, com a altura visível já correta — suportado no Safari
+    // iOS e Chrome Android modernos; sem isso (fallback), ainda sobra o
+    // scroll do próprio focus, que ajuda mas pode ficar impreciso.
+    document.getElementById('search').addEventListener('focus', scrollSearchIntoView);
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener('resize', () => {
+        if (document.activeElement === document.getElementById('search')) {
+          scrollSearchIntoView();
+        }
+      });
+    }
 
     window.addEventListener('scroll', () => {
       const btn = document.getElementById('backToTopBtn');
