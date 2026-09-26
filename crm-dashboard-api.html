@@ -52,6 +52,21 @@
       touch-action: pan-x pan-y;
     }
 
+    /* Trava a tela de fundo enquanto um modal está aberto (pedido do
+       usuário 2026-09-26) — position:fixed com o scroll atual guardado
+       (top negativo) é o que realmente impede o "vazamento" de scroll no
+       iOS Safari; só overflow:hidden no body não é suficiente lá. Classe
+       ligada/desligada automaticamente por updateBodyScrollLock (ver
+       fim do bloco de JavaScript) sempre que QUALQUER .modal ganha/perde
+       "open". */
+    body.body-scroll-locked {
+      position: fixed;
+      left: 0;
+      right: 0;
+      width: 100%;
+      overflow: hidden;
+    }
+
     h1, h2, .agenda-header h2, .modal-content h2 {
       font-family: 'Roboto Serif', Georgia, serif;
     }
@@ -5568,6 +5583,35 @@
         adjustLeadSearchModalHeight();
       });
     }
+
+    // Trava o scroll da tela de fundo enquanto QUALQUER modal estiver
+    // aberto (pedido do usuário 2026-09-26: "porque eu navegar no detalhe
+    // do lançamento a janela de trás se movimenta? consegue travar isso
+    // em todas as telas? a navegação/rolagem deve ser sempre e apenas na
+    // janela em evidência"). Central e automático pra todos os modais —
+    // um MutationObserver por .modal observando a classe "open", em vez
+    // de editar cada uma das funções openXModal/closeXModal (são muitas,
+    // fácil esquecer alguma e deixar um modal sem a trava). Técnica
+    // position:fixed + guardar/restaurar scrollY (não só overflow:hidden)
+    // porque só overflow:hidden no body não impede 100% o "vazamento" de
+    // scroll por trás em iOS Safari.
+    let bodyScrollLockY = 0;
+    function updateBodyScrollLock() {
+      const anyModalOpen = document.querySelector('.modal.open');
+      const alreadyLocked = document.body.classList.contains('body-scroll-locked');
+      if (anyModalOpen && !alreadyLocked) {
+        bodyScrollLockY = window.scrollY;
+        document.body.classList.add('body-scroll-locked');
+        document.body.style.top = `-${bodyScrollLockY}px`;
+      } else if (!anyModalOpen && alreadyLocked) {
+        document.body.classList.remove('body-scroll-locked');
+        document.body.style.top = '';
+        window.scrollTo(0, bodyScrollLockY);
+      }
+    }
+    document.querySelectorAll('.modal').forEach((modalEl) => {
+      new MutationObserver(updateBodyScrollLock).observe(modalEl, { attributes: true, attributeFilter: ['class'] });
+    });
 
     window.addEventListener('scroll', () => {
       const btn = document.getElementById('backToTopBtn');
