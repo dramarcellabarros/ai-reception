@@ -936,6 +936,73 @@
       min-height: 14px;
     }
 
+    /* Modal de Cadastro de Leads (pedido do usuário 2026-09-26) — a
+       altura máxima real de #leadSearchResults é definida por JS
+       (adjustLeadSearchModalHeight, a partir de visualViewport), este
+       max-height aqui é só o valor inicial/fallback antes do JS rodar. */
+    .lead-search-results {
+      overflow-y: auto;
+      max-height: 45vh;
+    }
+
+    .lead-search-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 6px;
+      border-bottom: 1px solid var(--cor-creme-avela);
+    }
+
+    .lead-search-row:last-child {
+      border-bottom: none;
+    }
+
+    .lead-search-checkbox {
+      width: 18px;
+      height: 18px;
+      flex-shrink: 0;
+      cursor: pointer;
+    }
+
+    .lead-search-info {
+      display: flex;
+      flex: 1;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      cursor: pointer;
+      min-width: 0;
+    }
+
+    .lead-search-name {
+      font-weight: 600;
+      color: var(--cor-texto-marca);
+      font-size: 14px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .lead-search-phone {
+      font-size: 12.5px;
+      color: var(--cor-cinza-cacau);
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    .lead-search-selected-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: var(--cor-rosa-sereno);
+      border-radius: 6px;
+      padding: 8px 12px;
+      margin-bottom: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--cor-texto-marca);
+    }
+
     /* Calculadora de valor por procedimento (pedido do usuário
        2026-09-25: "nesse cenário de vários procedimentos... preciso de
        uma calculadora... para somar os procedimentos e devolver o valor
@@ -1363,12 +1430,29 @@
       min-height: 80px;
     }
 
+    /* Sticky (pedido do usuário 2026-09-26: "quando uma janela é aberta
+       na frente é preciso voltar ao topo para clicar no x, preciso que o
+       x fique disponível em qualquer parte da janela") — modais longos
+       (ficha do lead com Financeiro/Carteira/Histórico, por exemplo) têm
+       scroll interno (.modal-content: overflow-y:auto), e o × antes
+       rolava junto com o conteúdo, saindo da tela. Fundo branco + padding
+       próprios pra não ficar com texto passando por trás dele enquanto
+       gruda no topo durante o scroll. Classe compartilhada por todos os
+       14 modais do app — uma correção só resolve em todos de uma vez. */
     .close-btn {
       float: right;
       font-size: 28px;
       font-weight: bold;
       color: var(--cor-cinza-cacau);
       cursor: pointer;
+      position: sticky;
+      top: 0;
+      z-index: 5;
+      background: white;
+      padding: 0 2px 4px 8px;
+      margin: -2px -6px 0 0;
+      border-radius: 4px;
+      line-height: 1.15;
     }
 
     .close-btn:hover {
@@ -1490,7 +1574,7 @@
     <div class="header-actions">
       <div class="module-bar">
         <button class="icon-btn icon-btn-primary" onclick="openNewAppointmentModal()" title="Novo Agendamento" aria-label="Novo Agendamento">➕</button>
-        <button class="icon-btn" onclick="goToLeadSearch()" title="Cadastro de Leads — pesquisar" aria-label="Cadastro de Leads">📇</button>
+        <button class="icon-btn" onclick="openLeadSearchModal()" title="Cadastro de Leads — pesquisar" aria-label="Cadastro de Leads">📇</button>
         <button class="icon-btn" onclick="openFinanceReport()" title="Relatório Financeiro" aria-label="Relatório Financeiro">💰</button>
         <button class="icon-btn" onclick="openMonthCalendar()" title="Visão do Mês" aria-label="Visão do Mês">🗓️</button>
       </div>
@@ -1806,6 +1890,30 @@
       </div>
       <div id="monthCalendarGrid" class="month-grid"></div>
       <div id="monthDayDetail" class="month-day-detail"></div>
+    </div>
+  </div>
+
+  <!-- Modal de Cadastro de Leads — pesquisa (pedido do usuário 2026-09-26:
+       "quando eu clicar no botão de lead no cabeçalho eu quero uma nova
+       janela de pesquisa pra retornar o grid já preenchido. também deixe
+       selecionar múltiplas linhas de leads"). Substitui o antigo
+       goToLeadSearch() (que só rolava até o campo de busca da tela
+       principal) — a rolagem de página + teclado nunca ficou confiável
+       ("não ficou funcional", print mostrando só o cabeçalho da tabela
+       visível, linhas escondidas atrás do teclado). Modal próprio com
+       altura calculada por JS a partir de window.visualViewport (não só
+       CSS vh, que não reage ao teclado em todo navegador) resolve isso
+       de forma mais robusta: a lista de resultados sempre cabe no espaço
+       realmente visível acima do teclado, não no espaço da tela toda. -->
+  <div class="modal" id="leadSearchModal">
+    <div class="modal-content modal-content-wide" style="display:flex; flex-direction:column;">
+      <span class="close-btn" onclick="closeLeadSearchModal()">&times;</span>
+      <h2>📇 Cadastro de Leads</h2>
+      <div class="form-group" style="margin-bottom:8px;">
+        <input type="text" id="leadSearchInput" placeholder="Buscar por nome, telefone ou email..." oninput="renderLeadSearchResults()" autocorrect="off" spellcheck="false">
+      </div>
+      <div id="leadSearchSelectedBar" class="lead-search-selected-bar" style="display:none;"></div>
+      <div id="leadSearchResults" class="lead-search-results"></div>
     </div>
   </div>
 
@@ -2812,10 +2920,98 @@
       document.getElementById('search').scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
 
-    function goToLeadSearch() {
-      const search = document.getElementById('search');
-      scrollSearchIntoView();
-      search.focus();
+    // Modal de Cadastro de Leads — pesquisa (pedido do usuário 2026-09-26:
+    // "uma nova janela de pesquisa pra retornar o grid já preenchido...
+    // também deixe selecionar múltiplas linhas de leads"). Substitui a
+    // rolagem de página até o campo de busca principal, que não ficou
+    // confiável com o teclado do celular aberto por cima dos resultados.
+    let leadSearchSelectedPhones = new Set();
+
+    function openLeadSearchModal() {
+      document.getElementById('leadSearchInput').value = '';
+      leadSearchSelectedPhones = new Set();
+      renderLeadSearchResults();
+      document.getElementById('leadSearchModal').classList.add('open');
+      adjustLeadSearchModalHeight();
+      // Foco com um pequeno atraso — focar antes do modal terminar de
+      // aparecer podia disparar o teclado num estado de layout ainda não
+      // assentado em alguns navegadores mobile.
+      setTimeout(() => document.getElementById('leadSearchInput').focus(), 80);
+    }
+
+    function closeLeadSearchModal() {
+      document.getElementById('leadSearchModal').classList.remove('open');
+    }
+
+    // "grid já preenchido" — mostra TODOS os leads assim que abre (sem
+    // precisar digitar nada pra ver algo), igual pedido pelo usuário.
+    function renderLeadSearchResults() {
+      const query = document.getElementById('leadSearchInput').value.trim().toLowerCase();
+      const resultsEl = document.getElementById('leadSearchResults');
+
+      const filtered = query
+        ? allData.filter(l =>
+            l.name.toLowerCase().includes(query) ||
+            l.phone.includes(query) ||
+            l.source.toLowerCase().includes(query))
+        : allData;
+
+      if (filtered.length === 0) {
+        resultsEl.innerHTML = '<div class="agenda-empty">Nenhum lead encontrado.</div>';
+      } else {
+        resultsEl.innerHTML = filtered.map(l => `
+          <div class="lead-search-row">
+            <input type="checkbox" class="lead-search-checkbox" ${leadSearchSelectedPhones.has(l.phone) ? 'checked' : ''} onchange="toggleLeadSearchSelection('${l.phone}', this.checked)" aria-label="Selecionar ${l.name}">
+            <div class="lead-search-info" onclick="closeLeadSearchModal(); openLeadDetail('${l.phone}')">
+              <span class="lead-search-name">${l.name}</span>
+              <span class="lead-search-phone">${formatPhoneShort(l.phone)}</span>
+            </div>
+          </div>
+        `).join('');
+      }
+
+      updateLeadSearchSelectedBar();
+    }
+
+    function toggleLeadSearchSelection(phone, checked) {
+      if (checked) leadSearchSelectedPhones.add(phone);
+      else leadSearchSelectedPhones.delete(phone);
+      updateLeadSearchSelectedBar();
+    }
+
+    function clearLeadSearchSelection() {
+      leadSearchSelectedPhones = new Set();
+      renderLeadSearchResults();
+    }
+
+    function updateLeadSearchSelectedBar() {
+      const bar = document.getElementById('leadSearchSelectedBar');
+      const count = leadSearchSelectedPhones.size;
+      if (count === 0) {
+        bar.style.display = 'none';
+        return;
+      }
+      bar.style.display = 'flex';
+      bar.innerHTML = `
+        <span>${count} selecionado${count > 1 ? 's' : ''}</span>
+        <button type="button" class="icon-btn-flat" onclick="clearLeadSearchSelection()" title="Limpar seleção" aria-label="Limpar seleção" style="width:24px;height:24px;font-size:13px;">✕</button>
+      `;
+    }
+
+    // Altura calculada por JS a partir de visualViewport (não só CSS vh) —
+    // pedido do usuário 2026-09-26 depois do CSS puro não funcionar
+    // ("não ficou funcional", print mostrando resultados escondidos atrás
+    // do teclado). visualViewport.height já reflete a área REALMENTE
+    // visível (descontando o teclado), diferente de vh/window.innerHeight
+    // em vários navegadores mobile.
+    function adjustLeadSearchModalHeight() {
+      const modalEl = document.getElementById('leadSearchModal');
+      if (!modalEl.classList.contains('open')) return;
+      const modalContent = modalEl.querySelector('.modal-content');
+      const results = document.getElementById('leadSearchResults');
+      const vh = (window.visualViewport ? window.visualViewport.height : window.innerHeight);
+      modalContent.style.maxHeight = `${Math.round(vh * 0.9)}px`;
+      results.style.maxHeight = `${Math.round(vh * 0.45)}px`;
     }
 
     function showError(message) {
@@ -5164,6 +5360,7 @@
         if (document.activeElement === document.getElementById('search')) {
           scrollSearchIntoView();
         }
+        adjustLeadSearchModalHeight();
       });
     }
 
