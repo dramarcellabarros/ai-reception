@@ -2036,16 +2036,15 @@
           <option value="OUTRO">Outro</option>
         </select>
       </div>
+      <!-- Sem campo de Tipo de atendimento (pedido do usuário 2026-09-26:
+           "para lançamento de leads que estamos fazendo retroativamente
+           entende-se que o procedimento já foi realizado... se houve
+           financeiro obviamente o procedimento já foi realizado") — Novo
+           Lead é só pra cadastro retroativo de quem já fez algo, nunca
+           pra "vai fazer uma avaliação no futuro", então o campo era só
+           ruído. Procedimento(s) sempre visível, direto. -->
       <div class="form-group">
-        <label>Tipo de atendimento:</label>
-        <select id="nlType" onchange="toggleProcedureVisibility('nlType', 'nlProcedureGroup')">
-          <option value="AVALIACAO">Avaliação</option>
-          <option value="PROCEDIMENTO">Procedimento</option>
-          <option value="RETORNO">Retorno</option>
-        </select>
-      </div>
-      <div class="form-group" id="nlProcedureGroup" style="display:none;">
-        <label>Procedimento(s):</label>
+        <label>Procedimento(s) já realizado(s):</label>
         <div class="procedure-checklist" id="nlProcedureChecklist"></div>
         <div class="procedure-check-summary" id="nlProcSummary"></div>
       </div>
@@ -4018,17 +4017,9 @@
       document.getElementById('nlName').value = '';
       document.getElementById('nlPhone').value = '';
       document.getElementById('nlSource').value = 'INSTAGRAM';
-      // Padrão é Procedimento, não Avaliação (pedido do usuário
-      // 2026-09-25: "como estamos lançando retroativo o tipo de
-      // atendimento está ficando avaliação, deve ficar procedimento pois
-      // já foi realizado") — Novo Lead é exatamente o fluxo de cadastrar
-      // retroativamente quem já fez algo antes de existir no CRM; "vai
-      // fazer uma avaliação no futuro" não é o caso de uso desse modal.
-      document.getElementById('nlType').value = 'PROCEDIMENTO';
       document.getElementById('nlProcedureChecklist').innerHTML = procedureChecklistHtml('nl');
       resetProcedureChecklist('nl');
       onProcedureCheckChange('nl');
-      toggleProcedureVisibility('nlType', 'nlProcedureGroup');
       document.getElementById('newLeadError').innerHTML = '';
       document.getElementById('newLeadModal').classList.add('open');
     }
@@ -4042,8 +4033,13 @@
       const name = document.getElementById('nlName').value.trim();
       const phoneRaw = document.getElementById('nlPhone').value.trim();
       const source = document.getElementById('nlSource').value;
-      const appointmentType = document.getElementById('nlType').value;
-      const procedure = getGatedProcedureValue('nlType', 'nl');
+      // Sem campo de Tipo (pedido do usuário 2026-09-26) — Novo Lead é só
+      // cadastro retroativo de procedimento já realizado, então o tipo é
+      // sempre "Procedimento" (mesmo rótulo usado em createAppointment/
+      // editAppointment, pra bater com o que já aparece na coluna "Tipo
+      // de Atendimento" da planilha pros agendamentos normais).
+      const appointmentType = 'Procedimento';
+      const procedure = getProcedureValue('nl');
 
       document.getElementById('newLeadError').innerHTML = '';
 
@@ -4056,8 +4052,8 @@
         document.getElementById('newLeadError').innerHTML = '<div class="form-error">⚠️ Telefone inválido.</div>';
         return;
       }
-      if ((appointmentType === 'PROCEDIMENTO' || appointmentType === 'RETORNO') && !procedure) {
-        document.getElementById('newLeadError').innerHTML = '<div class="form-error">⚠️ Escolha qual procedimento.</div>';
+      if (!procedure) {
+        document.getElementById('newLeadError').innerHTML = '<div class="form-error">⚠️ Marque pelo menos um procedimento já realizado.</div>';
         return;
       }
 
