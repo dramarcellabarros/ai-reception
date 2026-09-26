@@ -120,6 +120,12 @@ function doPost(e) {
     if (payload.action === 'addCarteiraCredito') {
       return jsonResponse(addCarteiraCredito(payload));
     }
+    if (payload.action === 'deleteReceivable') {
+      return jsonResponse(deleteReceivable(payload));
+    }
+    if (payload.action === 'deleteCarteiraEntry') {
+      return jsonResponse(deleteCarteiraEntry(payload));
+    }
 
     return jsonResponse({ ok: false, error: 'Ação desconhecida: ' + payload.action });
   } catch (err) {
@@ -1240,6 +1246,29 @@ function updateReceivable(payload) {
   return { ok: false, error: 'Parcela não encontrada.' };
 }
 
+/** Exclui uma parcela lançada por engano (pedido do usuário 2026-09-25:
+ * "após lançamento incorreto deve ser possível excluir o lançamento do
+ * financeiro/carteira"). Diferente de markReceivableStatus — isso apaga
+ * a linha de vez, não só muda o status; usado quando a parcela nem
+ * deveria ter sido lançada (valor errado, cliente errado etc.). */
+function deleteReceivable(payload) {
+  const { id } = payload;
+  if (!id) return { ok: false, error: 'Campo obrigatório: id.' };
+
+  const sheet = getFinanceSheet();
+  const data = sheet.getDataRange().getValues();
+  const headers = data[0];
+  const idCol = headers.indexOf('ID');
+
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][idCol]) === String(id)) {
+      sheet.deleteRow(i + 1);
+      return { ok: true };
+    }
+  }
+  return { ok: false, error: 'Parcela não encontrada.' };
+}
+
 // ============================================================
 // Carteira — saldo devedor corrente por cliente (pedido do usuário
 // 2026-09-25: clientes recorrentes semanais que fecham um procedimento
@@ -1324,6 +1353,27 @@ function addCarteiraCredito(payload) {
   range.setNumberFormat('@');
   range.setValues([[id, phone, name, 'Crédito', 'Pagamento', value, paymentMethod || '', dateStr, createdAt]]);
   return { ok: true, id };
+}
+
+/** Exclui um lançamento (débito ou crédito) da Carteira feito por engano
+ * (pedido do usuário 2026-09-25: "após lançamento incorreto deve ser
+ * possível excluir o lançamento do financeiro/carteira"). */
+function deleteCarteiraEntry(payload) {
+  const { id } = payload;
+  if (!id) return { ok: false, error: 'Campo obrigatório: id.' };
+
+  const sheet = getCarteiraSheet();
+  const data = sheet.getDataRange().getValues();
+  const headers = data[0];
+  const idCol = headers.indexOf('ID');
+
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][idCol]) === String(id)) {
+      sheet.deleteRow(i + 1);
+      return { ok: true };
+    }
+  }
+  return { ok: false, error: 'Lançamento não encontrado.' };
 }
 
 function jsonResponse(obj) {

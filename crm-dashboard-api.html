@@ -2765,6 +2765,23 @@
       document.getElementById('tableHint').style.display = shouldShowTable ? 'none' : '';
 
       renderTable(applyLeadsSort(filtered));
+      return filtered;
+    }
+
+    // Pedido do usuário 2026-09-25: "mostrar a ficha sempre que houver 1
+    // resultado, mesmo digitando pouco" — quando a BUSCA (não um clique
+    // em card) resultar em exatamente 1 lead, abre o painel de detalhe
+    // direto, sem precisar clicar na linha da tabela. Só dispara a partir
+    // do próprio campo de busca (não de todo applyFilters() genérico,
+    // chamado também por refreshData()) — senão um refresh automático em
+    // segundo plano reabriria a ficha mesmo depois da usuária ter fechado
+    // ela de propósito.
+    function onSearchInput() {
+      const filtered = applyFilters();
+      const query = document.getElementById('search').value.trim();
+      if (query && filtered.length === 1 && currentDetailPhone !== filtered[0].phone) {
+        openLeadDetail(filtered[0].phone);
+      }
     }
 
     function showError(message) {
@@ -3239,11 +3256,61 @@
             <span>${item.paymentMethod || '—'}</span>
             <span class="finance-status-badge ${item.status === 'Recebido' ? 'finance-status-paid' : 'finance-status-pending'}">${item.status}</span>
           </div>
-          <button class="complete-btn" onclick="toggleReceivableStatus('${item.id}', '${item.status === 'Recebido' ? 'A receber' : 'Recebido'}')">
-            ${item.status === 'Recebido' ? '↩️ Desfazer' : '✅ Marcar recebido'}
-          </button>
+          <div style="display:flex; gap:6px;">
+            <button class="complete-btn" onclick="toggleReceivableStatus('${item.id}', '${item.status === 'Recebido' ? 'A receber' : 'Recebido'}')" style="flex:1;">
+              ${item.status === 'Recebido' ? '↩️ Desfazer' : '✅ Marcar recebido'}
+            </button>
+            <button class="complete-btn complete-btn-danger" onclick="deleteFinanceEntry('${item.id}', '${phone}')" title="Excluir lançamento" aria-label="Excluir lançamento">🗑️</button>
+          </div>
         </div>
       `).join('');
+    }
+
+    // Exclui uma parcela lançada por engano (pedido do usuário
+    // 2026-09-25: "após lançamento incorreto deve ser possível excluir o
+    // lançamento do financeiro/carteira") — diferente de "Desfazer"
+    // (que só volta o status pra "A receber"), isso apaga a linha de
+    // vez, pra quando a parcela nem deveria ter sido lançada.
+    async function deleteFinanceEntry(id, phone) {
+      if (!confirm('Excluir essa parcela? Essa ação não pode ser desfeita.')) return;
+      const settings = loadSettings();
+      try {
+        const response = await fetch(settings.scriptUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({ action: 'deleteReceivable', id })
+        });
+        const result = await response.json();
+        if (!result.ok) throw new Error(result.error || 'Erro desconhecido');
+
+        showToast('🗑️ Parcela excluída');
+        await fetchFinanceData();
+        if (currentDetailPhone === phone) renderLeadFinanceList(phone);
+      } catch (err) {
+        alert(`❌ ${err.message}`);
+      }
+    }
+
+    // Mesma lógica pra Carteira — nome diferente de deleteCarteiraEntry
+    // (a action do backend) só pra não confundir os dois na leitura.
+    async function deleteCarteiraEntryFromUI(id, phone) {
+      if (!confirm('Excluir esse lançamento da carteira? Essa ação não pode ser desfeita.')) return;
+      const settings = loadSettings();
+      try {
+        const response = await fetch(settings.scriptUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({ action: 'deleteCarteiraEntry', id })
+        });
+        const result = await response.json();
+        if (!result.ok) throw new Error(result.error || 'Erro desconhecido');
+
+        showToast('🗑️ Lançamento excluído');
+        await fetchCarteiraData();
+        if (currentDetailPhone === phone) renderLeadCarteira(phone);
+      } catch (err) {
+        alert(`❌ ${err.message}`);
+      }
     }
 
     // Saldo devedor da Carteira (pedido do usuário 2026-09-25) — sempre
@@ -3296,6 +3363,7 @@
             ${entry.paymentMethod ? `<span>${entry.paymentMethod}</span>` : ''}
             <span class="finance-status-badge ${entry.type === 'Débito' ? 'finance-status-pending' : 'finance-status-paid'}">${entry.type}</span>
           </div>
+          <button class="complete-btn complete-btn-danger" style="width:100%;" onclick="deleteCarteiraEntryFromUI('${entry.id}', '${phone}')" title="Excluir lançamento" aria-label="Excluir lançamento">🗑️ Excluir</button>
         </div>
       `).join('');
 
@@ -5046,7 +5114,7 @@
     }
 
     // Event listeners
-    document.getElementById('search').addEventListener('input', applyFilters);
+    document.getElementById('search').addEventListener('input', onSearchInput);
 
     window.addEventListener('scroll', () => {
       const btn = document.getElementById('backToTopBtn');
