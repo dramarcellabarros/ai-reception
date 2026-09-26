@@ -2011,6 +2011,21 @@
     </div>
   </div>
 
+  <!-- Modal de Detalhe do Lançamento — pedido do usuário 2026-09-26: "ao
+       clicar nele [um lançamento no Relatório Financeiro] fosse
+       redirecionado ao atendimento/venda... quero que abra dentro do
+       crm mesmo, com o resumo do agendamento/procedimento/data/forma de
+       pagamento". Sem sair da tela nem depender de vínculo com evento do
+       Calendar (que hoje não existe salvo em Financeiro/Carteira) — só
+       mostra, de forma legível, os dados que a própria linha já tem. -->
+  <div class="modal" id="transactionSummaryModal">
+    <div class="modal-content">
+      <span class="close-btn" onclick="closeTransactionSummary()">&times;</span>
+      <h2>📄 Detalhe do Lançamento</h2>
+      <div class="lead-detail-grid" id="transactionSummaryBody"></div>
+    </div>
+  </div>
+
   <!-- Modal de Novo Lead — adiciona um lead direto, sem passar por um
        agendamento (pedido do usuário 2026-09-24, pra registrar clientes
        que já fizeram o procedimento antes de existir no CRM). -->
@@ -4113,6 +4128,52 @@
       renderFinanceReport();
     }
 
+    // Detalhe do lançamento (pedido do usuário 2026-09-26: clicar num
+    // lançamento do Relatório Financeiro abre um resumo dentro do próprio
+    // CRM — procedimento/data/forma de pagamento/etc — sem sair da tela).
+    // Não depende de vínculo com evento do Calendar (que hoje não existe
+    // salvo em Financeiro/Carteira); só mostra, de forma legível, os
+    // dados que a própria linha já tem.
+    function openFinanceTransactionSummary(id, source) {
+      let rows;
+      if (source === 'carteira') {
+        const c = allCarteira.find(x => x.id === id);
+        if (!c) return;
+        rows = [
+          ['Cliente', c.name],
+          ['Lançamento', 'Pagamento na Carteira'],
+          ['Valor', formatCurrencyBRL(c.value)],
+          ['Data', formatDateBR(c.date)],
+          ['Meio de pagamento', c.paymentMethod || '—'],
+          ['Status', '✅ Recebido'],
+        ];
+      } else {
+        const item = allFinance.find(x => x.id === id);
+        if (!item) return;
+        rows = [
+          ['Cliente', item.name],
+          ['Procedimento', item.description || '—'],
+          ['Parcela', item.installmentLabel || '—'],
+          ['Valor', formatCurrencyBRL(item.value)],
+          ['Vencimento', formatDateBR(item.dueDate)],
+          ['Meio de pagamento', item.paymentMethod || '—'],
+          ['Status', item.status === 'Recebido'
+            ? `✅ Recebido${item.receivedDate ? ' em ' + formatDateBR(item.receivedDate) : ''}`
+            : '🔶 A receber'],
+        ];
+      }
+
+      document.getElementById('transactionSummaryBody').innerHTML = rows.map(([label, value]) => `
+        <div class="ld-row"><span class="ld-label">${label}</span><span class="ld-value">${value}</span></div>
+      `).join('');
+
+      document.getElementById('transactionSummaryModal').classList.add('open');
+    }
+
+    function closeTransactionSummary() {
+      document.getElementById('transactionSummaryModal').classList.remove('open');
+    }
+
     function closeFinanceReport() {
       document.getElementById('financeReportModal').classList.remove('open');
     }
@@ -4188,7 +4249,7 @@
       `;
 
       const financeRowHtml = (item) => `
-        <div class="finance-row">
+        <div class="finance-row" onclick="openFinanceTransactionSummary('${item.id}', 'financeiro')" role="button" tabindex="0" style="cursor:pointer;">
           <div class="finance-row-main">
             <span>${item.name} — ${item.description || 'Cobrança'} (${item.installmentLabel})</span>
             <span class="finance-row-value">${formatCurrencyBRL(item.value)}</span>
@@ -4205,9 +4266,9 @@
       // usuário 2026-09-25) — mostrados com layout próprio, já que não têm
       // vencimento/parcela/status (não são plano fechado).
       const carteiraRowHtml = (c) => `
-        <div class="finance-row">
+        <div class="finance-row" onclick="openFinanceTransactionSummary('${c.id}', 'carteira')" role="button" tabindex="0" style="cursor:pointer;">
           <div class="finance-row-main">
-            <span>💳 ${c.name} — Pagamento na Carteira</span>
+            <span>💳 ${c.name} — Pagto na Carteira</span>
             <span class="finance-row-value">${formatCurrencyBRL(c.value)}</span>
           </div>
           <div class="finance-row-meta">
