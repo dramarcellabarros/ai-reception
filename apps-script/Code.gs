@@ -528,7 +528,7 @@ function markNoShow(payload) {
  * como estavam.
  */
 function updateLead(payload) {
-  const { phone, name, source, leadStatus, manualOnlyNote } = payload;
+  const { phone, name, source, leadStatus, manualOnlyNote, appointmentType, procedure } = payload;
   if (!phone) return { ok: false, error: 'Campo obrigatório: phone.' };
 
   const sheet = getSheet();
@@ -545,11 +545,18 @@ function updateLead(payload) {
   }
   if (rowIndex === -1) return { ok: false, error: 'Lead não encontrado para esse telefone.' };
 
+  // appointmentType/procedure (2026-09-25): corrige retroativamente
+  // leads cadastrados via Novo Lead que ficaram com "Avaliação" por
+  // engano (antes do padrão do modal virar "Procedimento") — pedido do
+  // usuário: "está ficando avaliação, deve ficar procedimento pois já
+  // foi realizado. preciso de um replace nos casos".
   const fieldToHeader = {
     name: 'Nome',
     source: 'Origem',
     leadStatus: 'Status',
     manualOnlyNote: 'Atendimento Manual (motivo)',
+    appointmentType: 'Tipo de Atendimento',
+    procedure: 'Interesse/Procedimento',
   };
 
   for (const key in fieldToHeader) {

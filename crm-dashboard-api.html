@@ -3493,6 +3493,25 @@
     // de TODOS os leads de uma vez seria caro (varre 3 anos de Agenda por
     // cliente no Apps Script); busca sob demanda só quando o painel do
     // lead abre.
+    // Procedimentos lançados retroativamente via Financeiro/Carteira, sem
+    // passar por um agendamento no Calendar (pedido do usuário
+    // 2026-09-25: "o histórico de procedimento conforme o que foi
+    // escolhido no lançamento do financeiro/carteira mas sem data" — não
+    // tem uma data de "quando foi feito" confiável, só a data da cobrança/
+    // pagamento, que não é a mesma coisa). Quebra a Descrição (que pode
+    // ser uma string combinada tipo "Toxina + Preenchimento") pelo mesmo
+    // separador usado na checklist de procedimentos.
+    function getFinanceCarteiraProcedureNames(phone) {
+      const names = new Set();
+      allFinance.filter(f => f.phone === phone).forEach((f) => {
+        (f.description || '').split(PROCEDURE_JOIN_SEPARATOR).map(s => s.trim()).filter(Boolean).forEach(n => names.add(n));
+      });
+      allCarteira.filter(c => c.phone === phone && c.type === 'Débito').forEach((c) => {
+        (c.description || '').split(PROCEDURE_JOIN_SEPARATOR).map(s => s.trim()).filter(Boolean).forEach(n => names.add(n));
+      });
+      return Array.from(names);
+    }
+
     async function renderLeadHistory(phone) {
       const container = document.getElementById('ldHistoryList');
       const settings = loadSettings();
@@ -3514,12 +3533,20 @@
         if (currentDetailPhone !== phone) return;
 
         const items = body.history || [];
-        if (items.length === 0) {
+
+        // Procedimentos já cobertos por um evento datado não entram de
+        // novo como "sem data" — evita listar a mesma coisa duas vezes
+        // quando o fluxo normal (completar atendimento -> lançar
+        // cobrança) já gerou os dois registros pro mesmo procedimento.
+        const datedNames = new Set(items.map(i => i.procedure).filter(Boolean));
+        const extraNames = getFinanceCarteiraProcedureNames(phone).filter(n => !datedNames.has(n));
+
+        if (items.length === 0 && extraNames.length === 0) {
           container.innerHTML = '<div class="agenda-empty" style="padding:8px 0;">Nenhum procedimento concluído registrado ainda.</div>';
           return;
         }
 
-        container.innerHTML = items.map(item => `
+        const datedRows = items.map(item => `
           <div class="finance-row">
             <div class="finance-row-main">
               <span>${item.procedure || item.type || 'Atendimento'}</span>
@@ -3531,6 +3558,19 @@
             </div>
           </div>
         `).join('');
+
+        const extraRows = extraNames.map(name => `
+          <div class="finance-row">
+            <div class="finance-row-main">
+              <span>${name}</span>
+            </div>
+            <div class="finance-row-meta">
+              <span>Lançado no Financeiro/Carteira — sem data de agendamento</span>
+            </div>
+          </div>
+        `).join('');
+
+        container.innerHTML = datedRows + extraRows;
       } catch (err) {
         if (currentDetailPhone !== phone) return;
         console.error('Erro ao buscar histórico do cliente:', err);
@@ -3572,7 +3612,13 @@
       document.getElementById('nlName').value = '';
       document.getElementById('nlPhone').value = '';
       document.getElementById('nlSource').value = 'INSTAGRAM';
-      document.getElementById('nlType').value = 'AVALIACAO';
+      // Padrão é Procedimento, não Avaliação (pedido do usuário
+      // 2026-09-25: "como estamos lançando retroativo o tipo de
+      // atendimento está ficando avaliação, deve ficar procedimento pois
+      // já foi realizado") — Novo Lead é exatamente o fluxo de cadastrar
+      // retroativamente quem já fez algo antes de existir no CRM; "vai
+      // fazer uma avaliação no futuro" não é o caso de uso desse modal.
+      document.getElementById('nlType').value = 'PROCEDIMENTO';
       document.getElementById('nlProcedureChecklist').innerHTML = procedureChecklistHtml('nl');
       resetProcedureChecklist('nl');
       onProcedureCheckChange('nl');
