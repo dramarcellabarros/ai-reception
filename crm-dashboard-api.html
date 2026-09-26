@@ -940,10 +940,16 @@
        tempo") — substitui o <select> de escolha única nos 5 lugares que
        registram procedimento (Novo Agendamento, Editar Agendamento,
        Novo Lead, Lançar Cobrança, Carteira/Débito). */
+    /* Grid de 2 colunas de verdade (pedido do usuário 2026-09-26: "na
+       janela de procedimento ficou tudo desalinhado... na parte do
+       check box") — antes era flex-wrap, que deixa cada linha desalinhada
+       porque o texto de cada procedimento tem um tamanho diferente (ex.:
+       "LumineSculpt" bem mais curto que "Harmonização Facial"), então a
+       2ª coluna nunca batia na mesma posição de uma linha pra outra. */
     .procedure-checklist {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 6px 14px;
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px 10px;
       max-height: 180px;
       overflow-y: auto;
       padding: 10px;
@@ -959,12 +965,26 @@
       font-size: 13px;
       font-weight: 400;
       cursor: pointer;
-      white-space: nowrap;
+      /* white-space:nowrap sobrava do layout flex-wrap antigo — agora
+         cada item é uma célula de grid de largura fixa (metade do
+         container), então um nome comprido tipo "Harmonização Glútea"
+         precisa poder quebrar linha em vez de estourar a coluna (achado
+         ao vivo 2026-09-26: overflow horizontal real de 36px). min-width:0
+         é o que deixa a célula de grid encolher abaixo do tamanho do
+         próprio texto (sem isso, min-width:auto implícito no grid item
+         empurra a coluna pra fora mesmo com o texto podendo quebrar). */
+      min-width: 0;
     }
 
     .procedure-check-item input[type="checkbox"] {
       width: auto;
       cursor: pointer;
+    }
+
+    /* Campo de texto do "Outro" abrange as 2 colunas do grid, em vez de
+       ficar espremido numa coluna só. */
+    .procedure-check-other-text {
+      grid-column: 1 / -1;
     }
 
     .procedure-check-summary {
@@ -2276,15 +2296,15 @@
     // descrição". loadProcedureList() sobrescreve com o conteúdo real da
     // planilha assim que carrega.
     let PROCEDURE_OPTIONS = [
-      'LumineSculpt',
-      'Skinglow',
-      'Toxina Botulínica',
-      'Preenchimento',
-      'Harmonização Facial',
       'Bioestimuladores',
       'Enzimas',
+      'Harmonização Facial',
       'Harmonização Glútea',
+      'LumineSculpt',
       'PEIM — Vasinhos',
+      'Preenchimento',
+      'Skinglow',
+      'Toxina Botulínica',
     ];
 
     /** Busca a lista de procedimentos da aba "Procedimentos" na planilha
@@ -2298,7 +2318,12 @@
         const res = await fetch(`${settings.scriptUrl}?action=procedures`);
         const body = await res.json();
         if (body.ok && Array.isArray(body.procedures) && body.procedures.length) {
-          PROCEDURE_OPTIONS = body.procedures.map(p => p.name);
+          // Ordenado por nome (pedido do usuário 2026-09-26) — a planilha
+          // reflete a ordem em que cada procedimento foi cadastrado, não
+          // uma ordem útil pra achar algo na checklist.
+          PROCEDURE_OPTIONS = body.procedures
+            .map(p => p.name)
+            .sort((a, b) => a.localeCompare(b, 'pt-BR', { sensitivity: 'base' }));
         }
       } catch (err) {
         console.error('Erro ao buscar procedimentos:', err);
@@ -4558,7 +4583,7 @@
           <input type="checkbox" id="${namespace}ProcOtherCheck" onchange="toggleProcedureOtherCheck('${namespace}')">
           <span>Outro</span>
         </label>
-        <input type="text" id="${namespace}ProcOtherText" placeholder="Qual procedimento?" maxlength="60" style="display:none; width:100%; margin-top:6px;" oninput="onProcedureCheckChange('${namespace}')">
+        <input type="text" id="${namespace}ProcOtherText" class="procedure-check-other-text" placeholder="Qual procedimento?" maxlength="60" style="display:none; margin-top:6px;" oninput="onProcedureCheckChange('${namespace}')">
       `;
     }
 
