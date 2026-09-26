@@ -1452,6 +1452,22 @@
       color: #B3462F;
     }
 
+    /* Cards clicáveis do Relatório Financeiro (pedido do usuário
+       2026-09-26: "quando eu clicar no financeiro e nos cards eu quero
+       que liste em grid o que foi recebido, a receber e atrasado") —
+       clicar filtra a lista abaixo; borda de destaque sinaliza qual card
+       está ativo, mesmo padrão visual dos cards de status na tela
+       principal de Leads. Cursor pointer só AQUI (não em .finance-summary-
+       card genérico, reaproveitado em lugares não-clicáveis como o
+       preview de saldo da Carteira). */
+    #financeReportSummary .finance-summary-card {
+      cursor: pointer;
+    }
+
+    .finance-summary-card-active {
+      box-shadow: inset 0 0 0 2px var(--cor-texto-marca);
+    }
+
     .finance-summary-methods {
       margin-top: 10px;
     }
@@ -1990,7 +2006,7 @@
         <input type="month" id="reportMonth" onchange="renderFinanceReport()">
       </div>
       <div id="financeReportSummary"></div>
-      <h3 style="font-size: 13px; color: var(--cor-texto-marca); margin: 20px 0 10px; border-top: 1px solid var(--cor-creme-avela); padding-top: 16px;">Parcelas do mês</h3>
+      <h3 id="financeReportListTitle" style="font-size: 13px; color: var(--cor-texto-marca); margin: 20px 0 10px; border-top: 1px solid var(--cor-creme-avela); padding-top: 16px;">Parcelas do mês</h3>
       <div id="financeReportList"></div>
     </div>
   </div>
@@ -4084,8 +4100,21 @@
       }
       const now = new Date();
       document.getElementById('reportMonth').value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+      financeReportFilter = null;
       renderFinanceReport();
       document.getElementById('financeReportModal').classList.add('open');
+    }
+
+    // Filtro dos cards do Relatório Financeiro (pedido do usuário
+    // 2026-09-26: "quando eu clicar no financeiro e nos cards eu quero
+    // que liste em grid o que foi recebido, a receber e atrasado").
+    // Clicar no mesmo card de novo desliga o filtro (volta a mostrar
+    // tudo), mesmo padrão dos cards de status da tela principal de Leads.
+    let financeReportFilter = null; // null | 'recebido' | 'a-receber' | 'atrasado'
+
+    function filterFinanceReport(filter) {
+      financeReportFilter = (financeReportFilter === filter) ? null : filter;
+      renderFinanceReport();
     }
 
     function closeFinanceReport() {
@@ -4146,15 +4175,15 @@
 
       summaryEl.innerHTML = `
         <div class="finance-summary-grid">
-          <div class="finance-summary-card finance-summary-received">
+          <div class="finance-summary-card finance-summary-received ${financeReportFilter === 'recebido' ? 'finance-summary-card-active' : ''}" onclick="filterFinanceReport('recebido')" role="button" tabindex="0">
             <div class="finance-summary-value">${formatCurrencyBRL(receivedTotal)}</div>
             <div class="finance-summary-label">Recebido no mês</div>
           </div>
-          <div class="finance-summary-card">
+          <div class="finance-summary-card ${financeReportFilter === 'a-receber' ? 'finance-summary-card-active' : ''}" onclick="filterFinanceReport('a-receber')" role="button" tabindex="0">
             <div class="finance-summary-value">${formatCurrencyBRL(pendingTotal)}</div>
             <div class="finance-summary-label">A receber no mês</div>
           </div>
-          <div class="finance-summary-card ${overdueTotal > 0 ? 'finance-summary-overdue' : ''}">
+          <div class="finance-summary-card ${overdueTotal > 0 ? 'finance-summary-overdue' : ''} ${financeReportFilter === 'atrasado' ? 'finance-summary-card-active' : ''}" onclick="filterFinanceReport('atrasado')" role="button" tabindex="0">
             <div class="finance-summary-value">${formatCurrencyBRL(overdueTotal)}</div>
             <div class="finance-summary-label">Atrasado (hoje)</div>
           </div>
@@ -4162,36 +4191,7 @@
         <div class="finance-summary-methods">${methodRows}</div>
       `;
 
-      const monthItems = allFinance
-        .filter(f => (f.receivedDate && f.receivedDate.startsWith(monthValue)) || (f.dueDate && f.dueDate.startsWith(monthValue)))
-        .sort((a, b) => (a.dueDate || '').localeCompare(b.dueDate || ''));
-
-      // Pagamentos de Carteira do mês entram na mesma lista (pedido do
-      // usuário 2026-09-25) — mostrados com layout próprio, já que não têm
-      // vencimento/parcela/status (não são plano fechado).
-      const carteiraCreditRows = carteiraCreditsInMonth
-        .slice()
-        .sort((a, b) => (a.date || '').localeCompare(b.date || ''))
-        .map(c => `
-          <div class="finance-row">
-            <div class="finance-row-main">
-              <span>💳 ${c.name} — Pagamento na Carteira</span>
-              <span class="finance-row-value">${formatCurrencyBRL(c.value)}</span>
-            </div>
-            <div class="finance-row-meta">
-              <span>${formatDateBR(c.date)}</span>
-              <span>${c.paymentMethod || '—'}</span>
-              <span class="finance-status-badge finance-status-paid">Recebido</span>
-            </div>
-          </div>
-        `).join('');
-
-      if (monthItems.length === 0 && carteiraCreditRows === '') {
-        listEl.innerHTML = '<div class="agenda-empty">Nenhuma parcela nesse mês.</div>';
-        return;
-      }
-
-      listEl.innerHTML = monthItems.map(item => `
+      const financeRowHtml = (item) => `
         <div class="finance-row">
           <div class="finance-row-main">
             <span>${item.name} — ${item.description || 'Cobrança'} (${item.installmentLabel})</span>
@@ -4203,7 +4203,63 @@
             <span class="finance-status-badge ${item.status === 'Recebido' ? 'finance-status-paid' : 'finance-status-pending'}">${item.status}</span>
           </div>
         </div>
-      `).join('') + carteiraCreditRows;
+      `;
+
+      // Pagamentos de Carteira entram junto quando faz sentido (pedido do
+      // usuário 2026-09-25) — mostrados com layout próprio, já que não têm
+      // vencimento/parcela/status (não são plano fechado).
+      const carteiraRowHtml = (c) => `
+        <div class="finance-row">
+          <div class="finance-row-main">
+            <span>💳 ${c.name} — Pagamento na Carteira</span>
+            <span class="finance-row-value">${formatCurrencyBRL(c.value)}</span>
+          </div>
+          <div class="finance-row-meta">
+            <span>${formatDateBR(c.date)}</span>
+            <span>${c.paymentMethod || '—'}</span>
+            <span class="finance-status-badge finance-status-paid">Recebido</span>
+          </div>
+        </div>
+      `;
+
+      // Clicar num card filtra a lista abaixo pra só aquele grupo (pedido
+      // do usuário 2026-09-26: "quando eu clicar no financeiro e nos
+      // cards eu quero que liste em grid o que foi recebido, a receber e
+      // atrasado"). Sem nenhum card selecionado, mantém o comportamento
+      // original: tudo do mês junto.
+      const titleEl = document.getElementById('financeReportListTitle');
+      let itemsToShow;
+      let carteiraRowsHtml = '';
+      let emptyMessage;
+
+      if (financeReportFilter === 'recebido') {
+        titleEl.textContent = '✅ Recebido no mês';
+        itemsToShow = receivedInMonth;
+        carteiraRowsHtml = carteiraCreditsInMonth.slice().sort((a, b) => (a.date || '').localeCompare(b.date || '')).map(carteiraRowHtml).join('');
+        emptyMessage = 'Nenhum recebimento nesse mês.';
+      } else if (financeReportFilter === 'a-receber') {
+        titleEl.textContent = '🕓 A receber no mês';
+        itemsToShow = pendingInMonth;
+        emptyMessage = 'Nenhuma parcela a receber nesse mês.';
+      } else if (financeReportFilter === 'atrasado') {
+        titleEl.textContent = '⚠️ Atrasado (hoje)';
+        itemsToShow = overdue;
+        emptyMessage = 'Nenhuma parcela atrasada. 🎉';
+      } else {
+        titleEl.textContent = 'Parcelas do mês';
+        itemsToShow = allFinance.filter(f => (f.receivedDate && f.receivedDate.startsWith(monthValue)) || (f.dueDate && f.dueDate.startsWith(monthValue)));
+        carteiraRowsHtml = carteiraCreditsInMonth.slice().sort((a, b) => (a.date || '').localeCompare(b.date || '')).map(carteiraRowHtml).join('');
+        emptyMessage = 'Nenhuma parcela nesse mês.';
+      }
+
+      itemsToShow = itemsToShow.slice().sort((a, b) => (a.dueDate || '').localeCompare(b.dueDate || ''));
+
+      if (itemsToShow.length === 0 && carteiraRowsHtml === '') {
+        listEl.innerHTML = `<div class="agenda-empty">${emptyMessage}</div>`;
+        return;
+      }
+
+      listEl.innerHTML = itemsToShow.map(financeRowHtml).join('') + carteiraRowsHtml;
     }
 
     // --- Lançar Cobrança (contas a receber) ---
