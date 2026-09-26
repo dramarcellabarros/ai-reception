@@ -321,6 +321,44 @@
       border-color: var(--cor-texto-marca-hover);
     }
 
+    /* "X" pra limpar a busca, lado direito do campo (pedido do usuário
+       2026-09-26: "o campo de busca está ficando com valores 'salvos'
+       quando pesquisado, quero um x para limpar do lado direito do
+       campo") — reaproveitado no campo principal de Leads e no do modal
+       de Cadastro de Leads. Só aparece quando há texto digitado. */
+    .search-clear-wrap {
+      position: relative;
+    }
+
+    .search-clear-wrap input {
+      padding-right: 38px;
+    }
+
+    .search-clear-btn {
+      display: none;
+      position: absolute;
+      right: 6px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 26px;
+      height: 26px;
+      border: none;
+      border-radius: 50%;
+      background: var(--cor-areia-suave);
+      color: var(--cor-texto-marca);
+      font-size: 15px;
+      line-height: 1;
+      cursor: pointer;
+    }
+
+    .search-clear-btn:hover {
+      background: var(--cor-creme-avela);
+    }
+
+    .search-clear-btn.visible {
+      display: block;
+    }
+
     .btn {
       padding: 12px 20px;
       background: var(--cor-dourado-ambar);
@@ -1624,8 +1662,9 @@
     </div>
 
     <div class="controls">
-      <div class="search-box">
-        <input type="text" id="search" placeholder="Buscar por nome, telefone ou email..." autocorrect="off" spellcheck="false">
+      <div class="search-box search-clear-wrap">
+        <input type="text" id="search" placeholder="Buscar por nome, telefone ou email..." autocomplete="off" autocorrect="off" spellcheck="false" oninput="toggleSearchClearBtn('search', 'searchClearBtn')">
+        <button type="button" class="search-clear-btn" id="searchClearBtn" onclick="clearSearchField('search', 'searchClearBtn')" title="Limpar busca" aria-label="Limpar busca">✕</button>
       </div>
       <button class="agenda-toggle-btn" onclick="openNewLeadModal()" title="Adicionar um lead direto, sem agendamento (ex.: histórico anterior ao CRM)">➕ Novo Lead</button>
     </div>
@@ -1909,8 +1948,9 @@
     <div class="modal-content modal-content-wide" style="display:flex; flex-direction:column;">
       <span class="close-btn" onclick="closeLeadSearchModal()">&times;</span>
       <h2>📇 Cadastro de Leads</h2>
-      <div class="form-group" style="margin-bottom:8px;">
-        <input type="text" id="leadSearchInput" placeholder="Buscar por nome, telefone ou email..." oninput="renderLeadSearchResults()" autocorrect="off" spellcheck="false">
+      <div class="form-group search-clear-wrap" style="margin-bottom:8px;">
+        <input type="text" id="leadSearchInput" placeholder="Buscar por nome, telefone ou email..." oninput="renderLeadSearchResults(); toggleSearchClearBtn('leadSearchInput', 'leadSearchClearBtn')" autocomplete="off" autocorrect="off" spellcheck="false">
+        <button type="button" class="search-clear-btn" id="leadSearchClearBtn" onclick="clearSearchField('leadSearchInput', 'leadSearchClearBtn')" title="Limpar busca" aria-label="Limpar busca">✕</button>
       </div>
       <div id="leadSearchSelectedBar" class="lead-search-selected-bar" style="display:none;"></div>
       <div id="leadSearchResults" class="lead-search-results"></div>
@@ -2920,6 +2960,27 @@
       document.getElementById('search').scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
 
+    // "X" pra limpar a busca (pedido do usuário 2026-09-26: "o campo de
+    // busca está ficando com valores 'salvos' quando pesquisado, quero um
+    // x para limpar do lado direito do campo") — reaproveitado no campo
+    // principal de Leads (#search) e no do modal de Cadastro de Leads
+    // (#leadSearchInput). clearSearchField dispara um evento 'input'
+    // sintético em vez de chamar o filtro na mão — assim aciona
+    // automaticamente qualquer handler já ligado ao campo (addEventListener
+    // OU oninput inline), sem duplicar lógica de filtro aqui.
+    function toggleSearchClearBtn(inputId, btnId) {
+      const hasText = document.getElementById(inputId).value.length > 0;
+      document.getElementById(btnId).classList.toggle('visible', hasText);
+    }
+
+    function clearSearchField(inputId, btnId) {
+      const input = document.getElementById(inputId);
+      input.value = '';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      toggleSearchClearBtn(inputId, btnId);
+      input.focus();
+    }
+
     // Modal de Cadastro de Leads — pesquisa (pedido do usuário 2026-09-26:
     // "uma nova janela de pesquisa pra retornar o grid já preenchido...
     // também deixe selecionar múltiplas linhas de leads"). Substitui a
@@ -2929,6 +2990,7 @@
 
     function openLeadSearchModal() {
       document.getElementById('leadSearchInput').value = '';
+      toggleSearchClearBtn('leadSearchInput', 'leadSearchClearBtn');
       leadSearchSelectedPhones = new Set();
       renderLeadSearchResults();
       document.getElementById('leadSearchModal').classList.add('open');
