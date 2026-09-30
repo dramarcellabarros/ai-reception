@@ -1009,73 +1009,6 @@
       min-height: 14px;
     }
 
-    /* Modal de Cadastro de Leads (pedido do usuário 2026-09-26) — a
-       altura máxima real de #leadSearchResults é definida por JS
-       (adjustLeadSearchModalHeight, a partir de visualViewport), este
-       max-height aqui é só o valor inicial/fallback antes do JS rodar. */
-    .lead-search-results {
-      overflow-y: auto;
-      max-height: 45vh;
-    }
-
-    .lead-search-row {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 10px 6px;
-      border-bottom: 1px solid var(--cor-creme-avela);
-    }
-
-    .lead-search-row:last-child {
-      border-bottom: none;
-    }
-
-    .lead-search-checkbox {
-      width: 18px;
-      height: 18px;
-      flex-shrink: 0;
-      cursor: pointer;
-    }
-
-    .lead-search-info {
-      display: flex;
-      flex: 1;
-      justify-content: space-between;
-      align-items: center;
-      gap: 10px;
-      cursor: pointer;
-      min-width: 0;
-    }
-
-    .lead-search-name {
-      font-weight: 600;
-      color: var(--cor-texto-marca);
-      font-size: 14px;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-
-    .lead-search-phone {
-      font-size: 12.5px;
-      color: var(--cor-cinza-cacau);
-      white-space: nowrap;
-      flex-shrink: 0;
-    }
-
-    .lead-search-selected-bar {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      background: var(--cor-rosa-sereno);
-      border-radius: 6px;
-      padding: 8px 12px;
-      margin-bottom: 8px;
-      font-size: 13px;
-      font-weight: 600;
-      color: var(--cor-texto-marca);
-    }
-
     /* Calculadora de valor por procedimento (pedido do usuário
        2026-09-25: "nesse cenário de vários procedimentos... preciso de
        uma calculadora... para somar os procedimentos e devolver o valor
@@ -1233,17 +1166,6 @@
       max-width: 420px;
     }
 
-    /* "Congela" o Relatório Financeiro na horizontal (pedido do usuário
-       2026-09-25, pensando em navegabilidade de tela) — o modal padrão
-       herda touch-action: pan-x pan-y, então um arraste lateral acidental
-       (comum em telas de toque, sobretudo perto da borda) podia mexer no
-       modal de lado. Aqui só sobra o scroll vertical, que é o único que
-       essa tela realmente precisa (a lista de parcelas do mês pode ficar
-       longa). */
-    #financeReportModal .modal-content {
-      overflow-x: hidden;
-      touch-action: pan-y;
-    }
 
     .month-nav {
       display: flex;
@@ -1465,18 +1387,6 @@
 
     .finance-summary-overdue .finance-summary-value {
       color: #B3462F;
-    }
-
-    /* Cards clicáveis do Relatório Financeiro (pedido do usuário
-       2026-09-26: "quando eu clicar no financeiro e nos cards eu quero
-       que liste em grid o que foi recebido, a receber e atrasado") —
-       clicar filtra a lista abaixo; borda de destaque sinaliza qual card
-       está ativo, mesmo padrão visual dos cards de status na tela
-       principal de Leads. Cursor pointer só AQUI (não em .finance-summary-
-       card genérico, reaproveitado em lugares não-clicáveis como o
-       preview de saldo da Carteira). */
-    #financeReportSummary .finance-summary-card {
-      cursor: pointer;
     }
 
     .finance-summary-card-active {
@@ -1879,6 +1789,32 @@
     .sim-input-row .form-group { margin-bottom: 0; flex: 1; min-width: 160px; }
 
     @media (max-width: 768px) {
+      /* Cabeçalho compacto no celular (revisão de redundância
+         2026-09-30): uma linha só — logo + título à esquerda, ➕ + status +
+         ⚙️ à direita. Antes ocupava ~1/3 da tela antes de qualquer dado e
+         a pílula "Conectando…" vazava pra fora, criando rolagem lateral. */
+      header {
+        flex-direction: row;
+        flex-wrap: nowrap;
+        gap: 10px;
+        padding: 12px 14px;
+      }
+      .header-left { gap: 10px; min-width: 0; }
+      .header-left > div { min-width: 0; }
+      .header-logo { height: 34px; }
+      .header-left h1 { font-size: 15px; line-height: 1.25; letter-spacing: 0.2px; }
+      .header-left p { display: none; }
+      .header-actions {
+        display: flex;
+        width: auto;
+        gap: 6px;
+        flex-shrink: 0;
+      }
+      .module-bar { padding: 0; background: none; }
+      .icon-btn-primary { width: 38px; height: 38px; font-size: 18px; }
+      .status-refresh { padding: 6px 10px 6px 8px; font-size: 12px; max-width: 96px; }
+      #statusText { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .header-config-btn { position: static; order: 3; flex-shrink: 0; }
       .module-nav { padding: 8px 10px; }
       .module-nav-btn { font-size: 13px; padding: 7px 11px; }
       .kpi-grid { grid-template-columns: repeat(2, 1fr); }
@@ -1915,9 +1851,6 @@
     <div class="header-actions">
       <div class="module-bar">
         <button class="icon-btn icon-btn-primary" onclick="openNewAppointmentModal()" title="Novo Agendamento" aria-label="Novo Agendamento">➕</button>
-        <button class="icon-btn" onclick="switchModule('clientes')" title="Cadastro de Clientes" aria-label="Cadastro de Clientes">📇</button>
-        <button class="icon-btn" onclick="openFinanceReport()" title="Relatório Financeiro" aria-label="Relatório Financeiro">💰</button>
-        <button class="icon-btn" onclick="openMonthCalendar()" title="Visão do Mês" aria-label="Visão do Mês">🗓️</button>
       </div>
       <button class="status-refresh" onclick="refreshData()" title="Toque para atualizar" aria-label="Atualizar dados">
         <span class="status-dot" id="statusDot"></span>
@@ -1955,6 +1888,7 @@
       </div>
     </div>
     <div class="chip-row" id="clientesFilters"></div>
+    <div class="chip-row" id="clientesFunnelFilters" style="align-items:center;"></div>
     <div id="clientesList"></div>
   </div>
 
@@ -1962,8 +1896,8 @@
   <div class="container module-view" id="view-vendas" hidden>
     <div class="module-title">
       <h2>💰 Vendas</h2>
-      <button class="agenda-toggle-btn" onclick="openFinanceReport()">📊 Resumo do mês</button>
     </div>
+    <div class="chip-row" id="vendasModeChips"></div>
     <div class="chip-row" id="vendasPeriodChips"></div>
     <div class="period-bar">
       <label style="font-size:13px; color:var(--cor-cinza-cacau);">De</label>
@@ -1980,7 +1914,7 @@
       <h3>Por forma de pagamento</h3>
       <div id="vendasByMethod"></div>
     </div>
-    <div class="module-card">
+    <div class="module-card" id="vendasByProcedureCard">
       <h3>Por procedimento</h3>
       <div id="vendasByProcedure"></div>
     </div>
@@ -1994,7 +1928,6 @@
   <div class="container module-view" id="view-receber" hidden>
     <div class="module-title">
       <h2>🧾 Contas a Receber</h2>
-      <button class="agenda-toggle-btn" onclick="openFinanceReport()">📊 Resumo do mês</button>
     </div>
     <div class="kpi-grid" id="receberKpis"></div>
     <div class="controls" style="margin-bottom:10px;">
@@ -2042,14 +1975,14 @@
   <!-- ===== Módulo Agenda (tela original) ===== -->
   <div class="container module-view" id="view-agenda">
 
-    <!-- Agenda antes dos cards de leads (pedido do usuário 2026-09-24): é
-         a informação mais usada no dia a dia — quem vem hoje/amanhã —,
-         enquanto os números totais são mais um resumo pra consultar depois. -->
+    <!-- Módulo Agenda = só a agenda (revisão de redundância 2026-09-30):
+         cards/busca/tabela de leads foram para o módulo Clientes. -->
     <div class="agenda-section">
       <div class="agenda-header">
         <h2 id="agendaTitle">📅 Agenda</h2>
         <span style="display:flex; align-items:center; gap:12px;">
           <span class="agenda-status" id="agendaStatus"></span>
+          <button class="agenda-toggle-btn" onclick="openMonthCalendar()">🗓️ Visão do mês</button>
           <button class="agenda-toggle-btn" id="agendaToggleBtn" onclick="toggleAgendaHistory()">📜 Ver histórico</button>
         </span>
       </div>
@@ -2058,62 +1991,6 @@
       </div>
     </div>
 
-    <div class="stats">
-      <div class="stat-card" id="card-all" onclick="filterByStatus('all')">
-        <div class="stat-number" id="total-leads">—</div>
-        <div class="stat-label">Leads Totais</div>
-      </div>
-      <div class="stat-card" id="card-confirmed" onclick="filterByStatus('confirmed')">
-        <div class="stat-number" id="confirmed-count">—</div>
-        <div class="stat-label">Agendamentos Confirmados</div>
-      </div>
-      <div class="stat-card" id="card-booked" onclick="filterByStatus('booked')">
-        <div class="stat-number" id="booked-count">—</div>
-        <div class="stat-label">Pendentes de Confirmação</div>
-      </div>
-      <div class="stat-card" id="card-noshow" onclick="filterByStatus('noshow')">
-        <div class="stat-number" id="noshow-count">—</div>
-        <div class="stat-label">Não Compareceram</div>
-      </div>
-    </div>
-
-    <div class="controls">
-      <div class="search-box search-clear-wrap">
-        <input type="text" id="search" placeholder="Buscar por nome, telefone ou email..." autocomplete="off" autocorrect="off" spellcheck="false" oninput="toggleSearchClearBtn('search', 'searchClearBtn')">
-        <button type="button" class="search-clear-btn" id="searchClearBtn" onclick="clearSearchField('search', 'searchClearBtn')" title="Limpar busca" aria-label="Limpar busca">✕</button>
-      </div>
-      <button class="agenda-toggle-btn" onclick="openNewLeadModal()" title="Adicionar um lead direto, sem agendamento (ex.: histórico anterior ao CRM)">➕ Novo Lead</button>
-    </div>
-
-    <div class="filter-banner" id="filterBanner">
-      <span id="filterBannerText"></span>
-      <button onclick="clearStatusFilter()">✕ Limpar filtro</button>
-    </div>
-
-    <div class="agenda-empty" id="tableHint">Toque em um dos cards acima ou busque um lead pra ver a lista completa.</div>
-
-    <div class="table-wrapper" id="tableWrapper" style="display:none;">
-      <table id="leads-table">
-        <thead>
-          <tr>
-            <th class="sortable-th" onclick="sortLeadsBy('name')">Nome<span class="sort-indicator" id="sortInd-name"></span></th>
-            <th class="sortable-th" onclick="sortLeadsBy('phone')">Telefone<span class="sort-indicator" id="sortInd-phone"></span></th>
-            <th class="sortable-th" onclick="sortLeadsBy('source')">Origem<span class="sort-indicator" id="sortInd-source"></span></th>
-            <th class="sortable-th" onclick="sortLeadsBy('type')">Tipo<span class="sort-indicator" id="sortInd-type"></span></th>
-            <th class="sortable-th" onclick="sortLeadsBy('state')">Estado<span class="sort-indicator" id="sortInd-state"></span></th>
-            <th class="sortable-th" onclick="sortLeadsBy('status')">Status<span class="sort-indicator" id="sortInd-status"></span></th>
-            <th class="sortable-th" onclick="sortLeadsBy('slot')">Horário<span class="sort-indicator" id="sortInd-slot"></span></th>
-            <th>Ações</th>
-          </tr>
-        </thead>
-        <tbody id="table-body">
-          <tr>
-            <td colspan="8" class="loading">⏳ Carregando dados...</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-    <div class="scroll-hint">↔ arraste a tabela para o lado para ver mais colunas</div>
   </div>
 
   <button class="back-to-top" id="backToTopBtn" onclick="scrollToTop()" aria-label="Voltar ao topo">↑</button>
@@ -2348,49 +2225,7 @@
     </div>
   </div>
 
-  <!-- Modal de Cadastro de Leads — pesquisa (pedido do usuário 2026-09-26:
-       "quando eu clicar no botão de lead no cabeçalho eu quero uma nova
-       janela de pesquisa pra retornar o grid já preenchido. também deixe
-       selecionar múltiplas linhas de leads"). Substitui o antigo
-       goToLeadSearch() (que só rolava até o campo de busca da tela
-       principal) — a rolagem de página + teclado nunca ficou confiável
-       ("não ficou funcional", print mostrando só o cabeçalho da tabela
-       visível, linhas escondidas atrás do teclado). Modal próprio com
-       altura calculada por JS a partir de window.visualViewport (não só
-       CSS vh, que não reage ao teclado em todo navegador) resolve isso
-       de forma mais robusta: a lista de resultados sempre cabe no espaço
-       realmente visível acima do teclado, não no espaço da tela toda. -->
-  <div class="modal" id="leadSearchModal">
-    <div class="modal-content modal-content-wide" style="display:flex; flex-direction:column;">
-      <span class="close-btn" onclick="closeLeadSearchModal()">&times;</span>
-      <h2>📇 Cadastro de Leads</h2>
-      <div class="form-group search-clear-wrap" style="margin-bottom:8px;">
-        <input type="text" id="leadSearchInput" placeholder="Buscar por nome, telefone ou email..." oninput="renderLeadSearchResults(); toggleSearchClearBtn('leadSearchInput', 'leadSearchClearBtn')" autocomplete="off" autocorrect="off" spellcheck="false">
-        <button type="button" class="search-clear-btn" id="leadSearchClearBtn" onclick="clearSearchField('leadSearchInput', 'leadSearchClearBtn')" title="Limpar busca" aria-label="Limpar busca">✕</button>
-      </div>
-      <div id="leadSearchSelectedBar" class="lead-search-selected-bar" style="display:none;"></div>
-      <div id="leadSearchResults" class="lead-search-results"></div>
-    </div>
-  </div>
-
   <!-- Modal de Detalhe do Lead -->
-  <!-- Modal de Relatório Financeiro (pedido do usuário 2026-09-24: "quero
-       lançar o que recebi em pix, cartao, dinheiro para depois saber
-       quanto recebi por período"). -->
-  <div class="modal" id="financeReportModal">
-    <div class="modal-content modal-content-wide">
-      <span class="close-btn" onclick="closeFinanceReport()">&times;</span>
-      <h2>💰 Relatório Financeiro</h2>
-      <div class="form-group">
-        <label>Período:</label>
-        <input type="month" id="reportMonth" onchange="renderFinanceReport()">
-      </div>
-      <div id="financeReportSummary"></div>
-      <h3 id="financeReportListTitle" style="font-size: 13px; color: var(--cor-texto-marca); margin: 20px 0 10px; border-top: 1px solid var(--cor-creme-avela); padding-top: 16px;">Parcelas do mês</h3>
-      <div id="financeReportList"></div>
-    </div>
-  </div>
-
   <!-- Modal de Detalhe do Lançamento — pedido do usuário 2026-09-26: "ao
        clicar nele [um lançamento no Relatório Financeiro] fosse
        redirecionado ao atendimento/venda... quero que abra dentro do
@@ -2412,7 +2247,7 @@
   <div class="modal" id="newLeadModal">
     <div class="modal-content">
       <span class="close-btn" onclick="closeNewLeadModal()">&times;</span>
-      <h2>➕ Novo Lead</h2>
+      <h2>➕ Novo Cliente</h2>
       <div id="newLeadError"></div>
       <div class="form-group">
         <label>Nome:</label>
@@ -2447,7 +2282,7 @@
         <div class="procedure-checklist" id="nlProcedureChecklist"></div>
         <div class="procedure-check-summary" id="nlProcSummary"></div>
       </div>
-      <button class="btn" id="nlSubmitBtn" onclick="submitNewLead()">💾 Adicionar Lead</button>
+      <button class="btn" id="nlSubmitBtn" onclick="submitNewLead()">💾 Adicionar Cliente</button>
       <p style="color: var(--cor-cinza-cacau); font-size: 12px; margin-top: 16px;">
         ℹ️ Não cria agendamento nem evento na agenda — só o registro do lead. Depois é só abrir e lançar cobrança pelo painel dele.
       </p>
@@ -2680,18 +2515,6 @@
     // próximos agendamentos" expande pro resto da janela carregada (+60
     // dias).
     let agendaShowFullRange = false;
-    // null = nenhum card selecionado (estado neutro, grid escondido —
-    // pedido do usuário 2026-09-24). 'all' agora é uma seleção de verdade
-    // (o card "Leads Totais" clicado), diferente do estado neutro inicial.
-    let activeFilter = null;
-
-    const FILTER_LABELS = {
-      all: 'Todos os leads',
-      confirmed: 'Agendamentos Confirmados',
-      booked: 'Pendentes de Confirmação',
-      noshow: 'Não Compareceram',
-    };
-
     // Estados da máquina de conversa (src/conversationState.js) traduzidos
     // para PT-BR — a planilha grava o valor técnico em inglês, isso é só
     // para exibição.
@@ -3215,8 +3038,6 @@
 
         const now = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
         setStatus(true, now);
-        updateStats(allData);
-        applyFilters();
         clearError();
         renderCurrentModule();
       } catch (err) {
@@ -3383,8 +3204,7 @@
     // chumbado").
     function showEmptyState() {
       allData = [];
-      updateStats(allData);
-      applyFilters();
+      renderCurrentModule();
     }
 
     // "não compareceu"/"desmarcado" vêm ANTES de "confirmado" de propósito
@@ -3424,205 +3244,6 @@
         : lead.leadStatus || 'Ativo';
     }
 
-    function renderTable(data) {
-      const tbody = document.getElementById('table-body');
-      if (data.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="8" class="empty-state">Nenhum lead encontrado</td></tr>';
-        return;
-      }
-
-      tbody.innerHTML = data.map(lead => {
-        const wa = whatsappLink(lead.phone);
-        const phoneCell = wa
-          ? `<a href="${wa}" target="_blank" rel="noopener" class="phone-link" title="Abrir no WhatsApp">💬 ${formatPhoneShort(lead.phone)}</a>`
-          : formatPhoneShort(lead.phone);
-        const typeStyle = detectAppointmentType(lead.appointmentType);
-        const typeCell = typeStyle ? `<span class="type-badge ${typeStyle.className}">${typeStyle.label}</span>` : '—';
-        return `
-        <tr class="lead-row" onclick="openLeadDetail('${lead.phone}')">
-          <td class="name-cell">${lead.name}</td>
-          <td onclick="event.stopPropagation()">${phoneCell}</td>
-          <td>${lead.source}</td>
-          <td>${typeCell}</td>
-          <td>${translateConversationState(lead.conversationState)}</td>
-          <td>
-            <span class="status-badge status-${getStatusClass(lead)}">
-              ${getLeadStatusLabel(lead)}
-            </span>
-          </td>
-          <td class="slot-cell">${lead.chosenSlot ? formatDateBR(lead.chosenSlot.date) + ' ' + lead.chosenSlot.start : '—'}</td>
-          <td>
-            <button class="btn" style="padding: 6px 12px; font-size: 12px;" onclick="event.stopPropagation(); openLeadDetail('${lead.phone}')">👁️ Ver</button>
-          </td>
-        </tr>
-      `;
-      }).join('');
-    }
-
-    function updateStats(data) {
-      const total = data.length;
-      const confirmed = data.filter(l => Boolean(l.confirmedAppointment)).length;
-      const booked = data.filter(l => l.conversationState === 'BOOKED' || l.conversationState === 'READY_TO_BOOK').length;
-      const noshow = data.filter(l => l.leadStatus === 'não compareceu').length;
-
-      document.getElementById('total-leads').textContent = total;
-      document.getElementById('confirmed-count').textContent = confirmed;
-      document.getElementById('booked-count').textContent = booked;
-      document.getElementById('noshow-count').textContent = noshow;
-    }
-
-    // Clique num card de estatística: filtra a tabela abaixo por aquela
-    // classificação, sem recalcular os números dos cards (eles continuam
-    // mostrando o total geral, sempre) — inclusive "Leads Totais", que
-    // agora é uma seleção de verdade (mostra tudo, sem filtro de status)
-    // e não só o estado neutro. Clicar de novo no mesmo card sempre
-    // remove a seleção e esconde o grid de novo (pedido do usuário
-    // 2026-09-24: grid só aparece ao clicar num card ou buscar).
-    function filterByStatus(filter) {
-      activeFilter = (activeFilter === filter) ? null : filter;
-      applyStatusFilterState();
-    }
-
-    // Botão "✕ Limpar filtro" do banner — volta pro estado neutro (grid
-    // escondido de novo), diferente de clicar no card "Leads Totais"
-    // (que é uma seleção de verdade, com o grid visível mostrando tudo).
-    function clearStatusFilter() {
-      activeFilter = null;
-      applyStatusFilterState();
-    }
-
-    function applyStatusFilterState() {
-      document.querySelectorAll('.stat-card').forEach(card => card.classList.remove('active'));
-      if (activeFilter !== null) {
-        document.getElementById(`card-${activeFilter}`).classList.add('active');
-      }
-
-      const banner = document.getElementById('filterBanner');
-      const bannerText = document.getElementById('filterBannerText');
-      if (activeFilter === null) {
-        banner.classList.remove('visible');
-      } else {
-        const count = allData.filter(l => matchesStatusFilter(l, activeFilter)).length;
-        bannerText.textContent = `Mostrando: ${FILTER_LABELS[activeFilter]} (${count})`;
-        banner.classList.add('visible');
-      }
-
-      applyFilters();
-
-      if (activeFilter !== null) {
-        document.querySelector('.table-wrapper').scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }
-    }
-
-    // Combina o texto de busca com o filtro de card ativo — os dois nunca
-    // mexem nos números dos cards, só no que aparece na tabela.
-    // Ordenação do grid de leads (pedido do usuário 2026-09-25): default =
-    // últimos lançados primeiro; clicar num cabeçalho ordena por aquela
-    // coluna (alfabética pra texto, cronológica pra Horário), clicar de
-    // novo inverte. getValue usa o mesmo texto exibido na tela (não os
-    // códigos internos) pra ordem alfabética bater com o que a usuária vê
-    // — por isso 'state'/'status' passam pelos mesmos helpers que o
-    // renderTable usa (translateConversationState/getLeadStatusLabel).
-    const LEADS_SORT_COLUMNS = {
-      name: (l) => l.name || '',
-      phone: (l) => l.phone || '',
-      source: (l) => l.source || '',
-      type: (l) => l.appointmentType || '',
-      state: (l) => translateConversationState(l.conversationState) || '',
-      status: (l) => getLeadStatusLabel(l) || '',
-      // "YYYY-MM-DD HH:MM" ordena certo como string, sem precisar parsear
-      // Date — mais simples e sem fuso horário envolvido.
-      slot: (l) => l.chosenSlot ? `${l.chosenSlot.date} ${l.chosenSlot.start}` : '',
-    };
-
-    let leadsSortColumn = null; // null = default (últimos lançados primeiro)
-    let leadsSortDirection = 'asc';
-
-    function sortLeadsBy(key) {
-      if (leadsSortColumn === key) {
-        leadsSortDirection = leadsSortDirection === 'asc' ? 'desc' : 'asc';
-      } else {
-        leadsSortColumn = key;
-        leadsSortDirection = 'asc';
-      }
-      updateSortIndicators();
-      applyFilters();
-    }
-
-    function updateSortIndicators() {
-      Object.keys(LEADS_SORT_COLUMNS).forEach((key) => {
-        const el = document.getElementById(`sortInd-${key}`);
-        if (!el) return;
-        el.textContent = leadsSortColumn === key ? (leadsSortDirection === 'asc' ? ' ▲' : ' ▼') : '';
-      });
-    }
-
-    function applyLeadsSort(list) {
-      // Sem coluna escolhida: mais recentes lançados primeiro — allData
-      // vem na ordem da planilha (linha nova sempre no fim), então
-      // inverter dá exatamente isso sem precisar guardar timestamp.
-      if (!leadsSortColumn) return list.slice().reverse();
-
-      // Direção entra dentro do comparator (não como reverse() no fim) —
-      // um reverse() cego jogaria os vazios pro início no modo
-      // descendente, contradizendo "vazio sempre no fim".
-      const getValue = LEADS_SORT_COLUMNS[leadsSortColumn];
-      return list.slice().sort((a, b) => {
-        const va = getValue(a);
-        const vb = getValue(b);
-        if (va === '' && vb === '') return 0;
-        if (va === '') return 1; // vazio sempre no fim, nas duas direções
-        if (vb === '') return -1;
-        const cmp = String(va).localeCompare(String(vb), 'pt-BR', { sensitivity: 'base', numeric: true });
-        return leadsSortDirection === 'desc' ? -cmp : cmp;
-      });
-    }
-
-    function applyFilters() {
-      const query = document.getElementById('search').value.toLowerCase();
-      const filtered = allData.filter(lead =>
-        matchesStatusFilter(lead, activeFilter) &&
-        (lead.name.toLowerCase().includes(query) ||
-          lead.phone.includes(query) ||
-          lead.source.toLowerCase().includes(query))
-      );
-
-      // Grid só aparece ao filtrar por um card ou buscar (pedido do
-      // usuário 2026-09-24) — sem isso, a lista inteira de leads ficava
-      // sempre visível na tela, mesmo sem nenhuma ação da usuária.
-      const shouldShowTable = activeFilter !== null || query.trim().length > 0;
-      document.getElementById('tableWrapper').style.display = shouldShowTable ? '' : 'none';
-      document.getElementById('tableHint').style.display = shouldShowTable ? 'none' : '';
-
-      renderTable(applyLeadsSort(filtered));
-    }
-
-    // Pedido do usuário 2026-09-25 (revisado): a ideia inicial era abrir
-    // a ficha sozinha quando a busca resultasse em 1 lead só, mas o uso
-    // real é digitar pouco (ex.: "De") e ver a LISTA de quem bate (Debora,
-    // Denis, Denise) pra escolher — não abrir uma ficha específica
-    // automaticamente. O que resolve de verdade é só garantir que a lista
-    // filtrada fique visível junto com o teclado (ver scrollSearchIntoView
-    // logo abaixo), sem precisar rolar a tela manualmente.
-
-    // Atalho "📇 Cadastro de Leads" na barra de módulos (pedido do usuário
-    // 2026-09-25: "quero ao lado do incluir um ícone de cadastro de leads
-    // onde eu possa pesquisar, lado direito do novo") — rola até o campo
-    // de busca de leads e já foca nele, pronta pra digitar. Não força a
-    // grade a aparecer sozinha (continua só aparecendo ao buscar/filtrar,
-    // pedido de 2026-09-24) — é só um atalho pra chegar rápido no campo,
-    // sem precisar rolar a tela manualmente.
-    // Alinha o campo de busca no TOPO da área visível, não no centro
-    // (pedido do usuário 2026-09-25: "no mobile... fica a janela da
-    // agenda/lead e teclado embaixo, não consigo visualizar se minha
-    // pesquisa está sendo correta" — o teclado do celular consome a
-    // metade de baixo da tela; alinhar ao topo sobra o máximo de espaço
-    // possível abaixo do campo pros resultados aparecerem por cima do
-    // teclado, não escondidos atrás dele).
-    function scrollSearchIntoView() {
-      document.getElementById('search').scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
-
     // "X" pra limpar a busca (pedido do usuário 2026-09-26: "o campo de
     // busca está ficando com valores 'salvos' quando pesquisado, quero um
     // x para limpar do lado direito do campo") — reaproveitado no campo
@@ -3642,106 +3263,6 @@
       input.dispatchEvent(new Event('input', { bubbles: true }));
       toggleSearchClearBtn(inputId, btnId);
       input.focus();
-    }
-
-    // Modal de Cadastro de Leads — pesquisa (pedido do usuário 2026-09-26:
-    // "uma nova janela de pesquisa pra retornar o grid já preenchido...
-    // também deixe selecionar múltiplas linhas de leads"). Substitui a
-    // rolagem de página até o campo de busca principal, que não ficou
-    // confiável com o teclado do celular aberto por cima dos resultados.
-    let leadSearchSelectedPhones = new Set();
-
-    function openLeadSearchModal() {
-      document.getElementById('leadSearchInput').value = '';
-      toggleSearchClearBtn('leadSearchInput', 'leadSearchClearBtn');
-      leadSearchSelectedPhones = new Set();
-      renderLeadSearchResults();
-      document.getElementById('leadSearchModal').classList.add('open');
-      adjustLeadSearchModalHeight();
-      // Foco com um pequeno atraso — focar antes do modal terminar de
-      // aparecer podia disparar o teclado num estado de layout ainda não
-      // assentado em alguns navegadores mobile.
-      setTimeout(() => document.getElementById('leadSearchInput').focus(), 80);
-    }
-
-    function closeLeadSearchModal() {
-      document.getElementById('leadSearchModal').classList.remove('open');
-    }
-
-    // "grid já preenchido" — mostra TODOS os leads assim que abre (sem
-    // precisar digitar nada pra ver algo), igual pedido pelo usuário.
-    function renderLeadSearchResults() {
-      const query = document.getElementById('leadSearchInput').value.trim().toLowerCase();
-      const resultsEl = document.getElementById('leadSearchResults');
-
-      // Ordenado por nome (pedido do usuário 2026-09-26) — não tinha
-      // nenhuma ordenação, mostrava na ordem bruta da planilha; pra achar
-      // e escolher entre vários resultados (ex.: "De" -> Debora, Denis,
-      // Denise) faz mais sentido alfabético do que ordem de cadastro.
-      const filtered = (query
-        ? allData.filter(l =>
-            l.name.toLowerCase().includes(query) ||
-            l.phone.includes(query) ||
-            l.source.toLowerCase().includes(query))
-        : allData.slice()
-      ).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' }));
-
-      if (filtered.length === 0) {
-        resultsEl.innerHTML = '<div class="agenda-empty">Nenhum lead encontrado.</div>';
-      } else {
-        resultsEl.innerHTML = filtered.map(l => `
-          <div class="lead-search-row">
-            <input type="checkbox" class="lead-search-checkbox" ${leadSearchSelectedPhones.has(l.phone) ? 'checked' : ''} onchange="toggleLeadSearchSelection('${l.phone}', this.checked)" aria-label="Selecionar ${l.name}">
-            <div class="lead-search-info" onclick="closeLeadSearchModal(); openLeadDetail('${l.phone}')">
-              <span class="lead-search-name">${l.name}</span>
-              <span class="lead-search-phone">${formatPhoneShort(l.phone)}</span>
-            </div>
-          </div>
-        `).join('');
-      }
-
-      updateLeadSearchSelectedBar();
-    }
-
-    function toggleLeadSearchSelection(phone, checked) {
-      if (checked) leadSearchSelectedPhones.add(phone);
-      else leadSearchSelectedPhones.delete(phone);
-      updateLeadSearchSelectedBar();
-    }
-
-    function clearLeadSearchSelection() {
-      leadSearchSelectedPhones = new Set();
-      renderLeadSearchResults();
-    }
-
-    function updateLeadSearchSelectedBar() {
-      const bar = document.getElementById('leadSearchSelectedBar');
-      const count = leadSearchSelectedPhones.size;
-      if (count === 0) {
-        bar.style.display = 'none';
-        return;
-      }
-      bar.style.display = 'flex';
-      bar.innerHTML = `
-        <span>${count} selecionado${count > 1 ? 's' : ''}</span>
-        <button type="button" class="icon-btn-flat" onclick="clearLeadSearchSelection()" title="Limpar seleção" aria-label="Limpar seleção" style="width:24px;height:24px;font-size:13px;">✕</button>
-      `;
-    }
-
-    // Altura calculada por JS a partir de visualViewport (não só CSS vh) —
-    // pedido do usuário 2026-09-26 depois do CSS puro não funcionar
-    // ("não ficou funcional", print mostrando resultados escondidos atrás
-    // do teclado). visualViewport.height já reflete a área REALMENTE
-    // visível (descontando o teclado), diferente de vh/window.innerHeight
-    // em vários navegadores mobile.
-    function adjustLeadSearchModalHeight() {
-      const modalEl = document.getElementById('leadSearchModal');
-      if (!modalEl.classList.contains('open')) return;
-      const modalContent = modalEl.querySelector('.modal-content');
-      const results = document.getElementById('leadSearchResults');
-      const vh = (window.visualViewport ? window.visualViewport.height : window.innerHeight);
-      modalContent.style.maxHeight = `${Math.round(vh * 0.9)}px`;
-      results.style.maxHeight = `${Math.round(vh * 0.45)}px`;
     }
 
     function showError(message) {
@@ -4719,14 +4240,14 @@
         if (!result.ok) throw new Error(result.error || 'Erro desconhecido');
 
         closeNewLeadModal();
-        showToast(`✅ Lead ${name} adicionado`);
+        showToast(`✅ Cliente ${name} adicionado(a)`);
         await fetchSheetsData();
         openLeadDetail(phone);
       } catch (err) {
         document.getElementById('newLeadError').innerHTML = `<div class="form-error">❌ ${err.message}</div>`;
       } finally {
         btn.disabled = false;
-        btn.textContent = '💾 Adicionar Lead';
+        btn.textContent = '💾 Adicionar Cliente';
       }
     }
 
@@ -4735,31 +4256,6 @@
     // quanto recebi por período") ---
 
     const PAYMENT_METHOD_ICONS = { Pix: '💠', 'Cartão': '💳', Dinheiro: '💵', Outro: '📄' };
-
-    function openFinanceReport() {
-      const settings = loadSettings();
-      if (!settings || !settings.spreadsheetId || !settings.apiKey) {
-        alert('Configure a planilha e a chave da API em ⚙️ Config primeiro.');
-        return;
-      }
-      const now = new Date();
-      document.getElementById('reportMonth').value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-      financeReportFilter = null;
-      renderFinanceReport();
-      document.getElementById('financeReportModal').classList.add('open');
-    }
-
-    // Filtro dos cards do Relatório Financeiro (pedido do usuário
-    // 2026-09-26: "quando eu clicar no financeiro e nos cards eu quero
-    // que liste em grid o que foi recebido, a receber e atrasado").
-    // Clicar no mesmo card de novo desliga o filtro (volta a mostrar
-    // tudo), mesmo padrão dos cards de status da tela principal de Leads.
-    let financeReportFilter = null; // null | 'recebido' | 'a-receber' | 'atrasado'
-
-    function filterFinanceReport(filter) {
-      financeReportFilter = (financeReportFilter === filter) ? null : filter;
-      renderFinanceReport();
-    }
 
     // Detalhe do lançamento (pedido do usuário 2026-09-26: clicar num
     // lançamento do Relatório Financeiro abre um resumo dentro do próprio
@@ -4815,220 +4311,6 @@
 
     function closeTransactionSummary() {
       document.getElementById('transactionSummaryModal').classList.remove('open');
-    }
-
-    function closeFinanceReport() {
-      document.getElementById('financeReportModal').classList.remove('open');
-    }
-
-    function renderFinanceReport() {
-      const monthValue = document.getElementById('reportMonth').value; // "2026-09"
-      const summaryEl = document.getElementById('financeReportSummary');
-      const listEl = document.getElementById('financeReportList');
-
-      if (!monthValue) {
-        summaryEl.innerHTML = '';
-        listEl.innerHTML = '';
-        return;
-      }
-
-      const todayStr = localDateStr(new Date());
-
-      // Recebido no mês: pela Data de Recebimento, não pelo vencimento —
-      // uma parcela vencida em agosto mas paga em setembro conta como
-      // recebimento de setembro.
-      const receivedInMonth = allFinance.filter(f => f.status === 'Recebido' && f.receivedDate && f.receivedDate.startsWith(monthValue));
-      // Créditos da Carteira (pedido do usuário 2026-09-25) também são
-      // dinheiro recebido de verdade — sem somar aqui, "Recebido no mês"
-      // ficaria incompleto pra clientes que pagam pela Carteira em vez de
-      // parcelas fixas. Carteira não tem vencimento/atraso (não é plano
-      // fechado), então só entra nesse total, não em "A receber"/"Atrasado".
-      const carteiraCreditsInMonth = allCarteira.filter(c => c.type === 'Crédito' && c.date && c.date.startsWith(monthValue));
-      const receivedTotal = receivedInMonth.reduce((s, f) => s + f.value, 0)
-        + carteiraCreditsInMonth.reduce((s, c) => s + c.value, 0);
-      const receivedByMethod = {};
-      receivedInMonth.forEach(f => {
-        const key = f.paymentMethod || 'Outro';
-        receivedByMethod[key] = (receivedByMethod[key] || 0) + f.value;
-      });
-      carteiraCreditsInMonth.forEach(c => {
-        const key = c.paymentMethod || 'Outro';
-        receivedByMethod[key] = (receivedByMethod[key] || 0) + c.value;
-      });
-
-      // A receber vencendo no mês (ainda não recebido).
-      const pendingInMonth = allFinance.filter(f => f.status !== 'Recebido' && f.dueDate && f.dueDate.startsWith(monthValue));
-      const pendingTotal = pendingInMonth.reduce((s, f) => s + f.value, 0);
-
-      // Atrasado é sempre "a partir de hoje", independente do mês que
-      // está sendo visto no relatório — não faz sentido escopar isso por
-      // período (atraso é um estado atual, não histórico de um mês).
-      const overdue = allFinance.filter(f => f.status !== 'Recebido' && f.dueDate && f.dueDate < todayStr);
-      const overdueTotal = overdue.reduce((s, f) => s + f.value, 0);
-
-      // Saldo devedor em aberto na Carteira, por cliente (pedido do
-      // usuário 2026-09-26: "um novo card para os recebimentos em
-      // abertos provenientes dos procedimentos em carteira, que não tem
-      // data de vencimento"). Igual Atrasado, é sempre "hoje" — saldo
-      // corrente, não um histórico de mês (a Carteira não tem
-      // vencimento pra escopar por período). Lista os procedimentos
-      // (Débitos) de cada cliente junto, não só o nome — pedido do
-      // usuário: "deve exibir logicamente o valor em aberto e
-      // procedimentos, etc".
-      const carteiraOpenBalances = Array.from(new Set(allCarteira.map(c => c.phone)))
-        .map((phone) => {
-          const entry = allCarteira.find(c => c.phone === phone);
-          const procedures = Array.from(new Set(
-            allCarteira.filter(c => c.phone === phone && c.type === 'Débito').map(c => c.description).filter(Boolean)
-          ));
-          return { phone, name: entry ? entry.name : '—', balance: getCarteiraBalance(phone), procedures };
-        })
-        .filter(b => b.balance > 0)
-        .sort((a, b) => b.balance - a.balance);
-      const carteiraOpenTotal = carteiraOpenBalances.reduce((s, b) => s + b.balance, 0);
-
-      // Venda no cartão (2026-09-30): "Recebido no mês" continua BRUTO (o
-      // que o cliente pagou); a taxa da maquininha sai à parte, e o
-      // líquido é o que de fato caiu na conta.
-      const receivedNetTotal = receivedInMonth.reduce((s, f) => s + netOf(f), 0)
-        + carteiraCreditsInMonth.reduce((s, c) => s + netOf(c), 0);
-      const cardFeesTotal = receivedTotal - receivedNetTotal;
-
-      const methodRows = Object.keys(receivedByMethod).sort().map(method => `
-        <div class="finance-summary-method">
-          <span>${PAYMENT_METHOD_ICONS[method] || '📄'} ${method}</span>
-          <span>${formatCurrencyBRL(receivedByMethod[method])}</span>
-        </div>
-      `).join('') || '<div class="finance-summary-method" style="color:var(--cor-cinza-cacau);">Nenhum recebimento nesse mês.</div>';
-
-      summaryEl.innerHTML = `
-        <div class="finance-summary-grid">
-          <div class="finance-summary-card finance-summary-received ${financeReportFilter === 'recebido' ? 'finance-summary-card-active' : ''}" onclick="filterFinanceReport('recebido')" role="button" tabindex="0">
-            <div class="finance-summary-value">${formatCurrencyBRL(receivedTotal)}</div>
-            <div class="finance-summary-label">Recebido no mês</div>
-          </div>
-          <div class="finance-summary-card ${financeReportFilter === 'a-receber' ? 'finance-summary-card-active' : ''}" onclick="filterFinanceReport('a-receber')" role="button" tabindex="0">
-            <div class="finance-summary-value">${formatCurrencyBRL(pendingTotal)}</div>
-            <div class="finance-summary-label">A receber no mês</div>
-          </div>
-          <div class="finance-summary-card ${overdueTotal > 0 ? 'finance-summary-overdue' : ''} ${financeReportFilter === 'atrasado' ? 'finance-summary-card-active' : ''}" onclick="filterFinanceReport('atrasado')" role="button" tabindex="0">
-            <div class="finance-summary-value">${formatCurrencyBRL(overdueTotal)}</div>
-            <div class="finance-summary-label">Atrasado (hoje)</div>
-          </div>
-          <div class="finance-summary-card ${carteiraOpenTotal > 0 ? 'finance-summary-overdue' : ''} ${financeReportFilter === 'carteira-aberto' ? 'finance-summary-card-active' : ''}" onclick="filterFinanceReport('carteira-aberto')" role="button" tabindex="0">
-            <div class="finance-summary-value">${formatCurrencyBRL(carteiraOpenTotal)}</div>
-            <div class="finance-summary-label">Em aberto na Carteira</div>
-          </div>
-        </div>
-        <div class="finance-summary-methods">
-          ${methodRows}
-          ${cardFeesTotal > 0.004 ? `
-            <div class="finance-summary-method" style="color:var(--cor-cinza-cacau);">
-              <span>Taxas da maquininha</span>
-              <span>− ${formatCurrencyBRL(cardFeesTotal)}</span>
-            </div>
-            <div class="finance-summary-method" style="font-weight:600;">
-              <span>Líquido recebido</span>
-              <span>${formatCurrencyBRL(receivedNetTotal)}</span>
-            </div>` : ''}
-        </div>
-      `;
-
-      const financeRowHtml = (item) => `
-        <div class="finance-row" onclick="openFinanceTransactionSummary('${item.id}', 'financeiro')" role="button" tabindex="0" style="cursor:pointer;">
-          <div class="finance-row-main">
-            <span>${item.name} — ${item.description || 'Cobrança'} (${item.cardType ? 'cartão' : item.installmentLabel})</span>
-            <span class="finance-row-value">${formatCurrencyBRL(item.value)}</span>
-          </div>
-          <div class="finance-row-meta">
-            <span>${item.cardType ? formatDateBR(item.dueDate) : `Vence ${formatDateBR(item.dueDate)}`}</span>
-            ${item.cardType ? cardMetaHtml(item) : `<span>${item.paymentMethod || '—'}</span>`}
-            <span class="finance-status-badge ${item.status === 'Recebido' ? 'finance-status-paid' : 'finance-status-pending'}">${item.status}</span>
-          </div>
-        </div>
-      `;
-
-      // Pagamentos de Carteira entram junto quando faz sentido (pedido do
-      // usuário 2026-09-25) — mostrados com layout próprio, já que não têm
-      // vencimento/parcela/status (não são plano fechado).
-      const carteiraRowHtml = (c) => `
-        <div class="finance-row" onclick="openFinanceTransactionSummary('${c.id}', 'carteira')" role="button" tabindex="0" style="cursor:pointer;">
-          <div class="finance-row-main">
-            <span>💳 ${c.name} — Pagto na Carteira</span>
-            <span class="finance-row-value">${formatCurrencyBRL(c.value)}</span>
-          </div>
-          <div class="finance-row-meta">
-            <span>${formatDateBR(c.date)}</span>
-            ${c.cardType ? cardMetaHtml(c) : `<span>${c.paymentMethod || '—'}</span>`}
-            <span class="finance-status-badge finance-status-paid">Recebido</span>
-          </div>
-        </div>
-      `;
-
-      // Card "Em aberto na Carteira" — uma linha por CLIENTE (não por
-      // transação, diferente dos outros grupos), já que o que existe é
-      // um saldo corrente, não parcelas avulsas. Clicar leva direto pra
-      // ficha do cliente (onde dá pra ver o extrato completo e lançar
-      // um pagamento), não pra um modal de detalhe de transação única.
-      const carteiraBalanceRowHtml = (b) => `
-        <div class="finance-row" onclick="closeFinanceReport(); openLeadDetail('${b.phone}')" role="button" tabindex="0" style="cursor:pointer;">
-          <div class="finance-row-main">
-            <span>💳 ${b.name}</span>
-            <span class="finance-row-value">${formatCurrencyBRL(b.balance)}</span>
-          </div>
-          <div class="finance-row-meta">
-            <span>${b.procedures.length ? b.procedures.join(', ') : 'Procedimento não informado'}</span>
-          </div>
-        </div>
-      `;
-
-      // Clicar num card filtra a lista abaixo pra só aquele grupo (pedido
-      // do usuário 2026-09-26: "quando eu clicar no financeiro e nos
-      // cards eu quero que liste em grid o que foi recebido, a receber e
-      // atrasado"). Sem nenhum card selecionado, mantém o comportamento
-      // original: tudo do mês junto.
-      const titleEl = document.getElementById('financeReportListTitle');
-      let itemsToShow;
-      let carteiraRowsHtml = '';
-      let emptyMessage;
-
-      if (financeReportFilter === 'recebido') {
-        titleEl.textContent = '✅ Recebido no mês';
-        itemsToShow = receivedInMonth;
-        carteiraRowsHtml = carteiraCreditsInMonth.slice().sort((a, b) => (a.date || '').localeCompare(b.date || '')).map(carteiraRowHtml).join('');
-        emptyMessage = 'Nenhum recebimento nesse mês.';
-      } else if (financeReportFilter === 'a-receber') {
-        titleEl.textContent = '🕓 A receber no mês';
-        itemsToShow = pendingInMonth;
-        emptyMessage = 'Nenhuma parcela a receber nesse mês.';
-      } else if (financeReportFilter === 'atrasado') {
-        titleEl.textContent = '⚠️ Atrasado (hoje)';
-        itemsToShow = overdue;
-        emptyMessage = 'Nenhuma parcela atrasada. 🎉';
-      } else if (financeReportFilter === 'carteira-aberto') {
-        // Formato de dado diferente dos outros grupos (1 linha por
-        // cliente, não por transação) — sai cedo em vez de entrar no
-        // fluxo genérico de itemsToShow/financeRowHtml.
-        titleEl.textContent = '💳 Em aberto na Carteira';
-        listEl.innerHTML = carteiraOpenBalances.length
-          ? carteiraOpenBalances.map(carteiraBalanceRowHtml).join('')
-          : '<div class="agenda-empty">Nenhum saldo em aberto na Carteira. 🎉</div>';
-        return;
-      } else {
-        titleEl.textContent = 'Parcelas do mês';
-        itemsToShow = allFinance.filter(f => (f.receivedDate && f.receivedDate.startsWith(monthValue)) || (f.dueDate && f.dueDate.startsWith(monthValue)));
-        carteiraRowsHtml = carteiraCreditsInMonth.slice().sort((a, b) => (a.date || '').localeCompare(b.date || '')).map(carteiraRowHtml).join('');
-        emptyMessage = 'Nenhuma parcela nesse mês.';
-      }
-
-      itemsToShow = itemsToShow.slice().sort((a, b) => (a.dueDate || '').localeCompare(b.dueDate || ''));
-
-      if (itemsToShow.length === 0 && carteiraRowsHtml === '') {
-        listEl.innerHTML = `<div class="agenda-empty">${emptyMessage}</div>`;
-        return;
-      }
-
-      listEl.innerHTML = itemsToShow.map(financeRowHtml).join('') + carteiraRowsHtml;
     }
 
     // --- Lançar Cobrança (contas a receber) ---
@@ -5568,6 +4850,14 @@
     // comportamento pros cards e pros chips.
     function setClientesFilter(f) { clientesFilter = (f === clientesFilter) ? 'todos' : f; renderClientes(); }
 
+    // Situação do atendimento (funil) — veio da antiga tabela de leads da
+    // Agenda (revisão de redundância 2026-09-30). Mesmo critério
+    // (matchesStatusFilter) dos antigos cards Confirmados/Pendentes/Não
+    // compareceram; combina com o filtro de relacionamento acima.
+    let clientesFunnel = 'todos';
+
+    function setClientesFunnel(f) { clientesFunnel = (f === clientesFunnel) ? 'todos' : f; renderClientes(); }
+
     function renderClientes() {
       const today = localDateStr(new Date());
       const month = today.slice(5, 7);
@@ -5617,6 +4907,16 @@
         ['semcompra', `Sem compras (${counts.semcompra})`],
       ], clientesFilter, 'setClientesFilter');
 
+      const funnelCount = (key) => clients.filter(c => matchesStatusFilter(c.lead, key)).length;
+      document.getElementById('clientesFunnelFilters').innerHTML =
+        `<span style="font-size:12.5px; color:var(--cor-cinza-cacau); margin-right:2px;">Atendimento:</span>`
+        + chipsHtml([
+          ['todos', 'Todos'],
+          ['confirmed', `✅ Confirmados (${funnelCount('confirmed')})`],
+          ['booked', `⏳ Pendentes de confirmação (${funnelCount('booked')})`],
+          ['noshow', `🚫 Não compareceram (${funnelCount('noshow')})`],
+        ], clientesFunnel, 'setClientesFunnel');
+
       const query = document.getElementById('clientesSearch').value.trim().toLowerCase();
       const queryDigits = query.replace(/\D/g, '');
       let list = clients.filter(c => {
@@ -5625,6 +4925,7 @@
         if (clientesFilter === 'aberto' && !(c.open > 0.004)) return false;
         if (clientesFilter === 'atraso' && !(c.overdue > 0.004)) return false;
         if (clientesFilter === 'semcompra' && c.bought !== 0) return false;
+        if (clientesFunnel !== 'todos' && !matchesStatusFilter(c.lead, clientesFunnel)) return false;
         if (!query) return true;
         return c.lead.name.toLowerCase().includes(query)
           || (queryDigits && c.lead.phone.replace(/\D/g, '').includes(queryDigits))
@@ -5644,7 +4945,12 @@
       }
       el.innerHTML = list.map(c => {
         const l = c.lead;
+        // Selo de situação só quando diz algo (não "Ativo", o padrão) —
+        // com o horário quando há agendamento confirmado.
+        const statusClass = getStatusClass(l);
+        const statusBadge = statusClass === 'ready' ? '' : `<span class="status-badge status-${statusClass}" style="font-size:11px; padding:1px 8px;">${getLeadStatusLabel(l)}${statusClass === 'confirmed' && l.chosenSlot ? ` ${formatDateShortBR(l.chosenSlot.date).slice(0, 5)} ${l.chosenSlot.start}` : ''}</span>`;
         const meta = [
+          statusBadge,
           formatPhoneShort(l.phone),
           l.procedure ? escapeHtml(l.procedure) : '',
           l.birthDate ? `nasc. ${formatDateShortBR(l.birthDate)} (${ageFrom(l.birthDate)} anos)` : '',
@@ -5667,6 +4973,53 @@
 
     // ---------- Vendas ----------
     let vendasPeriod = 'mes';
+
+    // Vendido × Recebido (revisão de redundância 2026-09-30, substitui o
+    // antigo modal "Relatório Financeiro"): competência (o que foi vendido
+    // no período) × caixa (o que entrou na conta no período). Mesmo
+    // período, mesmos cards e gráficos — só muda a base.
+    let vendasMode = 'vendido';
+
+    function setVendasMode(m) { vendasMode = m; renderVendas(); }
+
+    // Recebimentos = parcelas marcadas Recebido (pela Data de
+    // Recebimento, não pelo vencimento) + pagamentos (Créditos) da
+    // Carteira. Cartão entra com a taxa e o líquido gravados.
+    function buildReceipts() {
+      const rows = [];
+      allFinance.filter(f => f.status === 'Recebido' && f.receivedDate).forEach(f => {
+        const isCard = Boolean(f.cardType);
+        rows.push({
+          id: f.id,
+          source: 'financeiro',
+          date: f.receivedDate,
+          phone: f.phone,
+          name: f.name,
+          description: `${f.description || 'Cobrança'}${isCard ? '' : ` (${f.installmentLabel})`}`,
+          method: isCard ? 'Cartão' : (f.paymentMethod || 'Outro'),
+          methodLabel: isCard ? `Cartão — ${cardLabel(f.cardType, f.cardInstallments)}` : (f.paymentMethod || 'Outro'),
+          gross: f.value,
+          fee: f.cardFee || 0,
+          net: netOf(f),
+        });
+      });
+      allCarteira.filter(c => c.type === 'Crédito').forEach(c => {
+        rows.push({
+          id: c.id,
+          source: 'carteira',
+          date: c.date,
+          phone: c.phone,
+          name: c.name,
+          description: 'Pagamento na Carteira',
+          method: c.cardType ? 'Cartão' : (c.paymentMethod || 'Outro'),
+          methodLabel: c.cardType ? `Cartão — ${cardLabel(c.cardType, c.cardInstallments)}` : (c.paymentMethod || 'Outro'),
+          gross: c.value,
+          fee: c.cardFee || 0,
+          net: netOf(c),
+        });
+      });
+      return rows.sort((a, b) => (a.date < b.date ? 1 : -1));
+    }
 
     function setVendasPeriod(p) {
       vendasPeriod = p;
@@ -5697,12 +5050,26 @@
         ['hoje', 'Hoje'], ['7dias', '7 dias'], ['mes', 'Este mês'], ['mespassado', 'Mês passado'], ['ano', 'Este ano'],
       ], vendasPeriod, 'setVendasPeriod');
 
-      const sales = buildSales().filter(s => s.date >= from && s.date <= to);
+      const received = vendasMode === 'recebido';
+      document.getElementById('vendasModeChips').innerHTML = chipsHtml([
+        ['vendido', '🛍️ Vendido'],
+        ['recebido', '💵 Recebido (caixa)'],
+      ], vendasMode, 'setVendasMode');
+
+      const sales = (received ? buildReceipts() : buildSales()).filter(s => s.date >= from && s.date <= to);
       const gross = sales.reduce((s, x) => s + x.gross, 0);
       const fee = sales.reduce((s, x) => s + x.fee, 0);
       const net = gross - fee;
 
-      document.getElementById('vendasKpis').innerHTML = [
+      const pendingInPeriod = allFinance
+        .filter(f => f.status !== 'Recebido' && f.dueDate && f.dueDate >= from && f.dueDate <= to)
+        .reduce((s, f) => s + f.value, 0);
+      document.getElementById('vendasKpis').innerHTML = received ? [
+        kpiHtml('Recebido (bruto)', formatCurrencyBRL(gross), `${sales.length} recebimento(s)`, 'kpi-hero'),
+        kpiHtml('Taxas do cartão', `− ${formatCurrencyBRL(fee)}`, gross ? `${(fee / gross * 100).toFixed(2).replace('.', ',')}% do recebido` : ''),
+        kpiHtml('Entrou na conta', formatCurrencyBRL(net), 'líquido', 'kpi-good'),
+        kpiHtml('A receber', formatCurrencyBRL(pendingInPeriod), 'vencendo no período'),
+      ].join('') : [
         kpiHtml('Vendido (bruto)', formatCurrencyBRL(gross), `${sales.length} venda(s)`, 'kpi-hero'),
         kpiHtml('Taxas do cartão', `− ${formatCurrencyBRL(fee)}`, gross ? `${(fee / gross * 100).toFixed(2).replace('.', ',')}% do vendido` : ''),
         kpiHtml('Líquido', formatCurrencyBRL(net), '', 'kpi-good'),
@@ -5712,7 +5079,11 @@
       // Gráfico: por dia até ~2 meses de período; acima disso, por mês.
       const span = daysBetween(from, to);
       const byMonth = span > 62;
-      document.getElementById('vendasChartTitle').textContent = byMonth ? 'Vendido por mês' : 'Vendido por dia';
+      // No caixa, o gráfico mostra o LÍQUIDO (o que de fato caiu na conta).
+      const chartValue = (x) => (received ? x.net : x.gross);
+      document.getElementById('vendasChartTitle').textContent = received
+        ? (byMonth ? 'Entrou na conta (líquido) por mês' : 'Entrou na conta (líquido) por dia')
+        : (byMonth ? 'Vendido por mês' : 'Vendido por dia');
       const buckets = [];
       if (byMonth) {
         const d = new Date(`${from.slice(0, 7)}-01T00:00:00`);
@@ -5729,20 +5100,20 @@
       }
       buckets.forEach(b => {
         const inB = sales.filter(s => (byMonth ? s.date.slice(0, 7) : s.date) === b.key);
-        b.value = inB.reduce((s, x) => s + x.gross, 0);
+        b.value = inB.reduce((s, x) => s + chartValue(x), 0);
         b.count = inB.length;
       });
       const max = Math.max(...buckets.map(b => b.value));
       const chartEl = document.getElementById('vendasChart');
       if (!max) {
-        chartEl.innerHTML = '<div class="chart-empty">Nenhuma venda no período.</div>';
+        chartEl.innerHTML = `<div class="chart-empty">${received ? 'Nenhum recebimento no período.' : 'Nenhuma venda no período.'}</div>`;
       } else {
         const peak = buckets.reduce((a, b) => (b.value > a.value ? b : a));
         chartEl.innerHTML = `
           <div style="font-size:12px; color:var(--cor-cinza-cacau); margin-bottom:8px;">Maior ${byMonth ? 'mês' : 'dia'}: <strong style="color:var(--cor-texto-marca)">${peak.label} — ${formatCurrencyBRL(peak.value)}</strong></div>
           <div class="chart-cols">
             ${buckets.map(b => `
-              <div class="chart-col" data-tip="${b.label}: ${formatCurrencyBRL(b.value)} · ${b.count} venda(s)">
+              <div class="chart-col" data-tip="${b.label}: ${formatCurrencyBRL(b.value)} · ${b.count} ${received ? 'recebimento(s)' : 'venda(s)'}">
                 <div class="chart-col-bar" style="height:${b.value ? Math.max(2, b.value / max * 100) : 0}%"></div>
               </div>`).join('')}
           </div>
@@ -5772,13 +5143,14 @@
       });
       const procItems = Object.entries(byProc).map(([label, value]) => ({ label, value })).sort((a, b) => b.value - a.value).slice(0, 10);
       document.getElementById('vendasByProcedure').innerHTML = hbarsHtml(procItems, i => `${i.value} venda${i.value > 1 ? 's' : ''}`);
+      document.getElementById('vendasByProcedureCard').style.display = received ? 'none' : '';
 
-      document.getElementById('vendasListTitle').textContent = `Vendas do período (${sales.length})`;
+      document.getElementById('vendasListTitle').textContent = received ? `Recebimentos do período (${sales.length})` : `Vendas do período (${sales.length})`;
       document.getElementById('vendasList').innerHTML = sales.length ? `
         <div class="data-table-wrap"><table class="data-table">
           <thead><tr><th class="hide-mobile">Data</th><th>Cliente</th><th class="hide-mobile">Procedimento</th><th class="hide-mobile">Pagamento</th><th class="num">Bruto</th><th class="num hide-mobile">Taxa</th><th class="num">Líquido</th></tr></thead>
           <tbody>${sales.map(s => `
-            <tr class="clickable" onclick="${s.source === 'carteira' ? `openLeadDetail('${s.phone}')` : `openFinanceTransactionSummary('${s.id}', 'financeiro')`}">
+            <tr class="clickable" onclick="${s.source === 'carteira' ? (received ? `openFinanceTransactionSummary('${s.id}', 'carteira')` : `openLeadDetail('${s.phone}')`) : `openFinanceTransactionSummary('${s.id}', 'financeiro')`}">
               <td class="hide-mobile">${formatDateShortBR(s.date).slice(0, 5)}</td>
               <td>${escapeHtml(s.name)}<span class="mobile-only muted">${formatDateShortBR(s.date).slice(0, 5)} · ${escapeHtml(s.methodLabel)}</span></td>
               <td class="hide-mobile muted">${escapeHtml(s.description || '—')}</td>
@@ -5790,8 +5162,10 @@
           </tbody>
           <tfoot><tr><td class="hide-mobile"></td><td>Total</td><td class="hide-mobile"></td><td class="hide-mobile"></td><td class="num">${formatCurrencyBRL(gross)}</td><td class="num hide-mobile">${fee ? `− ${formatCurrencyBRL(fee)}` : '—'}</td><td class="num">${formatCurrencyBRL(net)}</td></tr></tfoot>
         </table></div>
-        <p style="color: var(--cor-cinza-cacau); font-size: 12px; margin-top: 10px;">ℹ️ Venda = cada cobrança lançada (todas as parcelas juntas) ou débito na Carteira. Para dinheiro que já entrou no caixa, use 📊 Resumo do mês.</p>
-      ` : '<div class="agenda-empty">Nenhuma venda no período.</div>';
+        <p style="color: var(--cor-cinza-cacau); font-size: 12px; margin-top: 10px;">${received
+          ? 'ℹ️ Recebido = parcelas baixadas como recebidas (pela data do recebimento) + pagamentos na Carteira. Cartão entra na data da venda, já com a taxa.'
+          : 'ℹ️ Venda = cada cobrança lançada (todas as parcelas juntas) ou débito na Carteira. Para o que já entrou na conta, toque em 💵 Recebido.'}</p>
+      ` : `<div class="agenda-empty">${received ? 'Nenhum recebimento no período.' : 'Nenhuma venda no período.'}</div>`;
     }
 
     // ---------- Contas a Receber ----------
@@ -6935,27 +6309,6 @@
         btn.disabled = false;
         btn.textContent = '💾 Criar Agendamento';
       }
-    }
-
-    // Event listeners
-    document.getElementById('search').addEventListener('input', applyFilters);
-
-    // Realinha o campo de busca assim que o teclado do celular abre —
-    // pedido do usuário 2026-09-25. Focus sozinho não basta: o teclado
-    // ainda está animando quando o evento dispara, então rolar ali usa a
-    // altura ANTIGA da tela (antes do teclado encolher a área visível).
-    // visualViewport.resize dispara DEPOIS que o teclado já abriu/fechou
-    // de verdade, com a altura visível já correta — suportado no Safari
-    // iOS e Chrome Android modernos; sem isso (fallback), ainda sobra o
-    // scroll do próprio focus, que ajuda mas pode ficar impreciso.
-    document.getElementById('search').addEventListener('focus', scrollSearchIntoView);
-    if (window.visualViewport) {
-      window.visualViewport.addEventListener('resize', () => {
-        if (document.activeElement === document.getElementById('search')) {
-          scrollSearchIntoView();
-        }
-        adjustLeadSearchModalHeight();
-      });
     }
 
     // Trava o scroll da tela de fundo enquanto QUALQUER modal estiver
