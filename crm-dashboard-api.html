@@ -1626,6 +1626,54 @@
 
     .module-view[hidden] { display: none !important; }
 
+    /* Tela de abertura (pedido do usuário 2026-09-30: "quando fechar e
+       abrir... uma piscada na tela com logo dela e nome da ferramenta").
+       Só na abertura da página — o botão de atualizar não recarrega a
+       página, então não mostra de novo. Não segura o carregamento: os
+       dados já vão sendo buscados por trás enquanto ela aparece. */
+    #splash {
+      position: fixed;
+      inset: 0;
+      z-index: 5000;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 18px;
+      background: radial-gradient(circle at 50% 42%, var(--cor-texto-marca-hover) 0%, var(--cor-texto-marca) 70%);
+      color: #fff;
+      transition: opacity 0.55s ease, visibility 0.55s;
+    }
+    #splash.hide { opacity: 0; visibility: hidden; }
+    #splash img {
+      width: min(58vw, 260px);
+      height: auto;
+      opacity: 0;
+      transform: scale(0.92);
+      animation: splashLogo 0.9s cubic-bezier(.2,.7,.2,1) 0.1s forwards;
+    }
+    .splash-name {
+      font-family: 'Roboto Serif', Georgia, serif;
+      font-size: 15px;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      opacity: 0;
+      animation: splashText 0.7s ease 0.55s forwards;
+    }
+    .splash-line {
+      width: 0;
+      height: 1px;
+      background: var(--cor-dourado-ambar);
+      animation: splashLine 0.8s ease 0.45s forwards;
+    }
+    @keyframes splashLogo { to { opacity: 1; transform: scale(1); } }
+    @keyframes splashText { to { opacity: 0.9; } }
+    @keyframes splashLine { to { width: 120px; } }
+    @media (prefers-reduced-motion: reduce) {
+      #splash img, .splash-name, .splash-line { animation-duration: 0.01s; animation-delay: 0s; }
+      #splash { transition-duration: 0.2s; }
+    }
+
     /* Topo enxuto: só título + atualizar (sobrescreve o grid antigo de
        2 colunas que dividia barra de ícones e status). */
     header { padding: 18px 30px; }
@@ -1868,6 +1916,26 @@
   </style>
 </head>
 <body>
+  <div id="splash" aria-hidden="true">
+    <img src="assets/logo-branco.png" alt="">
+    <div class="splash-line"></div>
+    <div class="splash-name">CRM · Gestão de Clientes</div>
+  </div>
+  <script>
+    // Some depois de ~1,6s (tempo das animações + uma pausa curta), ou
+    // mais rápido com "reduzir movimento". Toque na tela pula a abertura.
+    (function () {
+      const splash = document.getElementById('splash');
+      const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      const hide = () => {
+        if (splash.classList.contains('hide')) return;
+        splash.classList.add('hide');
+        setTimeout(() => splash.remove(), 700);
+      };
+      splash.addEventListener('click', hide);
+      setTimeout(hide, reduce ? 400 : 1600);
+    })();
+  </script>
   <!-- Topo só com título + atualizar (pedido do usuário 2026-09-30).
        ⚙️ Config virou o último item da barra de módulos e ➕ Novo
        agendamento foi pra dentro do módulo Agenda. -->
