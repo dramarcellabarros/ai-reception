@@ -374,6 +374,9 @@
       display: block;
     }
 
+    /* font-family/size explícitos: <button> e <a class="btn"> saíam com
+       fontes diferentes (o link herdava 16px da página — "📅 Google
+       Calendar" maior que os outros no Resumo do Agendamento). */
     .btn {
       padding: 12px 20px;
       background: var(--cor-dourado-ambar);
@@ -381,7 +384,10 @@
       border: none;
       border-radius: 4px;
       cursor: pointer;
+      font-family: inherit;
+      font-size: 14px;
       font-weight: 600;
+      line-height: 1.3;
       transition: background 0.3s;
     }
 
@@ -913,14 +919,33 @@
       display: flex;
     }
 
+    /* Altura máxima = área REALMENTE visível menos uma margem (pedido do
+       usuário 2026-09-30: janelas cortando informação com espaço sobrando
+       na tela). Antes era 80vh fixo — no iPhone o "vh" do Safari conta a
+       altura como se as barras não existissem, então 80vh sobrava pouco e
+       o fim da janela (ex.: botões do Resumo do Agendamento) ia pra
+       rolagem interna à toa. dvh = altura visível de verdade; 92vh fica de
+       reserva pra navegador antigo que não entende dvh. */
     .modal-content {
       background: white;
       padding: 30px;
       border-radius: 8px;
       max-width: 500px;
-      max-height: 80vh;
+      max-height: 92vh;
+      max-height: calc(100dvh - 32px);
       overflow-y: auto;
+      overscroll-behavior: contain;
       touch-action: pan-x pan-y;
+    }
+
+    @media (max-width: 768px) {
+      .modal { padding: 0 12px; }
+      .modal-content {
+        width: 100%;
+        padding: 22px 18px;
+        max-height: calc(100dvh - 24px);
+      }
+      .modal-content h2 { font-size: 21px; margin-bottom: 14px; padding-right: 28px; }
     }
 
     .modal-content h2 {
