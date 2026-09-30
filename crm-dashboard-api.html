@@ -1638,6 +1638,216 @@
         display: block;
       }
     }
+
+    /* ===== Módulos (pedido do usuário 2026-09-30) =====
+       Barra fixa logo abaixo do cabeçalho: Agenda · Clientes · Vendas ·
+       A Receber · Simulador. Cada módulo ocupa a tela; troca sem
+       recarregar (hash na URL, então Voltar do navegador também funciona). */
+    .module-nav {
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      display: flex;
+      gap: 4px;
+      padding: 8px 16px;
+      background: var(--cor-branco-perola);
+      border-bottom: 1px solid var(--cor-creme-avela);
+      box-shadow: 0 2px 6px rgba(0,0,0,0.04);
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+    .module-nav::-webkit-scrollbar { display: none; }
+
+    .module-nav-btn {
+      flex-shrink: 0;
+      border: none;
+      background: transparent;
+      color: var(--cor-cinza-cacau);
+      font: inherit;
+      font-size: 14px;
+      font-weight: 600;
+      padding: 8px 14px;
+      border-radius: 18px;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: background 0.15s, color 0.15s;
+    }
+    .module-nav-btn:hover { background: var(--cor-areia-suave); color: var(--cor-texto-marca); }
+    .module-nav-btn.active { background: var(--cor-texto-marca); color: #fff; }
+
+    .module-view[hidden] { display: none !important; }
+    #errorContainer:empty { display: none; }
+
+    .module-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 16px;
+    }
+    .module-title h2 { font-size: 20px; color: var(--cor-texto-marca); font-weight: 600; }
+
+    .module-card {
+      background: var(--cor-branco-perola);
+      border: 1px solid var(--cor-creme-avela);
+      border-radius: 10px;
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+    .module-card h3 {
+      font-size: 13px;
+      color: var(--cor-texto-marca);
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+      margin-bottom: 12px;
+    }
+
+    .chip-row { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+    .chip {
+      border: 1px solid var(--cor-creme-avela);
+      background: var(--cor-branco-perola);
+      color: var(--cor-texto-marca);
+      font: inherit;
+      font-size: 12.5px;
+      padding: 5px 12px;
+      border-radius: 14px;
+      cursor: pointer;
+    }
+    .chip.active { background: var(--cor-rosa-sereno); border-color: var(--cor-dourado-ambar); font-weight: 700; }
+
+    .period-bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+    .period-bar input[type="date"] { width: auto; padding: 6px 8px; font-size: 13px; }
+
+    .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-bottom: 16px; }
+    .kpi {
+      background: var(--cor-branco-perola);
+      border: 1px solid var(--cor-creme-avela);
+      border-radius: 10px;
+      padding: 14px;
+      min-width: 0;
+    }
+    .kpi-label { font-size: 11px; color: var(--cor-cinza-cacau); text-transform: uppercase; letter-spacing: 0.3px; }
+    .kpi-value { font-size: 20px; font-weight: 700; color: var(--cor-texto-marca); margin-top: 4px; font-variant-numeric: tabular-nums; word-break: break-word; }
+    .kpi-sub { font-size: 11.5px; color: var(--cor-cinza-cacau); margin-top: 2px; }
+    .kpi-hero { background: var(--cor-texto-marca); border-color: var(--cor-texto-marca); }
+    .kpi-hero .kpi-label, .kpi-hero .kpi-sub { color: rgba(255,255,255,0.8); }
+    .kpi-hero .kpi-value { color: #fff; }
+    .kpi-alert .kpi-value { color: #B3462F; }
+    .kpi-good .kpi-value { color: #4A7A3B; }
+
+    /* Gráficos — série única (uma cor só, #B07A45: dourado aprofundado
+       pra passar 3:1 de contraste contra o fundo; validado com o
+       validate_palette do dataviz). Texto nunca usa a cor do dado. */
+    .chart-cols {
+      display: flex;
+      align-items: flex-end;
+      gap: 2px;
+      height: 160px;
+      border-bottom: 1px solid var(--cor-creme-avela);
+      position: relative;
+    }
+    .chart-col {
+      flex: 1;
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      height: 100%;
+      cursor: default;
+      min-width: 4px;
+    }
+    .chart-col-bar {
+      width: 100%;
+      max-width: 24px;
+      background: #B07A45;
+      border-radius: 4px 4px 0 0;
+      min-height: 0;
+    }
+    .chart-col:hover .chart-col-bar { filter: brightness(0.85); }
+    .chart-axis { display: flex; justify-content: space-between; font-size: 11px; color: var(--cor-cinza-cacau); margin-top: 6px; }
+    .chart-tooltip {
+      position: fixed;
+      pointer-events: none;
+      background: var(--cor-texto);
+      color: #fff;
+      font-size: 12px;
+      padding: 6px 10px;
+      border-radius: 6px;
+      z-index: 3000;
+      white-space: nowrap;
+      display: none;
+    }
+    .chart-empty { font-size: 13px; color: var(--cor-cinza-cacau); padding: 30px 0; text-align: center; }
+
+    .hbar-row { display: grid; grid-template-columns: 110px 1fr auto; gap: 10px; align-items: center; font-size: 13px; margin-bottom: 8px; }
+    .hbar-label { color: var(--cor-texto); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .hbar-track { height: 14px; }
+    .hbar-fill { height: 100%; background: #B07A45; border-radius: 0 4px 4px 0; min-width: 2px; }
+    .hbar-value { font-variant-numeric: tabular-nums; color: var(--cor-texto-marca); font-weight: 600; }
+
+    .data-table-wrap { overflow-x: auto; }
+    /* Neutraliza o estilo global de <table> (tabela de Leads da Agenda:
+       min-width 820px, cabeçalho marrom, nowrap) — as tabelas dos
+       módulos precisam caber no celular sem rolagem lateral. */
+    .data-table { width: 100%; min-width: 0; border-collapse: collapse; font-size: 13px; }
+    .data-table thead { background: none; color: inherit; }
+    .data-table td { white-space: normal; font-size: 13px; }
+    .data-table th {
+      text-align: left;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+      color: var(--cor-cinza-cacau);
+      padding: 8px;
+      border-bottom: 1px solid var(--cor-creme-avela);
+      white-space: nowrap;
+      background: transparent;
+      position: static;
+    }
+    .data-table td { padding: 9px 8px; border-bottom: 1px solid var(--cor-areia-suave); vertical-align: top; }
+    .data-table td.num, .data-table th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .data-table tr.clickable { cursor: pointer; }
+    .data-table tr.clickable:hover td { background: var(--cor-areia-suave); }
+    .data-table tr.highlight td { background: var(--cor-rosa-sereno); }
+    .data-table .muted { color: var(--cor-cinza-cacau); font-size: 12px; }
+    .data-table tfoot td { font-weight: 700; border-top: 1px solid var(--cor-creme-avela); border-bottom: none; }
+    .data-table .mobile-only { display: none; }
+
+    .client-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+      padding: 12px;
+      border: 1px solid var(--cor-creme-avela);
+      border-radius: 8px;
+      background: var(--cor-branco-perola);
+      margin-bottom: 8px;
+      cursor: pointer;
+    }
+    .client-row:hover { border-color: var(--cor-dourado-ambar); }
+    .client-name { font-weight: 600; color: var(--cor-texto-marca); }
+    .client-meta { font-size: 12px; color: var(--cor-cinza-cacau); margin-top: 3px; display: flex; flex-wrap: wrap; gap: 4px 10px; }
+    .client-side { text-align: right; font-size: 12px; color: var(--cor-cinza-cacau); flex-shrink: 0; }
+    .client-side strong { display: block; font-size: 14px; color: var(--cor-texto-marca); font-variant-numeric: tabular-nums; }
+    .client-side .owed { color: #B3462F; }
+    .bday-badge { background: var(--cor-rosa-sereno); color: var(--cor-texto-marca); border-radius: 10px; padding: 0 7px; font-weight: 700; }
+
+    .sim-input-row { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 14px; }
+    .sim-input-row .form-group { margin-bottom: 0; flex: 1; min-width: 160px; }
+
+    @media (max-width: 768px) {
+      .module-nav { padding: 8px 10px; }
+      .module-nav-btn { font-size: 13px; padding: 7px 11px; }
+      .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+      .kpi-value { font-size: 17px; }
+      .hbar-row { grid-template-columns: 84px 1fr auto; }
+      .data-table, .data-table td { font-size: 12px; }
+      .data-table th, .data-table td { padding: 8px 5px; }
+      .data-table .hide-mobile { display: none; }
+      .data-table .mobile-only { display: block; }
+      .data-table .btn-label { display: none; }
+    }
   </style>
 </head>
 <body>
@@ -1663,7 +1873,7 @@
     <div class="header-actions">
       <div class="module-bar">
         <button class="icon-btn icon-btn-primary" onclick="openNewAppointmentModal()" title="Novo Agendamento" aria-label="Novo Agendamento">➕</button>
-        <button class="icon-btn" onclick="openLeadSearchModal()" title="Cadastro de Leads — pesquisar" aria-label="Cadastro de Leads">📇</button>
+        <button class="icon-btn" onclick="switchModule('clientes')" title="Cadastro de Clientes" aria-label="Cadastro de Clientes">📇</button>
         <button class="icon-btn" onclick="openFinanceReport()" title="Relatório Financeiro" aria-label="Relatório Financeiro">💰</button>
         <button class="icon-btn" onclick="openMonthCalendar()" title="Visão do Mês" aria-label="Visão do Mês">🗓️</button>
       </div>
@@ -1674,8 +1884,116 @@
     </div>
   </header>
 
-  <div class="container">
-    <div id="errorContainer"></div>
+  <nav class="module-nav" aria-label="Módulos">
+    <button class="module-nav-btn active" data-module="agenda" onclick="switchModule('agenda')">📅 Agenda</button>
+    <button class="module-nav-btn" data-module="clientes" onclick="switchModule('clientes')">👥 Clientes</button>
+    <button class="module-nav-btn" data-module="vendas" onclick="switchModule('vendas')">💰 Vendas</button>
+    <button class="module-nav-btn" data-module="receber" onclick="switchModule('receber')">🧾 A Receber</button>
+    <button class="module-nav-btn" data-module="simulador" onclick="switchModule('simulador')">🧮 Simulador</button>
+  </nav>
+
+  <!-- Fora dos módulos: erro de sincronização aparece em qualquer tela. -->
+  <div id="errorContainer" style="max-width:1400px; margin:16px auto 0; padding:0 20px;"></div>
+
+  <!-- ===== Módulo Clientes ===== -->
+  <div class="container module-view" id="view-clientes" hidden>
+    <div class="module-title">
+      <h2>👥 Clientes</h2>
+      <button class="agenda-toggle-btn" onclick="openNewLeadModal()">➕ Novo Cliente</button>
+    </div>
+    <div class="kpi-grid" id="clientesKpis"></div>
+    <div class="controls" style="margin-bottom:10px;">
+      <div class="search-box search-clear-wrap">
+        <input type="text" id="clientesSearch" placeholder="Buscar por nome, telefone ou procedimento..." autocomplete="off" autocorrect="off" spellcheck="false" oninput="renderClientes(); toggleSearchClearBtn('clientesSearch', 'clientesSearchClearBtn')">
+        <button type="button" class="search-clear-btn" id="clientesSearchClearBtn" onclick="clearSearchField('clientesSearch', 'clientesSearchClearBtn'); renderClientes()" title="Limpar busca" aria-label="Limpar busca">✕</button>
+      </div>
+    </div>
+    <div class="chip-row" id="clientesFilters"></div>
+    <div id="clientesList"></div>
+  </div>
+
+  <!-- ===== Módulo Vendas ===== -->
+  <div class="container module-view" id="view-vendas" hidden>
+    <div class="module-title">
+      <h2>💰 Vendas</h2>
+      <button class="agenda-toggle-btn" onclick="openFinanceReport()">📊 Resumo do mês</button>
+    </div>
+    <div class="chip-row" id="vendasPeriodChips"></div>
+    <div class="period-bar">
+      <label style="font-size:13px; color:var(--cor-cinza-cacau);">De</label>
+      <input type="date" id="vendasFrom" onchange="vendasPeriod = 'custom'; renderVendas()">
+      <label style="font-size:13px; color:var(--cor-cinza-cacau);">até</label>
+      <input type="date" id="vendasTo" onchange="vendasPeriod = 'custom'; renderVendas()">
+    </div>
+    <div class="kpi-grid" id="vendasKpis"></div>
+    <div class="module-card">
+      <h3 id="vendasChartTitle">Vendido por dia</h3>
+      <div id="vendasChart"></div>
+    </div>
+    <div class="module-card">
+      <h3>Por forma de pagamento</h3>
+      <div id="vendasByMethod"></div>
+    </div>
+    <div class="module-card">
+      <h3>Por procedimento</h3>
+      <div id="vendasByProcedure"></div>
+    </div>
+    <div class="module-card">
+      <h3 id="vendasListTitle">Vendas do período</h3>
+      <div id="vendasList"></div>
+    </div>
+  </div>
+
+  <!-- ===== Módulo Contas a Receber ===== -->
+  <div class="container module-view" id="view-receber" hidden>
+    <div class="module-title">
+      <h2>🧾 Contas a Receber</h2>
+      <button class="agenda-toggle-btn" onclick="openFinanceReport()">📊 Resumo do mês</button>
+    </div>
+    <div class="kpi-grid" id="receberKpis"></div>
+    <div class="controls" style="margin-bottom:10px;">
+      <div class="search-box search-clear-wrap">
+        <input type="text" id="receberSearch" placeholder="Filtrar por cliente ou procedimento..." autocomplete="off" autocorrect="off" spellcheck="false" oninput="renderReceber(); toggleSearchClearBtn('receberSearch', 'receberSearchClearBtn')">
+        <button type="button" class="search-clear-btn" id="receberSearchClearBtn" onclick="clearSearchField('receberSearch', 'receberSearchClearBtn'); renderReceber()" title="Limpar busca" aria-label="Limpar busca">✕</button>
+      </div>
+    </div>
+    <div class="chip-row" id="receberFilters"></div>
+    <div class="module-card">
+      <h3 id="receberListTitle">Parcelas em aberto</h3>
+      <div id="receberList"></div>
+    </div>
+    <div class="module-card">
+      <h3>Atraso por faixa</h3>
+      <div id="receberAging"></div>
+    </div>
+    <div class="module-card">
+      <h3>💳 Saldo em aberto na Carteira</h3>
+      <div id="receberCarteira"></div>
+    </div>
+  </div>
+
+  <!-- ===== Módulo Simulador ===== -->
+  <div class="container module-view" id="view-simulador" hidden>
+    <div class="module-title">
+      <h2>🧮 Simulador de Cartão</h2>
+    </div>
+    <div class="module-card">
+      <div class="chip-row" id="simModeChips"></div>
+      <div class="sim-input-row">
+        <div class="form-group">
+          <label id="simValueLabel">Valor da venda (R$):</label>
+          <input type="number" id="simValue" min="0" step="0.01" placeholder="0,00" oninput="renderSimulador()">
+        </div>
+      </div>
+      <div id="simResult"></div>
+      <p style="color: var(--cor-cinza-cacau); font-size: 12px; margin-top: 12px;">ℹ️ Taxas da aba "Taxas Cartão" da planilha. O valor real pode variar alguns centavos (arredondamento da operadora).</p>
+    </div>
+  </div>
+
+  <div class="chart-tooltip" id="chartTooltip"></div>
+
+  <!-- ===== Módulo Agenda (tela original) ===== -->
+  <div class="container module-view" id="view-agenda">
 
     <!-- Agenda antes dos cards de leads (pedido do usuário 2026-09-24): é
          a informação mais usada no dia a dia — quem vem hoje/amanhã —,
@@ -2058,6 +2376,10 @@
         <input type="tel" id="nlPhone" oninput="maskCellphoneInput(this)">
       </div>
       <div class="form-group">
+        <label>Data de nascimento (opcional):</label>
+        <input type="date" id="nlBirthDate">
+      </div>
+      <div class="form-group">
         <label>Origem:</label>
         <select id="nlSource">
           <option value="INSTAGRAM">Instagram</option>
@@ -2220,6 +2542,7 @@
     <div class="modal-content">
       <span class="close-btn" onclick="closeLeadDetail()">&times;</span>
       <h2 id="ldName">—</h2>
+      <button class="agenda-toggle-btn" onclick="document.getElementById('ldEditSection').scrollIntoView({ behavior: 'smooth', block: 'start' }); setTimeout(() => document.getElementById('ldEditName').focus(), 350)" style="margin:-6px 0 12px;">✏️ Editar cadastro</button>
       <div class="lead-detail-grid" id="ldBody"></div>
 
       <!-- Histórico de Procedimentos — pedido do usuário 2026-09-24:
@@ -2244,11 +2567,25 @@
       </h3>
       <div id="ldFinanceList"></div>
 
-      <h3 style="font-size: 14px; color: var(--cor-texto-marca); margin: 22px 0 12px; border-top: 1px solid var(--cor-creme-avela); padding-top: 18px;">✏️ Editar</h3>
+      <h3 id="ldEditSection" style="font-size: 14px; color: var(--cor-texto-marca); margin: 22px 0 12px; border-top: 1px solid var(--cor-creme-avela); padding-top: 18px; scroll-margin-top: 12px;">✏️ Editar cadastro</h3>
       <div id="ldEditError"></div>
       <div class="form-group">
         <label>Nome:</label>
         <input type="text" id="ldEditName" maxlength="80" autocorrect="off" spellcheck="false">
+      </div>
+      <div class="form-group">
+        <label>Telefone:</label>
+        <input type="tel" id="ldEditPhone" oninput="maskCellphoneInput(this)">
+        <div style="font-size:12px; color:var(--cor-cinza-cacau); margin-top:4px;">Trocar o telefone atualiza junto as cobranças, a carteira e o histórico da agenda.</div>
+      </div>
+      <div class="form-group">
+        <label>Data de nascimento:</label>
+        <input type="date" id="ldEditBirthDate">
+      </div>
+      <div class="form-group">
+        <label>Procedimento(s) de interesse:</label>
+        <div class="procedure-checklist" id="ldProcedureChecklist"></div>
+        <div class="procedure-check-summary" id="ldProcSummary"></div>
       </div>
       <div class="form-group">
         <label>Origem:</label>
@@ -2824,6 +3161,7 @@
           manualOnlyNote: row[headers.indexOf('Atendimento Manual (motivo)')] || '',
           appointmentType: row[headers.indexOf('Tipo de Atendimento')] || '',
           procedure: row[headers.indexOf('Interesse/Procedimento')] || '',
+          birthDate: /^\d{4}-\d{2}-\d{2}$/.test(row[headers.indexOf('Data de Nascimento')] || '') ? row[headers.indexOf('Data de Nascimento')] : '',
           chosenSlot: tryParseJSON(row[headers.indexOf('Horário Escolhido (JSON)')]),
           confirmedAppointment: tryParseJSON(row[headers.indexOf('Agendamento Confirmado (JSON)')])
         }));
@@ -2833,6 +3171,7 @@
         updateStats(allData);
         applyFilters();
         clearError();
+        renderCurrentModule();
       } catch (err) {
         console.error('Erro ao buscar dados:', err);
         setStatus(false, 'Erro na sincronização');
@@ -2929,8 +3268,10 @@
           paymentMethod: row[headers.indexOf('Meio de Pagamento')] || '',
           status: row[headers.indexOf('Status')] || 'A receber',
           receivedDate: row[headers.indexOf('Data de Recebimento')] || '',
+          createdAt: row[headers.indexOf('Criado em')] || '',
           ...cardFieldsFromRow(row, headers),
         })).filter(r => r.id);
+        renderCurrentModule();
       } catch (err) {
         console.error('Erro ao buscar financeiro:', err);
         allFinance = [];
@@ -2981,6 +3322,7 @@
           date: row[headers.indexOf('Data')] || '',
           ...cardFieldsFromRow(row, headers),
         })).filter(r => r.id);
+        renderCurrentModule();
       } catch (err) {
         console.error('Erro ao buscar carteira:', err);
         allCarteira = [];
@@ -3748,6 +4090,7 @@
       const rows = [
         ['Telefone', wa ? `<a href="${wa}" target="_blank" rel="noopener">💬 ${formatPhone(lead.phone)}</a>` : formatPhone(lead.phone)],
         ['Origem', lead.source || '—'],
+        ...(lead.birthDate ? [['Nascimento', `${formatDateShortBR(lead.birthDate)} (${ageFrom(lead.birthDate)} anos)`]] : []),
         ['Tipo de atendimento', typeStyle ? `<span class="type-badge ${typeStyle.className}">${typeStyle.label}</span>` : '—'],
         ...(lead.procedure ? [['Procedimento', lead.procedure]] : []),
         ['Estado da conversa', `${translateConversationState(lead.conversationState)}<br><span style="font-weight:400;font-size:11px;color:var(--cor-cinza-cacau)">etapa interna da IA de atendimento, não é o status do agendamento</span>`],
@@ -3773,6 +4116,14 @@
 
       // Preenche o formulário de edição com o estado atual do lead.
       document.getElementById('ldEditName').value = lead.name || '';
+      const phoneInput = document.getElementById('ldEditPhone');
+      phoneInput.value = lead.phone && lead.phone !== '—' ? lead.phone : '';
+      maskCellphoneInput(phoneInput);
+      document.getElementById('ldEditBirthDate').value = lead.birthDate || '';
+      document.getElementById('ldEditBirthDate').max = localDateStr(new Date());
+      document.getElementById('ldProcedureChecklist').innerHTML = procedureChecklistHtml('ld');
+      preSelectProcedures('ld', lead.procedure || '');
+      onProcedureCheckChange('ld');
       document.getElementById('ldEditSource').value = lead.source || 'INSTAGRAM';
       document.getElementById('ldEditStatus').value = lead.leadStatus === 'não compareceu' ? 'não compareceu' : '';
       const hasManualOnly = Boolean(lead.manualOnlyNote && lead.manualOnlyNote.trim());
@@ -3789,7 +4140,7 @@
         hint.textContent = '⚠️ Configure a "URL do Apps Script" em ⚙️ Config para poder salvar edições.';
       } else {
         saveBtn.disabled = false;
-        hint.textContent = 'ℹ️ Telefone, Estado da Conversa e Agendamento não são editáveis por aqui.';
+        hint.textContent = 'ℹ️ Estado da Conversa e Agendamento não são editáveis por aqui (agendamento se altera pela Agenda).';
       }
 
       document.getElementById('leadDetailModal').classList.add('open');
@@ -4264,6 +4615,8 @@
       document.getElementById('nlName').value = '';
       document.getElementById('nlPhone').value = '';
       document.getElementById('nlSource').value = 'INSTAGRAM';
+      document.getElementById('nlBirthDate').value = '';
+      document.getElementById('nlBirthDate').max = localDateStr(new Date());
       document.getElementById('nlProcedureChecklist').innerHTML = procedureChecklistHtml('nl');
       resetProcedureChecklist('nl');
       onProcedureCheckChange('nl');
@@ -4280,6 +4633,7 @@
       const name = document.getElementById('nlName').value.trim();
       const phoneRaw = document.getElementById('nlPhone').value.trim();
       const source = document.getElementById('nlSource').value;
+      const birthDate = document.getElementById('nlBirthDate').value;
       // Sem campo de Tipo (pedido do usuário 2026-09-26) — Novo Lead é só
       // cadastro retroativo de procedimento já realizado, então o tipo é
       // sempre "Procedimento" (mesmo rótulo usado em createAppointment/
@@ -4312,7 +4666,7 @@
         const response = await fetch(settings.scriptUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-          body: JSON.stringify({ action: 'createLead', phone, name, source, appointmentType, procedure })
+          body: JSON.stringify({ action: 'createLead', phone, name, source, appointmentType, procedure, birthDate })
         });
         const result = await response.json();
         if (!result.ok) throw new Error(result.error || 'Erro desconhecido');
@@ -4895,11 +5249,26 @@
       const leadStatus = document.getElementById('ldEditStatus').value;
       const manualOnly = document.getElementById('ldEditManualOnly').checked;
       const manualOnlyReason = document.getElementById('ldEditManualOnlyReason').value.trim();
+      const newPhone = normalizePhoneBR(document.getElementById('ldEditPhone').value);
+      const birthDate = document.getElementById('ldEditBirthDate').value;
+      const procedure = getProcedureValue('ld');
 
       document.getElementById('ldEditError').innerHTML = '';
 
       if (!name) {
         document.getElementById('ldEditError').innerHTML = '<div class="form-error">⚠️ Nome não pode ficar em branco.</div>';
+        return;
+      }
+      if (newPhone.replace(/\D/g, '').length < 12) {
+        document.getElementById('ldEditError').innerHTML = '<div class="form-error">⚠️ Telefone inválido — informe DDD + número.</div>';
+        return;
+      }
+      if (birthDate && birthDate > localDateStr(new Date())) {
+        document.getElementById('ldEditError').innerHTML = '<div class="form-error">⚠️ Data de nascimento no futuro.</div>';
+        return;
+      }
+      const phoneChanged = newPhone !== currentDetailPhone;
+      if (phoneChanged && !confirm(`Trocar o telefone de ${formatPhone(currentDetailPhone)} para ${formatPhone(newPhone)}?\n\nCobranças, carteira e histórico da agenda passam para o número novo.`)) {
         return;
       }
       if (manualOnly && !manualOnlyReason) {
@@ -4922,6 +5291,9 @@
             source,
             leadStatus,
             manualOnlyNote: manualOnly ? manualOnlyReason : '',
+            birthDate,
+            procedure,
+            ...(phoneChanged ? { newPhone } : {}),
           }),
         });
         const result = await response.json();
@@ -4952,6 +5324,540 @@
       toast.classList.add('visible');
       clearTimeout(toastTimer);
       toastTimer = setTimeout(() => toast.classList.remove('visible'), 5000);
+    }
+
+    // ================================================================
+    // MÓDULOS (pedido do usuário 2026-09-30): Agenda · Clientes · Vendas ·
+    // A Receber · Simulador, cada um em tela cheia, trocados pela barra
+    // .module-nav sem recarregar. O módulo atual vai no hash da URL
+    // (#vendas…), então recarregar mantém a tela e o Voltar do navegador
+    // funciona. Tudo lê os mesmos arrays já carregados (allData,
+    // allFinance, allCarteira) — nenhuma chamada nova à planilha.
+    // ================================================================
+
+    const MODULES = ['agenda', 'clientes', 'vendas', 'receber', 'simulador'];
+    let currentModule = 'agenda';
+
+    function switchModule(name) {
+      if (!MODULES.includes(name)) name = 'agenda';
+      const changed = currentModule !== name;
+      currentModule = name;
+      MODULES.forEach(m => { document.getElementById(`view-${m}`).hidden = m !== name; });
+      document.querySelectorAll('.module-nav-btn').forEach(b => b.classList.toggle('active', b.dataset.module === name));
+      if (location.hash.slice(1) !== name) location.hash = name;
+      renderCurrentModule();
+      if (changed) window.scrollTo(0, 0);
+    }
+
+    window.addEventListener('hashchange', () => switchModule(location.hash.slice(1) || 'agenda'));
+    // DOMContentLoaded (não chamada direta): o script inteiro precisa ter
+    // rodado antes — os módulos usam constantes declaradas mais abaixo.
+    window.addEventListener('DOMContentLoaded', () => switchModule(location.hash.slice(1) || 'agenda'));
+
+    /** Re-renderiza o módulo visível — chamado também quando chegam dados novos. */
+    function renderCurrentModule() {
+      if (currentModule === 'clientes') renderClientes();
+      else if (currentModule === 'vendas') renderVendas();
+      else if (currentModule === 'receber') renderReceber();
+      else if (currentModule === 'simulador') renderSimulador();
+    }
+
+    function escapeHtml(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+
+    function formatDateShortBR(iso) {
+      if (!iso) return '—';
+      const [y, m, d] = iso.slice(0, 10).split('-');
+      return `${d}/${m}/${y}`;
+    }
+
+    function ageFrom(iso) {
+      const b = new Date(`${iso}T00:00:00`);
+      const now = new Date();
+      let age = now.getFullYear() - b.getFullYear();
+      if (now.getMonth() < b.getMonth() || (now.getMonth() === b.getMonth() && now.getDate() < b.getDate())) age--;
+      return age;
+    }
+
+    function addDays(iso, n) {
+      const d = new Date(`${iso}T00:00:00`);
+      d.setDate(d.getDate() + n);
+      return localDateStr(d);
+    }
+
+    function daysBetween(fromIso, toIso) {
+      return Math.round((new Date(`${toIso}T00:00:00`) - new Date(`${fromIso}T00:00:00`)) / 86400000);
+    }
+
+    function kpiHtml(label, value, sub, cls) {
+      return `<div class="kpi ${cls || ''}"><div class="kpi-label">${label}</div><div class="kpi-value">${value}</div>${sub ? `<div class="kpi-sub">${sub}</div>` : ''}</div>`;
+    }
+
+    function chipsHtml(options, active, onclickFn) {
+      return options.map(([key, label]) => `<button class="chip ${key === active ? 'active' : ''}" onclick="${onclickFn}('${key}')">${label}</button>`).join('');
+    }
+
+    // Barras horizontais de série única (valor por categoria). Rótulo e
+    // valor sempre em cor de texto; só a barra usa a cor do dado.
+    function hbarsHtml(items, formatValue) {
+      if (!items.length) return '<div class="chart-empty">Nada no período.</div>';
+      const max = Math.max(...items.map(i => i.value)) || 1;
+      return items.map(i => `
+        <div class="hbar-row" title="${escapeHtml(i.label)}: ${escapeHtml(formatValue(i))}">
+          <span class="hbar-label">${escapeHtml(i.label)}</span>
+          <div class="hbar-track"><div class="hbar-fill" style="width:${Math.max(1, i.value / max * 100)}%"></div></div>
+          <span class="hbar-value">${formatValue(i)}</span>
+        </div>
+      `).join('');
+    }
+
+    // Tooltip dos gráficos de coluna — hover no desktop, toque no celular.
+    function bindChartTooltip(container) {
+      const tip = document.getElementById('chartTooltip');
+      const show = (e) => {
+        const col = e.target.closest('.chart-col');
+        if (!col) { tip.style.display = 'none'; return; }
+        tip.textContent = col.dataset.tip;
+        tip.style.display = 'block';
+        const x = (e.touches ? e.touches[0].clientX : e.clientX);
+        const y = (e.touches ? e.touches[0].clientY : e.clientY);
+        const w = tip.offsetWidth;
+        tip.style.left = `${Math.min(Math.max(8, x - w / 2), window.innerWidth - w - 8)}px`;
+        tip.style.top = `${y - 44}px`;
+      };
+      container.onmousemove = show;
+      container.onclick = show;
+      container.onmouseleave = () => { tip.style.display = 'none'; };
+    }
+
+    // ---------- Vendas (base comum de Vendas e Clientes) ----------
+    // Uma VENDA = um lançamento de "Lançar Cobrança" (todas as parcelas
+    // criadas juntas: mesmo telefone + "Criado em" + descrição + total) ou
+    // um Débito da Carteira (procedimento fechado, pago depois). Data da
+    // venda = a mais antiga entre o dia do lançamento e o 1º vencimento —
+    // cobre tanto plano futuro (lançado hoje, 1ª parcela mês que vem)
+    // quanto lançamento retroativo (lançado hoje, venda de semanas atrás).
+    function buildSales() {
+      const groups = new Map();
+      allFinance.forEach(f => {
+        const key = [f.phone, f.createdAt, f.description, f.totalValue, f.paymentMethod].join('|');
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(f);
+      });
+
+      const sales = [];
+      groups.forEach(rows => {
+        const first = rows[0];
+        const dates = rows.map(r => r.dueDate).filter(Boolean);
+        if (first.createdAt) dates.push(first.createdAt.slice(0, 10));
+        const date = dates.sort()[0] || '';
+        const gross = parseCurrencyCell(first.totalValue) || rows.reduce((s, r) => s + r.value, 0);
+        const fee = rows.reduce((s, r) => s + (r.cardFee || 0), 0);
+        const isCard = Boolean(first.cardType);
+        sales.push({
+          id: first.id,
+          source: 'financeiro',
+          date,
+          phone: first.phone,
+          name: first.name,
+          description: first.description,
+          method: isCard ? 'Cartão' : (first.paymentMethod || 'Outro'),
+          methodLabel: isCard ? `Cartão — ${cardLabel(first.cardType, first.cardInstallments)}` : `${first.paymentMethod || 'Outro'}${rows.length > 1 ? ` ${rows.length}x` : ''}`,
+          gross,
+          fee,
+          net: gross - fee,
+        });
+      });
+
+      allCarteira.filter(c => c.type === 'Débito').forEach(c => {
+        sales.push({
+          id: c.id,
+          source: 'carteira',
+          date: c.date,
+          phone: c.phone,
+          name: c.name,
+          description: c.description,
+          method: 'Carteira',
+          methodLabel: 'Carteira',
+          gross: c.value,
+          fee: 0,
+          net: c.value,
+        });
+      });
+
+      return sales.sort((a, b) => (a.date < b.date ? 1 : -1));
+    }
+
+    // ---------- Clientes ----------
+    let clientesFilter = 'todos';
+
+    function setClientesFilter(f) { clientesFilter = f; renderClientes(); }
+
+    function renderClientes() {
+      const today = localDateStr(new Date());
+      const month = today.slice(5, 7);
+      const sales = buildSales();
+
+      const clients = allData.filter(l => l.phone && l.phone !== '—').map(l => {
+        const mine = sales.filter(s => s.phone === l.phone);
+        const openInstallments = allFinance.filter(f => f.phone === l.phone && f.status !== 'Recebido');
+        const openFinance = openInstallments.reduce((s, f) => s + f.value, 0);
+        const overdue = openInstallments.filter(f => f.dueDate && f.dueDate < today).reduce((s, f) => s + f.value, 0);
+        const carteira = Math.max(0, getCarteiraBalance(l.phone));
+        return {
+          lead: l,
+          bought: mine.reduce((s, x) => s + x.gross, 0),
+          lastSale: mine.length ? mine[0].date : '',
+          open: openFinance + carteira,
+          overdue,
+          bdayThisMonth: Boolean(l.birthDate) && l.birthDate.slice(5, 7) === month,
+        };
+      });
+
+      const counts = {
+        todos: clients.length,
+        aniversariantes: clients.filter(c => c.bdayThisMonth).length,
+        aberto: clients.filter(c => c.open > 0.004).length,
+        atraso: clients.filter(c => c.overdue > 0.004).length,
+        semcompra: clients.filter(c => c.bought === 0).length,
+      };
+      const totalOpen = clients.reduce((s, c) => s + c.open, 0);
+      const boughtThisMonth = clients.filter(c => c.lastSale && c.lastSale.slice(0, 7) === today.slice(0, 7)).length;
+
+      document.getElementById('clientesKpis').innerHTML = [
+        kpiHtml('Clientes', counts.todos, `${clients.filter(c => c.bought > 0).length} já compraram`, 'kpi-hero'),
+        kpiHtml('Compraram este mês', boughtThisMonth),
+        kpiHtml('🎂 Aniversariantes', counts.aniversariantes, 'neste mês'),
+        kpiHtml('Valor em aberto', formatCurrencyBRL(totalOpen), `${counts.aberto} cliente(s)`, totalOpen > 0 ? 'kpi-alert' : ''),
+      ].join('');
+
+      document.getElementById('clientesFilters').innerHTML = chipsHtml([
+        ['todos', `Todos (${counts.todos})`],
+        ['aniversariantes', `🎂 Aniversariantes (${counts.aniversariantes})`],
+        ['aberto', `Com valor em aberto (${counts.aberto})`],
+        ['atraso', `Com atraso (${counts.atraso})`],
+        ['semcompra', `Sem compras (${counts.semcompra})`],
+      ], clientesFilter, 'setClientesFilter');
+
+      const query = document.getElementById('clientesSearch').value.trim().toLowerCase();
+      const queryDigits = query.replace(/\D/g, '');
+      let list = clients.filter(c => {
+        if (clientesFilter === 'aniversariantes' && !c.bdayThisMonth) return false;
+        if (clientesFilter === 'aberto' && !(c.open > 0.004)) return false;
+        if (clientesFilter === 'atraso' && !(c.overdue > 0.004)) return false;
+        if (clientesFilter === 'semcompra' && c.bought !== 0) return false;
+        if (!query) return true;
+        return c.lead.name.toLowerCase().includes(query)
+          || (queryDigits && c.lead.phone.replace(/\D/g, '').includes(queryDigits))
+          || (c.lead.procedure || '').toLowerCase().includes(query);
+      });
+
+      list.sort(clientesFilter === 'aniversariantes'
+        ? (a, b) => a.lead.birthDate.slice(8, 10).localeCompare(b.lead.birthDate.slice(8, 10))
+        : (a, b) => a.lead.name.localeCompare(b.lead.name, 'pt-BR', { sensitivity: 'base' }));
+
+      const el = document.getElementById('clientesList');
+      if (!list.length) {
+        el.innerHTML = '<div class="agenda-empty">Nenhum cliente encontrado.</div>';
+        return;
+      }
+      el.innerHTML = list.map(c => {
+        const l = c.lead;
+        const meta = [
+          formatPhoneShort(l.phone),
+          l.procedure ? escapeHtml(l.procedure) : '',
+          l.birthDate ? `nasc. ${formatDateShortBR(l.birthDate)} (${ageFrom(l.birthDate)} anos)` : '',
+          c.lastSale ? `última compra ${formatDateShortBR(c.lastSale)}` : '',
+        ].filter(Boolean).map(m => `<span>${m}</span>`).join('');
+        return `
+          <div class="client-row" onclick="openLeadDetail('${l.phone}')" role="button" tabindex="0">
+            <div style="min-width:0;">
+              <div class="client-name">${escapeHtml(l.name)} ${c.bdayThisMonth ? `<span class="bday-badge">🎂 ${l.birthDate.slice(8, 10)}/${l.birthDate.slice(5, 7)}</span>` : ''}</div>
+              <div class="client-meta">${meta}</div>
+            </div>
+            <div class="client-side">
+              ${c.bought > 0 ? `Total comprado<strong>${formatCurrencyBRL(c.bought)}</strong>` : 'Sem compras'}
+              ${c.open > 0.004 ? `<div class="owed" style="margin-top:4px;">${c.overdue > 0.004 ? '⚠️ ' : ''}Em aberto ${formatCurrencyBRL(c.open)}</div>` : ''}
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    // ---------- Vendas ----------
+    let vendasPeriod = 'mes';
+
+    function setVendasPeriod(p) {
+      vendasPeriod = p;
+      const today = localDateStr(new Date());
+      const now = new Date();
+      let from = today, to = today;
+      if (p === '7dias') from = addDays(today, -6);
+      if (p === 'mes') from = `${today.slice(0, 7)}-01`;
+      if (p === 'mespassado') {
+        const first = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        from = localDateStr(first);
+        to = localDateStr(new Date(now.getFullYear(), now.getMonth(), 0));
+      }
+      if (p === 'ano') from = `${today.slice(0, 4)}-01-01`;
+      document.getElementById('vendasFrom').value = from;
+      document.getElementById('vendasTo').value = to;
+      renderVendas();
+    }
+
+    function renderVendas() {
+      const fromEl = document.getElementById('vendasFrom');
+      const toEl = document.getElementById('vendasTo');
+      if (!fromEl.value || !toEl.value) { setVendasPeriod(vendasPeriod === 'custom' ? 'mes' : vendasPeriod); return; }
+      let from = fromEl.value, to = toEl.value;
+      if (from > to) [from, to] = [to, from];
+
+      document.getElementById('vendasPeriodChips').innerHTML = chipsHtml([
+        ['hoje', 'Hoje'], ['7dias', '7 dias'], ['mes', 'Este mês'], ['mespassado', 'Mês passado'], ['ano', 'Este ano'],
+      ], vendasPeriod, 'setVendasPeriod');
+
+      const sales = buildSales().filter(s => s.date >= from && s.date <= to);
+      const gross = sales.reduce((s, x) => s + x.gross, 0);
+      const fee = sales.reduce((s, x) => s + x.fee, 0);
+      const net = gross - fee;
+
+      document.getElementById('vendasKpis').innerHTML = [
+        kpiHtml('Vendido (bruto)', formatCurrencyBRL(gross), `${sales.length} venda(s)`, 'kpi-hero'),
+        kpiHtml('Taxas do cartão', `− ${formatCurrencyBRL(fee)}`, gross ? `${(fee / gross * 100).toFixed(2).replace('.', ',')}% do vendido` : ''),
+        kpiHtml('Líquido', formatCurrencyBRL(net), '', 'kpi-good'),
+        kpiHtml('Ticket médio', formatCurrencyBRL(sales.length ? gross / sales.length : 0), 'por venda'),
+      ].join('');
+
+      // Gráfico: por dia até ~2 meses de período; acima disso, por mês.
+      const span = daysBetween(from, to);
+      const byMonth = span > 62;
+      document.getElementById('vendasChartTitle').textContent = byMonth ? 'Vendido por mês' : 'Vendido por dia';
+      const buckets = [];
+      if (byMonth) {
+        const d = new Date(`${from.slice(0, 7)}-01T00:00:00`);
+        while (localDateStr(d).slice(0, 7) <= to.slice(0, 7)) {
+          const key = localDateStr(d).slice(0, 7);
+          buckets.push({ key, label: `${key.slice(5, 7)}/${key.slice(2, 4)}` });
+          d.setMonth(d.getMonth() + 1);
+        }
+      } else {
+        for (let i = 0; i <= span; i++) {
+          const key = addDays(from, i);
+          buckets.push({ key, label: `${key.slice(8, 10)}/${key.slice(5, 7)}` });
+        }
+      }
+      buckets.forEach(b => {
+        const inB = sales.filter(s => (byMonth ? s.date.slice(0, 7) : s.date) === b.key);
+        b.value = inB.reduce((s, x) => s + x.gross, 0);
+        b.count = inB.length;
+      });
+      const max = Math.max(...buckets.map(b => b.value));
+      const chartEl = document.getElementById('vendasChart');
+      if (!max) {
+        chartEl.innerHTML = '<div class="chart-empty">Nenhuma venda no período.</div>';
+      } else {
+        const peak = buckets.reduce((a, b) => (b.value > a.value ? b : a));
+        chartEl.innerHTML = `
+          <div style="font-size:12px; color:var(--cor-cinza-cacau); margin-bottom:8px;">Maior ${byMonth ? 'mês' : 'dia'}: <strong style="color:var(--cor-texto-marca)">${peak.label} — ${formatCurrencyBRL(peak.value)}</strong></div>
+          <div class="chart-cols">
+            ${buckets.map(b => `
+              <div class="chart-col" data-tip="${b.label}: ${formatCurrencyBRL(b.value)} · ${b.count} venda(s)">
+                <div class="chart-col-bar" style="height:${b.value ? Math.max(2, b.value / max * 100) : 0}%"></div>
+              </div>`).join('')}
+          </div>
+          <div class="chart-axis"><span>${buckets[0].label}</span><span>${buckets.length > 2 ? buckets[Math.floor(buckets.length / 2)].label : ''}</span><span>${buckets[buckets.length - 1].label}</span></div>
+        `;
+        bindChartTooltip(chartEl);
+      }
+
+      const byMethod = {};
+      sales.forEach(s => {
+        byMethod[s.method] = byMethod[s.method] || { value: 0, count: 0 };
+        byMethod[s.method].value += s.gross;
+        byMethod[s.method].count++;
+      });
+      const methodItems = Object.entries(byMethod)
+        // Carteira ganha ícone próprio aqui: 💳 já é o Cartão nesta lista.
+        .map(([m, v]) => ({ label: `${m === 'Carteira' ? '📒' : (PAYMENT_METHOD_ICONS[m] || '📄')} ${m}`, value: v.value, count: v.count }))
+        .sort((a, b) => b.value - a.value);
+      document.getElementById('vendasByMethod').innerHTML = hbarsHtml(methodItems, i => `${formatCurrencyBRL(i.value)} · ${gross ? Math.round(i.value / gross * 100) : 0}%`);
+
+      // Venda com mais de um procedimento conta pra cada um deles.
+      const byProc = {};
+      sales.forEach(s => {
+        (s.description || 'Não informado').split(PROCEDURE_JOIN_SEPARATOR).map(p => p.trim()).filter(Boolean).forEach(p => {
+          byProc[p] = (byProc[p] || 0) + 1;
+        });
+      });
+      const procItems = Object.entries(byProc).map(([label, value]) => ({ label, value })).sort((a, b) => b.value - a.value).slice(0, 10);
+      document.getElementById('vendasByProcedure').innerHTML = hbarsHtml(procItems, i => `${i.value} venda${i.value > 1 ? 's' : ''}`);
+
+      document.getElementById('vendasListTitle').textContent = `Vendas do período (${sales.length})`;
+      document.getElementById('vendasList').innerHTML = sales.length ? `
+        <div class="data-table-wrap"><table class="data-table">
+          <thead><tr><th class="hide-mobile">Data</th><th>Cliente</th><th class="hide-mobile">Procedimento</th><th class="hide-mobile">Pagamento</th><th class="num">Bruto</th><th class="num hide-mobile">Taxa</th><th class="num">Líquido</th></tr></thead>
+          <tbody>${sales.map(s => `
+            <tr class="clickable" onclick="${s.source === 'carteira' ? `openLeadDetail('${s.phone}')` : `openFinanceTransactionSummary('${s.id}', 'financeiro')`}">
+              <td class="hide-mobile">${formatDateShortBR(s.date).slice(0, 5)}</td>
+              <td>${escapeHtml(s.name)}<span class="mobile-only muted">${formatDateShortBR(s.date).slice(0, 5)} · ${escapeHtml(s.methodLabel)}</span></td>
+              <td class="hide-mobile muted">${escapeHtml(s.description || '—')}</td>
+              <td class="hide-mobile muted">${escapeHtml(s.methodLabel)}</td>
+              <td class="num">${formatCurrencyBRL(s.gross)}</td>
+              <td class="num hide-mobile muted">${s.fee ? `− ${formatCurrencyBRL(s.fee)}` : '—'}</td>
+              <td class="num">${formatCurrencyBRL(s.net)}</td>
+            </tr>`).join('')}
+          </tbody>
+          <tfoot><tr><td class="hide-mobile"></td><td>Total</td><td class="hide-mobile"></td><td class="hide-mobile"></td><td class="num">${formatCurrencyBRL(gross)}</td><td class="num hide-mobile">${fee ? `− ${formatCurrencyBRL(fee)}` : '—'}</td><td class="num">${formatCurrencyBRL(net)}</td></tr></tfoot>
+        </table></div>
+        <p style="color: var(--cor-cinza-cacau); font-size: 12px; margin-top: 10px;">ℹ️ Venda = cada cobrança lançada (todas as parcelas juntas) ou débito na Carteira. Para dinheiro que já entrou no caixa, use 📊 Resumo do mês.</p>
+      ` : '<div class="agenda-empty">Nenhuma venda no período.</div>';
+    }
+
+    // ---------- Contas a Receber ----------
+    let receberFilter = 'todas';
+
+    function setReceberFilter(f) { receberFilter = f; renderReceber(); }
+
+    function renderReceber() {
+      const today = localDateStr(new Date());
+      const in7 = addDays(today, 7);
+      const monthKey = today.slice(0, 7);
+      const open = allFinance.filter(f => f.status !== 'Recebido');
+      const sum = (arr) => arr.reduce((s, f) => s + f.value, 0);
+
+      const overdue = open.filter(f => f.dueDate && f.dueDate < today);
+      const dueToday = open.filter(f => f.dueDate === today);
+      const next7 = open.filter(f => f.dueDate && f.dueDate >= today && f.dueDate <= in7);
+      const thisMonth = open.filter(f => f.dueDate && f.dueDate.slice(0, 7) === monthKey);
+
+      const carteiraBalances = Array.from(new Set(allCarteira.map(c => c.phone)))
+        .map(phone => ({ phone, name: (allCarteira.find(c => c.phone === phone) || {}).name || '—', balance: getCarteiraBalance(phone) }))
+        .filter(b => b.balance > 0.004)
+        .sort((a, b) => b.balance - a.balance);
+      const carteiraTotal = carteiraBalances.reduce((s, b) => s + b.balance, 0);
+
+      document.getElementById('receberKpis').innerHTML = [
+        kpiHtml('Total em aberto', formatCurrencyBRL(sum(open) + carteiraTotal), `${open.length} parcela(s) + carteira`, 'kpi-hero'),
+        kpiHtml('Atrasado', formatCurrencyBRL(sum(overdue)), `${overdue.length} parcela(s)`, overdue.length ? 'kpi-alert' : ''),
+        kpiHtml('Próximos 7 dias', formatCurrencyBRL(sum(next7)), `${next7.length} parcela(s)`),
+        kpiHtml('Carteira', formatCurrencyBRL(carteiraTotal), `${carteiraBalances.length} cliente(s)`),
+      ].join('');
+
+      document.getElementById('receberFilters').innerHTML = chipsHtml([
+        ['todas', `Todas (${open.length})`],
+        ['atrasadas', `⚠️ Atrasadas (${overdue.length})`],
+        ['hoje', `Vence hoje (${dueToday.length})`],
+        ['7dias', `Próx. 7 dias (${next7.length})`],
+        ['mes', `Este mês (${thisMonth.length})`],
+      ], receberFilter, 'setReceberFilter');
+
+      const lists = { todas: open, atrasadas: overdue, hoje: dueToday, '7dias': next7, mes: thisMonth };
+      const query = document.getElementById('receberSearch').value.trim().toLowerCase();
+      const items = (lists[receberFilter] || open)
+        .filter(f => !query || f.name.toLowerCase().includes(query) || (f.description || '').toLowerCase().includes(query))
+        .slice()
+        .sort((a, b) => (a.dueDate || '').localeCompare(b.dueDate || ''));
+
+      const titles = { todas: 'Parcelas em aberto', atrasadas: 'Parcelas atrasadas', hoje: 'Vencem hoje', '7dias': 'Vencem nos próximos 7 dias', mes: 'Vencem este mês' };
+      document.getElementById('receberListTitle').textContent = `${titles[receberFilter]} (${items.length})`;
+
+      document.getElementById('receberList').innerHTML = items.length ? `
+        <div class="data-table-wrap"><table class="data-table">
+          <thead><tr><th>Vencimento</th><th>Cliente</th><th class="hide-mobile">Descrição</th><th class="num">Valor</th><th></th></tr></thead>
+          <tbody>${items.map(f => {
+            const late = f.dueDate && f.dueDate < today ? daysBetween(f.dueDate, today) : 0;
+            return `
+            <tr>
+              <td>${formatDateShortBR(f.dueDate)}${late ? `<div style="color:#B3462F; font-size:11.5px; font-weight:600;">há ${late} dia${late > 1 ? 's' : ''}</div>` : (f.dueDate === today ? '<div style="font-size:11.5px; font-weight:600; color:var(--cor-texto-marca);">hoje</div>' : '')}</td>
+              <td><a href="#" onclick="openLeadDetail('${f.phone}'); return false;" style="color:var(--cor-texto-marca); font-weight:600;">${escapeHtml(f.name)}</a><div class="muted">${escapeHtml(f.paymentMethod || '—')} · ${escapeHtml(f.installmentLabel)}</div></td>
+              <td class="hide-mobile muted">${escapeHtml(f.description || '—')}</td>
+              <td class="num">${formatCurrencyBRL(f.value)}</td>
+              <td style="text-align:right;"><button class="complete-btn" style="white-space:nowrap; padding:6px 10px; width:auto;" onclick="toggleReceivableStatus('${f.id}', 'Recebido')" title="Marcar como recebido" aria-label="Marcar como recebido">✅<span class="btn-label"> Recebido</span></button></td>
+            </tr>`;
+          }).join('')}</tbody>
+          <tfoot><tr><td colspan="2">Total</td><td class="hide-mobile"></td><td class="num">${formatCurrencyBRL(sum(items))}</td><td></td></tr></tfoot>
+        </table></div>
+      ` : `<div class="agenda-empty">${receberFilter === 'atrasadas' ? 'Nenhuma parcela atrasada. 🎉' : 'Nada por aqui.'}</div>`;
+
+      const buckets = [
+        { label: '1–30 dias', min: 1, max: 30 },
+        { label: '31–60 dias', min: 31, max: 60 },
+        { label: '61–90 dias', min: 61, max: 90 },
+        { label: 'Mais de 90', min: 91, max: Infinity },
+      ].map(b => {
+        const inB = overdue.filter(f => { const d = daysBetween(f.dueDate, today); return d >= b.min && d <= b.max; });
+        return { label: b.label, value: sum(inB), count: inB.length };
+      }).filter(b => b.count);
+      document.getElementById('receberAging').innerHTML = buckets.length
+        ? hbarsHtml(buckets, i => `${formatCurrencyBRL(i.value)} · ${i.count}`)
+        : '<div class="chart-empty">Nenhuma parcela atrasada. 🎉</div>';
+
+      document.getElementById('receberCarteira').innerHTML = carteiraBalances.length
+        ? carteiraBalances.map(b => `
+          <div class="client-row" onclick="openLeadDetail('${b.phone}')" role="button" tabindex="0">
+            <div class="client-name">${escapeHtml(b.name)}</div>
+            <div class="client-side"><strong class="owed">${formatCurrencyBRL(b.balance)}</strong></div>
+          </div>`).join('')
+        : '<div class="chart-empty">Nenhum saldo em aberto na Carteira. 🎉</div>';
+    }
+
+    // ---------- Simulador ----------
+    // "venda": digita o valor da venda → vê taxa e líquido em cada forma.
+    // "liquido": digita quanto quer receber → vê quanto cobrar em cada
+    // forma. A taxa é proporcional ao valor (mesma fórmula de
+    // estimateCardFee), então valor a cobrar = líquido ÷ (1 − taxa%),
+    // arredondado pra cima no centavo pra nunca receber menos.
+    let simMode = 'venda';
+
+    function setSimMode(m) {
+      simMode = m;
+      document.getElementById('simValueLabel').textContent = m === 'venda' ? 'Valor da venda (R$):' : 'Quanto você quer receber líquido (R$):';
+      renderSimulador();
+    }
+
+    function renderSimulador() {
+      document.getElementById('simModeChips').innerHTML = chipsHtml([
+        ['venda', 'Tenho o valor da venda'],
+        ['liquido', 'Quero receber um valor líquido'],
+      ], simMode, 'setSimMode');
+
+      const value = parseFloat(document.getElementById('simValue').value) || 0;
+      const el = document.getElementById('simResult');
+      if (!value) {
+        el.innerHTML = '<div class="chart-empty">Digite um valor para simular.</div>';
+        return;
+      }
+
+      const options = CARD_FEES.slice().sort((a, b) => (a.type === b.type ? a.installments - b.installments : (a.type === 'Débito' ? -1 : 1)));
+      const rows = options.map(opt => {
+        const pct = estimateCardFee(1000, opt.type, opt.installments).fee / 1000;
+        const gross = simMode === 'venda' ? value : Math.ceil(value / (1 - pct) * 100) / 100;
+        const fee = simMode === 'venda' ? estimateCardFee(gross, opt.type, opt.installments).fee : Math.round((gross - value) * 100) / 100;
+        return { label: cardLabel(opt.type, opt.installments), n: Number(opt.installments), gross, fee, net: gross - fee, pct };
+      });
+
+      el.innerHTML = `
+        <div class="data-table-wrap"><table class="data-table">
+          <thead><tr>
+            <th>Forma</th>
+            ${simMode === 'liquido' ? '<th class="num">Cobrar</th>' : ''}
+            <th class="num">Parcela</th>
+            <th class="num">Taxa</th>
+            ${simMode === 'venda' ? '<th class="num">Você recebe</th>' : ''}
+          </tr></thead>
+          <tbody>${rows.map(r => `
+            <tr>
+              <td>${r.label}</td>
+              ${simMode === 'liquido' ? `<td class="num"><strong>${formatCurrencyBRL(r.gross)}</strong></td>` : ''}
+              <td class="num">${formatCurrencyBRL(r.gross / r.n)}</td>
+              <td class="num muted">${formatCurrencyBRL(r.fee)}<div>${(r.pct * 100).toFixed(2).replace('.', ',')}%</div></td>
+              ${simMode === 'venda' ? `<td class="num"><strong>${formatCurrencyBRL(r.net)}</strong></td>` : ''}
+            </tr>`).join('')}
+          </tbody>
+        </table></div>
+        ${simMode === 'liquido' ? `<p style="font-size:12.5px; color:var(--cor-cinza-cacau); margin-top:10px;">Cobrando o valor da coluna "Cobrar", cai na conta ${formatCurrencyBRL(value)} em qualquer forma (arredondado pra cima no centavo).</p>` : ''}
+      `;
     }
 
     // --- Criação de agendamento (via Apps Script — ver apps-script/SETUP.md) ---

@@ -56,6 +56,11 @@ const COLUMNS = [
   'Horário Escolhido (JSON)',
   'Agendamento Confirmado (JSON)',
   'Tipo de Atendimento',
+  // Cadastro de clientes (pedido do usuário 2026-09-30). Colunas depois
+  // de "Agendamento Confirmado (JSON)" são só do CRM: o lado Node
+  // (src/googleSheetsClient.js) grava da coluna A até a P e nunca toca
+  // nestas, então não precisam existir em DEFAULT_COLUMNS de lá.
+  'Data de Nascimento',
 ];
 
 // Mesmo horário de funcionamento de config/business_rules.json#scheduling —
@@ -537,10 +542,11 @@ function markNoShow(payload) {
  * como estavam.
  */
 function updateLead(payload) {
-  const { phone, name, source, leadStatus, manualOnlyNote, appointmentType, procedure } = payload;
+  const { phone, name, source, leadStatus, manualOnlyNote, appointmentType, procedure, newPhone } = payload;
   if (!phone) return { ok: false, error: 'Campo obrigatório: phone.' };
 
   const sheet = getSheet();
+  ensureSheetColumns(sheet);
   const data = sheet.getDataRange().getValues();
   const headers = data[0];
   const phoneCol = headers.indexOf('Telefone');
@@ -566,12 +572,53 @@ function updateLead(payload) {
     manualOnlyNote: 'Atendimento Manual (motivo)',
     appointmentType: 'Tipo de Atendimento',
     procedure: 'Interesse/Procedimento',
+    birthDate: 'Data de Nascimento',
   };
+
+  // Troca de telefone (pedido do usuário 2026-09-30: editar o cadastro
+  // completo). O telefone é a CHAVE que liga o lead ao Financeiro, à
+  // Carteira e aos eventos da Agenda — trocar só na aba Leads deixaria
+  // cobranças e histórico órfãos. Recusa se o número novo já for de outro
+  // lead (juntar dois cadastros é outra operação, não uma edição).
+  const phoneChanged = newPhone && String(newPhone) !== String(phone);
+  if (phoneChanged) {
+    for (let i = 1; i < data.length; i++) {
+      if (i !== rowIndex && String(data[i][phoneCol]) === String(newPhone)) {
+        return { ok: false, error: `O telefone ${newPhone} já pertence a outro cliente (${data[i][headers.indexOf('Nome')]}).` };
+      }
+    }
+  }
 
   for (const key in fieldToHeader) {
     if (payload[key] !== undefined) {
       const colIndex = headers.indexOf(fieldToHeader[key]);
-      if (colIndex !== -1) sheet.getRange(rowIndex + 1, colIndex + 1).setValue(payload[key]);
+      if (colIndex !== -1) {
+        const cell = sheet.getRange(rowIndex + 1, colIndex + 1);
+        if (key === 'birthDate') cell.setNumberFormat('@'); // "1985-03-12" fica texto, não vira data do Sheets
+        cell.setValue(payload[key]);
+      }
+    }
+  }
+
+  if (phoneChanged) {
+    const phoneCell = sheet.getRange(rowIndex + 1, phoneCol + 1);
+    phoneCell.setNumberFormat('@'); // "+55…" não pode virar fórmula
+    phoneCell.setValue(newPhone);
+  }
+
+  // Financeiro/Carteira guardam telefone E nome em cada linha — mantém os
+  // dois em dia pra lista de cobranças não mostrar o nome antigo.
+  const currentPhone = phoneChanged ? newPhone : phone;
+  const cascade = { Telefone: phoneChanged ? newPhone : undefined, Nome: name };
+  if (phoneChanged || name !== undefined) {
+    [getFinanceSheet(), getCarteiraSheet()].forEach((s) => replaceInLinkedRows(s, phone, cascade));
+  }
+  if (phoneChanged) {
+    try {
+      replacePhoneInCalendarEvents(phone, newPhone);
+    } catch (err) {
+      // Planilhas já atualizadas; histórico da Agenda antiga só deixa de
+      // aparecer na ficha. Não derruba a edição.
     }
   }
 
@@ -595,7 +642,48 @@ function updateLead(payload) {
     }
   }
 
-  return { ok: true };
+  return { ok: true, phone: currentPhone };
+}
+
+/** Atualiza Telefone/Nome (os que vierem definidos) em toda linha de `sheet` com o telefone antigo. */
+function replaceInLinkedRows(sheet, oldPhone, values) {
+  const data = sheet.getDataRange().getValues();
+  const headers = data[0];
+  const phoneCol = headers.indexOf('Telefone');
+  if (phoneCol === -1) return;
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][phoneCol]) !== String(oldPhone)) continue;
+    Object.keys(values).forEach((header) => {
+      if (values[header] === undefined) return;
+      const col = headers.indexOf(header);
+      if (col === -1) return;
+      const cell = sheet.getRange(i + 1, col + 1);
+      cell.setNumberFormat('@');
+      cell.setValue(values[header]);
+    });
+  }
+}
+
+/**
+ * Reescreve "Telefone: <antigo>" na descrição dos eventos da Agenda —
+ * é por ela que getClientHistory acha o histórico de procedimentos. Mesma
+ * janela de 3 anos pra trás do histórico, e 1 ano pra frente pros
+ * agendamentos futuros.
+ */
+function replacePhoneInCalendarEvents(oldPhone, newPhone) {
+  const calendar = CalendarApp.getCalendarById(CALENDAR_ID);
+  if (!calendar) return;
+  const oldDigits = String(oldPhone).replace(/\D/g, '');
+  const start = new Date();
+  start.setFullYear(start.getFullYear() - 3);
+  const end = new Date();
+  end.setFullYear(end.getFullYear() + 1);
+  calendar.getEvents(start, end).forEach((ev) => {
+    const description = ev.getDescription() || '';
+    const match = description.match(/Telefone:\s*(\+?\d+)/);
+    if (!match || match[1].replace(/\D/g, '') !== oldDigits) return;
+    ev.setDescription(description.replace(match[0], `Telefone: ${newPhone}`));
+  });
 }
 
 /**
@@ -607,7 +695,7 @@ function updateLead(payload) {
  * "adicionar esta pessoa".
  */
 function createLead(payload) {
-  const { phone, name, source, appointmentType, procedure } = payload;
+  const { phone, name, source, appointmentType, procedure, birthDate } = payload;
   if (!phone || !name) return { ok: false, error: 'Campos obrigatórios: phone, name.' };
 
   upsertLeadRow({
@@ -616,6 +704,7 @@ function createLead(payload) {
     source: source || '',
     appointmentType: appointmentType || '',
     procedure: procedure || '',
+    ...(birthDate ? { birthDate } : {}),
   });
 
   return { ok: true };
@@ -658,6 +747,7 @@ function upsertLeadRow(fields) {
     leadStatus: 'Status',
     appointmentType: 'Tipo de Atendimento',
     procedure: 'Interesse/Procedimento',
+    birthDate: 'Data de Nascimento',
   };
 
   const existingRow = rowIndex >= 0 ? data[rowIndex] : COLUMNS.map(() => '');
