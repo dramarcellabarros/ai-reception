@@ -1292,7 +1292,9 @@ function createReceivables(payload) {
     inst.dueDate,
     paymentMethod || '',
     inst.received ? 'Recebido' : 'A receber',
-    inst.received ? (inst.dueDate || todayStr) : '',
+    // receivedDate (2026-09-30): data REAL do pagamento informada na
+    // revisão editável; sem ela, cai no vencimento como antes.
+    inst.received ? (inst.receivedDate || inst.dueDate || todayStr) : '',
     createdAt,
     ...cardCells,
   ]);

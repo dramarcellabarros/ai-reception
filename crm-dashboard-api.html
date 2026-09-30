@@ -493,8 +493,12 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 10px;
       margin-bottom: 15px;
     }
+
+    .agenda-header > span { flex-wrap: wrap; justify-content: flex-end; }
 
     .agenda-header h2 {
       font-size: 18px;
@@ -1621,6 +1625,41 @@
     .module-nav-btn.active { background: var(--cor-texto-marca); color: #fff; }
 
     .module-view[hidden] { display: none !important; }
+
+    /* Topo enxuto: só título + atualizar (sobrescreve o grid antigo de
+       2 colunas que dividia barra de ícones e status). */
+    header { padding: 18px 30px; }
+    .header-actions { display: flex; align-items: center; }
+
+    /* Revisão editável das parcelas (Lançar cobrança). */
+    .installment-edit {
+      border: 1px solid var(--cor-creme-avela);
+      border-radius: 8px;
+      padding: 10px 12px;
+      margin-bottom: 8px;
+      background: var(--cor-branco-perola);
+    }
+    .installment-edit-title { font-size: 12.5px; font-weight: 700; color: var(--cor-texto-marca); margin-bottom: 6px; }
+    .installment-edit-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .installment-edit-fields label { display: flex; flex-direction: column; gap: 3px; font-size: 11.5px; color: var(--cor-cinza-cacau); min-width: 0; }
+    .installment-edit-fields input { padding: 6px 8px; font-size: 13px; width: 100%; min-width: 0; }
+    .installment-edit-check { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 12.5px; color: var(--cor-cinza-cacau); margin-top: 8px; }
+
+    /* Ação principal dentro de um módulo (➕ Novo agendamento, ➕ Lançar). */
+    .btn-primary-soft {
+      border: none;
+      background: var(--cor-dourado-ambar);
+      color: #fff;
+      font: inherit;
+      font-size: 13px;
+      font-weight: 700;
+      padding: 8px 14px;
+      border-radius: 18px;
+      cursor: pointer;
+      white-space: nowrap;
+      box-shadow: 0 2px 6px rgba(107,68,35,0.2);
+    }
+    .btn-primary-soft:hover { filter: brightness(0.92); }
     #errorContainer:empty { display: none; }
 
     .module-title {
@@ -1829,29 +1868,14 @@
   </style>
 </head>
 <body>
+  <!-- Topo só com título + atualizar (pedido do usuário 2026-09-30).
+       ⚙️ Config virou o último item da barra de módulos e ➕ Novo
+       agendamento foi pra dentro do módulo Agenda. -->
   <header>
-    <button class="icon-btn header-config-btn" onclick="toggleSettings()" title="Config" aria-label="Config">⚙️</button>
     <div class="header-left">
-      <a href="https://dramarcellabarros.com.br" target="_blank" rel="noopener" title="Visitar site da Dra. Marcella Barros">
-        <img src="assets/logo-branco.png" alt="Marcella Barros" class="header-logo">
-      </a>
-      <div>
-        <h1>CRM — Dra. Marcella Barros</h1>
-        <p>Gestão de Leads e Agendamentos</p>
-      </div>
+      <h1>CRM — Dra. Marcella Barros</h1>
     </div>
-    <!-- Barra de módulos + status — pedido do usuário 2026-09-25: com o
-         status mais curto (só a hora, sem "atualizado"), sobrou espaço
-         nessa linha pra reunir os atalhos mais usados num lugar só, fácil
-         de acessar sem precisar rolar a tela (antes 💰 vivia isolado no
-         canto do cabeçalho e 🗓️ vivia lá embaixo, dentro do cabeçalho da
-         Agenda) — "como se fosse uma barra de módulos de um sistema":
-         grupo de ícones separado da pílula de status, não tudo misturado
-         numa pílula só. -->
     <div class="header-actions">
-      <div class="module-bar">
-        <button class="icon-btn icon-btn-primary" onclick="openNewAppointmentModal()" title="Novo Agendamento" aria-label="Novo Agendamento">➕</button>
-      </div>
       <button class="status-refresh" onclick="refreshData()" title="Toque para atualizar" aria-label="Atualizar dados">
         <span class="status-dot" id="statusDot"></span>
         <span id="statusText">Conectando...</span>
@@ -1867,6 +1891,7 @@
       <button class="module-nav-btn" data-module="vendas" onclick="switchModule('vendas')">💰 Vendas</button>
       <button class="module-nav-btn" data-module="receber" onclick="switchModule('receber')">🧾 A Receber</button>
       <button class="module-nav-btn" data-module="simulador" onclick="switchModule('simulador')">🧮 Simulador</button>
+      <button class="module-nav-btn" onclick="toggleSettings()" title="Configurações">⚙️ Config</button>
     </nav>
     <button class="module-nav-arrow module-nav-arrow-right" id="moduleNavRight" onclick="scrollModuleNav(1)" aria-label="Ver mais módulos">›</button>
   </div>
@@ -1896,6 +1921,7 @@
   <div class="container module-view" id="view-vendas" hidden>
     <div class="module-title">
       <h2>💰 Vendas</h2>
+      <button class="btn-primary-soft" onclick="openClientPicker('Lançar venda para…', openReceivableModal)">➕ Lançar venda</button>
     </div>
     <div class="chip-row" id="vendasModeChips"></div>
     <div class="chip-row" id="vendasPeriodChips"></div>
@@ -1928,6 +1954,7 @@
   <div class="container module-view" id="view-receber" hidden>
     <div class="module-title">
       <h2>🧾 Contas a Receber</h2>
+      <button class="btn-primary-soft" onclick="openClientPicker('Lançar cobrança para…', openReceivableModal)">➕ Lançar cobrança</button>
     </div>
     <div class="kpi-grid" id="receberKpis"></div>
     <div class="controls" style="margin-bottom:10px;">
@@ -1982,6 +2009,7 @@
         <h2 id="agendaTitle">📅 Agenda</h2>
         <span style="display:flex; align-items:center; gap:12px;">
           <span class="agenda-status" id="agendaStatus"></span>
+          <button class="btn-primary-soft" onclick="openNewAppointmentModal()">➕ Novo agendamento</button>
           <button class="agenda-toggle-btn" onclick="openMonthCalendar()">🗓️ Visão do mês</button>
           <button class="agenda-toggle-btn" id="agendaToggleBtn" onclick="toggleAgendaHistory()">📜 Ver histórico</button>
         </span>
@@ -2222,6 +2250,22 @@
       </div>
       <div id="monthCalendarGrid" class="month-grid"></div>
       <div id="monthDayDetail" class="month-day-detail"></div>
+    </div>
+  </div>
+
+  <!-- Seletor de cliente (pedido do usuário 2026-09-30, migração manual):
+       lançar cobrança/venda direto de Vendas ou A Receber, sem abrir a
+       ficha de cada cliente antes. -->
+  <div class="modal" id="clientPickerModal">
+    <div class="modal-content">
+      <span class="close-btn" onclick="closeClientPicker()">&times;</span>
+      <h2 id="clientPickerTitle">Escolha o cliente</h2>
+      <div class="form-group search-clear-wrap" style="margin-bottom:8px;">
+        <input type="text" id="clientPickerSearch" placeholder="Buscar por nome ou telefone..." oninput="renderClientPicker(); toggleSearchClearBtn('clientPickerSearch', 'clientPickerClearBtn')" autocomplete="off" autocorrect="off" spellcheck="false">
+        <button type="button" class="search-clear-btn" id="clientPickerClearBtn" onclick="clearSearchField('clientPickerSearch', 'clientPickerClearBtn')" title="Limpar busca" aria-label="Limpar busca">✕</button>
+      </div>
+      <div id="clientPickerList" style="max-height:50vh; overflow-y:auto;"></div>
+      <p style="font-size:12.5px; color:var(--cor-cinza-cacau); margin-top:12px;">Não encontrou? <a href="#" onclick="closeClientPicker(); openNewLeadModal(); return false;" style="color:var(--cor-texto-marca); font-weight:600;">➕ Cadastrar cliente novo</a></p>
     </div>
   </div>
 
@@ -4437,7 +4481,10 @@
         // Vindo do fluxo de baixa, a 1ª parcela já nasce recebida — o
         // pagamento (ou a entrada) costuma acontecer na hora do
         // atendimento, não precisa marcar de novo depois.
-        installments.push({ dueDate: localDateStr(dueDate), value, received: receivableFromComplete && i === 0 });
+        const dueStr = localDateStr(dueDate);
+        const today = localDateStr(new Date());
+        const receivedNow = receivableFromComplete && i === 0;
+        installments.push({ dueDate: dueStr, value, received: receivedNow, receivedDate: receivedNow ? (dueStr > today ? today : dueStr) : '' });
       }
 
       const lead = allData.find(l => l.phone === receivableTargetPhone);
@@ -4454,15 +4501,26 @@
       // 2026-09-24: lançar um plano que já estava parcialmente pago antes
       // de existir no CRM (ex.: cliente que já pagou as 3 primeiras de 6
       // parcelas), sem precisar marcar uma por uma depois de criado.
+      //
+      // Editável (pedido do usuário 2026-09-30, migração manual de planos
+      // antigos): valor e vencimento de cada parcela (entrada maior, datas
+      // irregulares) e a data REAL em que a parcela já recebida foi paga —
+      // é essa data que conta no caixa (Vendas → Recebido).
       const rows = installments.map((inst, i) => `
-        <div class="ld-row">
-          <span class="ld-label">Parcela ${i + 1}/${installmentCount}</span>
-          <span class="ld-value">${formatCurrencyBRL(inst.value)} — vence ${formatDateBR(inst.dueDate)}</span>
+        <div class="installment-edit">
+          <div class="installment-edit-title">Parcela ${i + 1}/${installmentCount}</div>
+          <div class="installment-edit-fields">
+            <label>Valor (R$)<input type="number" min="0" step="0.01" value="${inst.value.toFixed(2)}" oninput="updateInstallmentField(${i}, 'value', this.value)"></label>
+            <label>Vencimento<input type="date" value="${inst.dueDate}" onchange="updateInstallmentField(${i}, 'dueDate', this.value)"></label>
+          </div>
+          <label class="installment-edit-check">
+            <input type="checkbox" style="width:auto;" ${inst.received ? 'checked' : ''} onchange="toggleInstallmentReceived(${i}, this.checked)">
+            Já recebida
+            <span id="instRecvWrap_${i}" style="display:${inst.received ? 'inline-flex' : 'none'}; align-items:center; gap:6px;">em
+              <input type="date" id="instRecvDate_${i}" value="${inst.receivedDate || inst.dueDate}" max="${localDateStr(new Date())}" onchange="updateInstallmentField(${i}, 'receivedDate', this.value)" style="width:auto; padding:4px 6px; font-size:12.5px;">
+            </span>
+          </label>
         </div>
-        <label style="display:flex; align-items:center; gap:6px; font-size:12.5px; color:var(--cor-cinza-cacau); margin:-6px 0 8px;">
-          <input type="checkbox" style="width:auto;" ${inst.received ? 'checked' : ''} onchange="receivableContext.installments[${i}].received = this.checked">
-          Já recebida
-        </label>
       `).join('');
 
       document.getElementById('receivableConfirmBody').innerHTML = `
@@ -4471,11 +4529,44 @@
         <div class="ld-row"><span class="ld-label">Meio de pagamento</span><span class="ld-value">${paymentMethod}</span></div>
         <div class="ld-row"><span class="ld-label">Valor total</span><span class="ld-value">${formatCurrencyBRL(totalValue)}</span></div>
         <hr style="border:none;border-top:1px solid var(--cor-creme-avela);margin:10px 0;">
+        <p style="font-size:12px; color:var(--cor-cinza-cacau); margin-bottom:10px;">✏️ Ajuste valor e vencimento de cada parcela se precisar. Parcela já paga: marque "Já recebida" e informe o dia em que foi paga.</p>
         ${rows}
+        <div id="installmentSumCheck" style="font-size:13px; margin-top:6px;"></div>
       `;
+      updateInstallmentSumCheck();
 
       document.getElementById('receivableFormStep').style.display = 'none';
       document.getElementById('receivableConfirmStep').style.display = 'block';
+    }
+
+    function updateInstallmentField(i, field, raw) {
+      const inst = receivableContext.installments[i];
+      inst[field] = field === 'value' ? (Math.round((parseFloat(raw) || 0) * 100) / 100) : raw;
+      if (field === 'value') updateInstallmentSumCheck();
+    }
+
+    function toggleInstallmentReceived(i, checked) {
+      const inst = receivableContext.installments[i];
+      inst.received = checked;
+      if (checked && !inst.receivedDate) {
+        // Padrão = vencimento, mas nunca no futuro (não dá pra ter recebido amanhã).
+        const today = localDateStr(new Date());
+        inst.receivedDate = inst.dueDate > today ? today : inst.dueDate;
+        document.getElementById(`instRecvDate_${i}`).value = inst.receivedDate;
+      }
+      document.getElementById(`instRecvWrap_${i}`).style.display = checked ? 'inline-flex' : 'none';
+    }
+
+    // Soma das parcelas × total combinado, ao vivo — editar um valor sem
+    // ajustar outro deixaria o plano somando diferente do combinado.
+    function updateInstallmentSumCheck() {
+      const el = document.getElementById('installmentSumCheck');
+      if (!el || !receivableContext) return;
+      const sum = receivableContext.installments.reduce((s, inst) => s + inst.value, 0);
+      const diff = Math.round((sum - receivableContext.totalValue) * 100) / 100;
+      el.innerHTML = Math.abs(diff) < 0.01
+        ? `<span style="color:#4A7A3B; font-weight:600;">✓ Soma das parcelas: ${formatCurrencyBRL(sum)}</span>`
+        : `<span style="color:#B3462F; font-weight:600;">⚠️ Soma das parcelas: ${formatCurrencyBRL(sum)} — ${diff > 0 ? 'passa' : 'falta'} ${formatCurrencyBRL(Math.abs(diff))} do total de ${formatCurrencyBRL(receivableContext.totalValue)}</span>`;
     }
 
     // Cartão: 1 lançamento só, já Recebido na data da venda (a maquininha
@@ -4530,6 +4621,27 @@
     async function submitReceivable() {
       if (!receivableContext) return;
       const settings = loadSettings();
+
+      // Validação da revisão editável (parcelas; cartão não passa por aqui
+      // com mais de 1 linha).
+      if (!receivableContext.card) {
+        const errorEl = document.getElementById('receivableError');
+        const today = localDateStr(new Date());
+        const insts = receivableContext.installments;
+        const sum = insts.reduce((s, inst) => s + inst.value, 0);
+        let problem = '';
+        if (insts.some(inst => !(inst.value > 0))) problem = 'Toda parcela precisa ter valor maior que zero.';
+        else if (insts.some(inst => !inst.dueDate)) problem = 'Toda parcela precisa ter data de vencimento.';
+        else if (Math.abs(sum - receivableContext.totalValue) >= 0.01) problem = `A soma das parcelas (${formatCurrencyBRL(sum)}) não bate com o valor total (${formatCurrencyBRL(receivableContext.totalValue)}).`;
+        else if (insts.some(inst => inst.received && (!inst.receivedDate || inst.receivedDate > today))) problem = 'Data de recebimento vazia ou no futuro.';
+        if (problem) {
+          errorEl.innerHTML = `<div class="form-error">⚠️ ${problem}</div>`;
+          errorEl.scrollIntoView({ block: 'nearest' });
+          return;
+        }
+        errorEl.innerHTML = '';
+      }
+
       const btn = document.getElementById('recSubmitBtn');
       btn.disabled = true;
       btn.textContent = '⏳ Lançando...';
@@ -4783,6 +4895,46 @@
       container.onmousemove = show;
       container.onclick = show;
       container.onmouseleave = () => { tip.style.display = 'none'; };
+    }
+
+    // ---------- Seletor de cliente ----------
+    let clientPickerCallback = null;
+
+    function openClientPicker(title, onPick) {
+      clientPickerCallback = onPick;
+      document.getElementById('clientPickerTitle').textContent = title;
+      document.getElementById('clientPickerSearch').value = '';
+      toggleSearchClearBtn('clientPickerSearch', 'clientPickerClearBtn');
+      renderClientPicker();
+      document.getElementById('clientPickerModal').classList.add('open');
+      setTimeout(() => document.getElementById('clientPickerSearch').focus(), 80);
+    }
+
+    function closeClientPicker() {
+      document.getElementById('clientPickerModal').classList.remove('open');
+    }
+
+    function pickClient(phone) {
+      const cb = clientPickerCallback;
+      closeClientPicker();
+      clientPickerCallback = null;
+      if (cb) cb(phone);
+    }
+
+    function renderClientPicker() {
+      const query = document.getElementById('clientPickerSearch').value.trim().toLowerCase();
+      const digits = query.replace(/\D/g, '');
+      const list = allData
+        .filter(l => l.phone && l.phone !== '—')
+        .filter(l => !query || l.name.toLowerCase().includes(query) || (digits && l.phone.replace(/\D/g, '').includes(digits)))
+        .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' }));
+      document.getElementById('clientPickerList').innerHTML = list.length
+        ? list.map(l => `
+          <div class="client-row" onclick="pickClient('${l.phone}')" role="button" tabindex="0" style="padding:10px 12px;">
+            <div class="client-name">${escapeHtml(l.name)}</div>
+            <div class="client-side">${formatPhoneShort(l.phone)}</div>
+          </div>`).join('')
+        : '<div class="agenda-empty">Nenhum cliente encontrado.</div>';
     }
 
     // ---------- Vendas (base comum de Vendas e Clientes) ----------
