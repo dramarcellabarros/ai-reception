@@ -1643,10 +1643,45 @@
        Barra fixa logo abaixo do cabeçalho: Agenda · Clientes · Vendas ·
        A Receber · Simulador. Cada módulo ocupa a tela; troca sem
        recarregar (hash na URL, então Voltar do navegador também funciona). */
-    .module-nav {
+    /* Wrapper fixo (sticky) que segura a barra rolável + as setas —
+       a própria barra rola na horizontal, as setas ficam paradas nas
+       bordas indicando que tem módulo escondido (pedido do usuário
+       2026-09-30: "coloca essa seta pra indicar que tem mais um módulo"). */
+    .module-nav-wrap {
       position: sticky;
       top: 0;
       z-index: 50;
+    }
+
+    .module-nav-arrow {
+      position: absolute;
+      top: 0;
+      bottom: 1px;
+      width: 40px;
+      border: none;
+      font: inherit;
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--cor-texto-marca);
+      cursor: pointer;
+      display: none;
+      align-items: center;
+      z-index: 1;
+      padding: 0 8px;
+    }
+    .module-nav-arrow.visible { display: flex; }
+    .module-nav-arrow-right {
+      right: 0;
+      justify-content: flex-end;
+      background: linear-gradient(90deg, rgba(255,253,250,0) 0%, var(--cor-branco-perola) 55%);
+    }
+    .module-nav-arrow-left {
+      left: 0;
+      justify-content: flex-start;
+      background: linear-gradient(270deg, rgba(255,253,250,0) 0%, var(--cor-branco-perola) 55%);
+    }
+
+    .module-nav {
       display: flex;
       gap: 4px;
       padding: 8px 16px;
@@ -1891,13 +1926,17 @@
     </div>
   </header>
 
-  <nav class="module-nav" aria-label="Módulos">
-    <button class="module-nav-btn active" data-module="agenda" onclick="switchModule('agenda')">📅 Agenda</button>
-    <button class="module-nav-btn" data-module="clientes" onclick="switchModule('clientes')">👥 Clientes</button>
-    <button class="module-nav-btn" data-module="vendas" onclick="switchModule('vendas')">💰 Vendas</button>
-    <button class="module-nav-btn" data-module="receber" onclick="switchModule('receber')">🧾 A Receber</button>
-    <button class="module-nav-btn" data-module="simulador" onclick="switchModule('simulador')">🧮 Simulador</button>
-  </nav>
+  <div class="module-nav-wrap">
+    <button class="module-nav-arrow module-nav-arrow-left" id="moduleNavLeft" onclick="scrollModuleNav(-1)" aria-label="Ver módulos anteriores">‹</button>
+    <nav class="module-nav" id="moduleNav" aria-label="Módulos" onscroll="updateModuleNavArrows()">
+      <button class="module-nav-btn active" data-module="agenda" onclick="switchModule('agenda')">📅 Agenda</button>
+      <button class="module-nav-btn" data-module="clientes" onclick="switchModule('clientes')">👥 Clientes</button>
+      <button class="module-nav-btn" data-module="vendas" onclick="switchModule('vendas')">💰 Vendas</button>
+      <button class="module-nav-btn" data-module="receber" onclick="switchModule('receber')">🧾 A Receber</button>
+      <button class="module-nav-btn" data-module="simulador" onclick="switchModule('simulador')">🧮 Simulador</button>
+    </nav>
+    <button class="module-nav-arrow module-nav-arrow-right" id="moduleNavRight" onclick="scrollModuleNav(1)" aria-label="Ver mais módulos">›</button>
+  </div>
 
   <!-- Fora dos módulos: erro de sincronização aparece em qualquer tela. -->
   <div id="errorContainer" style="max-width:1400px; margin:16px auto 0; padding:0 20px;"></div>
@@ -1965,6 +2004,7 @@
       </div>
     </div>
     <div class="chip-row" id="receberFilters"></div>
+    <div class="chip-row" id="receberMethodFilters" style="align-items:center;"></div>
     <div class="module-card" id="receberListCard">
       <h3 id="receberListTitle">Parcelas em aberto</h3>
       <div id="receberList"></div>
@@ -5351,11 +5391,31 @@
       currentModule = name;
       MODULES.forEach(m => { document.getElementById(`view-${m}`).hidden = m !== name; });
       document.querySelectorAll('.module-nav-btn').forEach(b => b.classList.toggle('active', b.dataset.module === name));
+      // Módulo escolhido fica sempre visível na barra (no celular ela rola).
+      const activeBtn = document.querySelector(`.module-nav-btn[data-module="${name}"]`);
+      if (activeBtn) activeBtn.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+      updateModuleNavArrows();
       if (location.hash.slice(1) !== name) location.hash = name;
       renderCurrentModule();
       if (changed) window.scrollTo(0, 0);
     }
 
+    // Setas da barra de módulos: só aparecem quando há módulo escondido
+    // daquele lado (folga de 4px pra arredondamento de subpixel).
+    function updateModuleNavArrows() {
+      const nav = document.getElementById('moduleNav');
+      if (!nav) return;
+      const maxScroll = nav.scrollWidth - nav.clientWidth;
+      document.getElementById('moduleNavLeft').classList.toggle('visible', nav.scrollLeft > 4);
+      document.getElementById('moduleNavRight').classList.toggle('visible', nav.scrollLeft < maxScroll - 4);
+    }
+
+    function scrollModuleNav(direction) {
+      const nav = document.getElementById('moduleNav');
+      nav.scrollBy({ left: direction * nav.clientWidth * 0.7, behavior: 'smooth' });
+    }
+
+    window.addEventListener('resize', updateModuleNavArrows);
     window.addEventListener('hashchange', () => switchModule(location.hash.slice(1) || 'agenda'));
     // DOMContentLoaded (não chamada direta): o script inteiro precisa ter
     // rodado antes — os módulos usam constantes declaradas mais abaixo.
@@ -5739,11 +5799,22 @@
 
     function setReceberFilter(f) { receberFilter = (f === receberFilter) ? 'todas' : f; renderReceber(); }
 
+    // Forma de pagamento (pedido do usuário 2026-09-30) — combina com o
+    // filtro de situação acima (ex.: Atrasadas + Pix). Carteira não tem
+    // forma de pagamento até ser paga, então sai dos totais quando uma
+    // forma está escolhida.
+    let receberMethod = 'todas';
+
+    function setReceberMethod(m) { receberMethod = (m === receberMethod) ? 'todas' : m; renderReceber(); }
+
     function renderReceber() {
       const today = localDateStr(new Date());
       const in7 = addDays(today, 7);
       const monthKey = today.slice(0, 7);
-      const open = allFinance.filter(f => f.status !== 'Recebido');
+      const allOpen = allFinance.filter(f => f.status !== 'Recebido');
+      const methods = Array.from(new Set(allOpen.map(f => f.paymentMethod || 'Outro'))).sort();
+      if (receberMethod !== 'todas' && !methods.includes(receberMethod)) receberMethod = 'todas';
+      const open = receberMethod === 'todas' ? allOpen : allOpen.filter(f => (f.paymentMethod || 'Outro') === receberMethod);
       const sum = (arr) => arr.reduce((s, f) => s + f.value, 0);
 
       const overdue = open.filter(f => f.dueDate && f.dueDate < today);
@@ -5756,10 +5827,13 @@
         .filter(b => b.balance > 0.004)
         .sort((a, b) => b.balance - a.balance);
       const carteiraTotal = carteiraBalances.reduce((s, b) => s + b.balance, 0);
+      const byMethod = receberMethod !== 'todas';
 
       const cardFilter = (key) => ({ onclick: `setReceberFilter('${key}')`, active: receberFilter === key });
       document.getElementById('receberKpis').innerHTML = [
-        kpiHtml('Total em aberto', formatCurrencyBRL(sum(open) + carteiraTotal), `${open.length} parcela(s) + carteira`, 'kpi-hero', cardFilter('todas')),
+        byMethod
+          ? kpiHtml('Total em aberto', formatCurrencyBRL(sum(open)), `${open.length} parcela(s) em ${escapeHtml(receberMethod)}`, 'kpi-hero', cardFilter('todas'))
+          : kpiHtml('Total em aberto', formatCurrencyBRL(sum(open) + carteiraTotal), `${open.length} parcela(s) + carteira`, 'kpi-hero', cardFilter('todas')),
         kpiHtml('Atrasado', formatCurrencyBRL(sum(overdue)), `${overdue.length} parcela(s)`, overdue.length ? 'kpi-alert' : '', cardFilter('atrasadas')),
         kpiHtml('Próximos 7 dias', formatCurrencyBRL(sum(next7)), `${next7.length} parcela(s)`, '', cardFilter('7dias')),
         kpiHtml('Carteira', formatCurrencyBRL(carteiraTotal), `${carteiraBalances.length} cliente(s)`, '', cardFilter('carteira')),
@@ -5779,6 +5853,13 @@
         ['mes', `Este mês (${thisMonth.length})`],
         ['carteira', `💳 Carteira (${carteiraBalances.length})`],
       ], receberFilter, 'setReceberFilter');
+
+      document.getElementById('receberMethodFilters').innerHTML =
+        `<span style="font-size:12.5px; color:var(--cor-cinza-cacau); margin-right:2px;">Pagamento:</span>`
+        + chipsHtml([
+          ['todas', 'Todas'],
+          ...methods.map(m => [m, `${PAYMENT_METHOD_ICONS[m] || '📄'} ${m} (${allOpen.filter(f => (f.paymentMethod || 'Outro') === m).length})`]),
+        ], receberMethod, 'setReceberMethod');
 
       const lists = { todas: open, atrasadas: overdue, hoje: dueToday, '7dias': next7, mes: thisMonth };
       const query = document.getElementById('receberSearch').value.trim().toLowerCase();
