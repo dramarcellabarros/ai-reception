@@ -1734,6 +1734,13 @@
     .kpi-hero .kpi-label, .kpi-hero .kpi-sub { color: rgba(255,255,255,0.8); }
     .kpi-hero .kpi-value { color: #fff; }
     .kpi-alert .kpi-value { color: #B3462F; }
+    /* Card que filtra a lista (pedido do usuário 2026-09-30: "clico e
+       aparece quem comprou, desclico volta pro default"). */
+    .kpi-clickable { cursor: pointer; transition: box-shadow 0.15s, transform 0.1s; }
+    .kpi-clickable:hover { box-shadow: 0 2px 8px rgba(107,68,35,0.12); }
+    .kpi-clickable:active { transform: scale(0.98); }
+    .kpi-active { box-shadow: inset 0 0 0 2px var(--cor-texto-marca); background: var(--cor-rosa-sereno); }
+    .kpi-hero.kpi-active { box-shadow: inset 0 0 0 3px var(--cor-dourado-ambar); background: var(--cor-texto-marca); }
     .kpi-good .kpi-value { color: #4A7A3B; }
 
     /* Gráficos — série única (uma cor só, #B07A45: dourado aprofundado
@@ -1958,15 +1965,15 @@
       </div>
     </div>
     <div class="chip-row" id="receberFilters"></div>
-    <div class="module-card">
+    <div class="module-card" id="receberListCard">
       <h3 id="receberListTitle">Parcelas em aberto</h3>
       <div id="receberList"></div>
     </div>
-    <div class="module-card">
+    <div class="module-card" id="receberAgingCard">
       <h3>Atraso por faixa</h3>
       <div id="receberAging"></div>
     </div>
-    <div class="module-card">
+    <div class="module-card" id="receberCarteiraCard">
       <h3>💳 Saldo em aberto na Carteira</h3>
       <div id="receberCarteira"></div>
     </div>
@@ -5390,8 +5397,13 @@
       return Math.round((new Date(`${toIso}T00:00:00`) - new Date(`${fromIso}T00:00:00`)) / 86400000);
     }
 
-    function kpiHtml(label, value, sub, cls) {
-      return `<div class="kpi ${cls || ''}"><div class="kpi-label">${label}</div><div class="kpi-value">${value}</div>${sub ? `<div class="kpi-sub">${sub}</div>` : ''}</div>`;
+    // `filter` (opcional): { onclick, active } — card vira botão de filtro.
+    function kpiHtml(label, value, sub, cls, filter) {
+      const clickAttrs = filter
+        ? ` onclick="${filter.onclick}" role="button" tabindex="0" aria-pressed="${filter.active ? 'true' : 'false'}" title="${filter.active ? 'Toque de novo para ver tudo' : 'Toque para filtrar'}"`
+        : '';
+      const classes = `kpi ${cls || ''} ${filter ? 'kpi-clickable' : ''} ${filter && filter.active ? 'kpi-active' : ''}`;
+      return `<div class="${classes}"${clickAttrs}><div class="kpi-label">${label}</div><div class="kpi-value">${value}</div>${sub ? `<div class="kpi-sub">${sub}</div>` : ''}</div>`;
     }
 
     function chipsHtml(options, active, onclickFn) {
@@ -5492,7 +5504,9 @@
     // ---------- Clientes ----------
     let clientesFilter = 'todos';
 
-    function setClientesFilter(f) { clientesFilter = f; renderClientes(); }
+    // Tocar no filtro já ativo desliga (volta pra "todos") — mesmo
+    // comportamento pros cards e pros chips.
+    function setClientesFilter(f) { clientesFilter = (f === clientesFilter) ? 'todos' : f; renderClientes(); }
 
     function renderClientes() {
       const today = localDateStr(new Date());
@@ -5512,6 +5526,7 @@
           open: openFinance + carteira,
           overdue,
           bdayThisMonth: Boolean(l.birthDate) && l.birthDate.slice(5, 7) === month,
+          boughtThisMonth: mine.some(x => x.date && x.date.slice(0, 7) === today.slice(0, 7)),
         };
       });
 
@@ -5521,19 +5536,21 @@
         aberto: clients.filter(c => c.open > 0.004).length,
         atraso: clients.filter(c => c.overdue > 0.004).length,
         semcompra: clients.filter(c => c.bought === 0).length,
+        comprarammes: clients.filter(c => c.boughtThisMonth).length,
       };
       const totalOpen = clients.reduce((s, c) => s + c.open, 0);
-      const boughtThisMonth = clients.filter(c => c.lastSale && c.lastSale.slice(0, 7) === today.slice(0, 7)).length;
+      const cardFilter = (key) => ({ onclick: `setClientesFilter('${key}')`, active: clientesFilter === key });
 
       document.getElementById('clientesKpis').innerHTML = [
-        kpiHtml('Clientes', counts.todos, `${clients.filter(c => c.bought > 0).length} já compraram`, 'kpi-hero'),
-        kpiHtml('Compraram este mês', boughtThisMonth),
-        kpiHtml('🎂 Aniversariantes', counts.aniversariantes, 'neste mês'),
-        kpiHtml('Valor em aberto', formatCurrencyBRL(totalOpen), `${counts.aberto} cliente(s)`, totalOpen > 0 ? 'kpi-alert' : ''),
+        kpiHtml('Clientes', counts.todos, `${clients.filter(c => c.bought > 0).length} já compraram`, 'kpi-hero', { onclick: "setClientesFilter('todos')", active: clientesFilter === 'todos' }),
+        kpiHtml('Compraram este mês', counts.comprarammes, '', '', cardFilter('comprarammes')),
+        kpiHtml('🎂 Aniversariantes', counts.aniversariantes, 'neste mês', '', cardFilter('aniversariantes')),
+        kpiHtml('Valor em aberto', formatCurrencyBRL(totalOpen), `${counts.aberto} cliente(s)`, totalOpen > 0 ? 'kpi-alert' : '', cardFilter('aberto')),
       ].join('');
 
       document.getElementById('clientesFilters').innerHTML = chipsHtml([
         ['todos', `Todos (${counts.todos})`],
+        ['comprarammes', `Compraram este mês (${counts.comprarammes})`],
         ['aniversariantes', `🎂 Aniversariantes (${counts.aniversariantes})`],
         ['aberto', `Com valor em aberto (${counts.aberto})`],
         ['atraso', `Com atraso (${counts.atraso})`],
@@ -5543,6 +5560,7 @@
       const query = document.getElementById('clientesSearch').value.trim().toLowerCase();
       const queryDigits = query.replace(/\D/g, '');
       let list = clients.filter(c => {
+        if (clientesFilter === 'comprarammes' && !c.boughtThisMonth) return false;
         if (clientesFilter === 'aniversariantes' && !c.bdayThisMonth) return false;
         if (clientesFilter === 'aberto' && !(c.open > 0.004)) return false;
         if (clientesFilter === 'atraso' && !(c.overdue > 0.004)) return false;
@@ -5555,7 +5573,9 @@
 
       list.sort(clientesFilter === 'aniversariantes'
         ? (a, b) => a.lead.birthDate.slice(8, 10).localeCompare(b.lead.birthDate.slice(8, 10))
-        : (a, b) => a.lead.name.localeCompare(b.lead.name, 'pt-BR', { sensitivity: 'base' }));
+        : clientesFilter === 'comprarammes'
+          ? (a, b) => b.lastSale.localeCompare(a.lastSale)
+          : (a, b) => a.lead.name.localeCompare(b.lead.name, 'pt-BR', { sensitivity: 'base' }));
 
       const el = document.getElementById('clientesList');
       if (!list.length) {
@@ -5717,7 +5737,7 @@
     // ---------- Contas a Receber ----------
     let receberFilter = 'todas';
 
-    function setReceberFilter(f) { receberFilter = f; renderReceber(); }
+    function setReceberFilter(f) { receberFilter = (f === receberFilter) ? 'todas' : f; renderReceber(); }
 
     function renderReceber() {
       const today = localDateStr(new Date());
@@ -5737,12 +5757,19 @@
         .sort((a, b) => b.balance - a.balance);
       const carteiraTotal = carteiraBalances.reduce((s, b) => s + b.balance, 0);
 
+      const cardFilter = (key) => ({ onclick: `setReceberFilter('${key}')`, active: receberFilter === key });
       document.getElementById('receberKpis').innerHTML = [
-        kpiHtml('Total em aberto', formatCurrencyBRL(sum(open) + carteiraTotal), `${open.length} parcela(s) + carteira`, 'kpi-hero'),
-        kpiHtml('Atrasado', formatCurrencyBRL(sum(overdue)), `${overdue.length} parcela(s)`, overdue.length ? 'kpi-alert' : ''),
-        kpiHtml('Próximos 7 dias', formatCurrencyBRL(sum(next7)), `${next7.length} parcela(s)`),
-        kpiHtml('Carteira', formatCurrencyBRL(carteiraTotal), `${carteiraBalances.length} cliente(s)`),
+        kpiHtml('Total em aberto', formatCurrencyBRL(sum(open) + carteiraTotal), `${open.length} parcela(s) + carteira`, 'kpi-hero', cardFilter('todas')),
+        kpiHtml('Atrasado', formatCurrencyBRL(sum(overdue)), `${overdue.length} parcela(s)`, overdue.length ? 'kpi-alert' : '', cardFilter('atrasadas')),
+        kpiHtml('Próximos 7 dias', formatCurrencyBRL(sum(next7)), `${next7.length} parcela(s)`, '', cardFilter('7dias')),
+        kpiHtml('Carteira', formatCurrencyBRL(carteiraTotal), `${carteiraBalances.length} cliente(s)`, '', cardFilter('carteira')),
       ].join('');
+
+      // Card "Carteira" mostra só os saldos da Carteira (esconde as
+      // parcelas e o atraso por faixa); desmarcar volta tudo.
+      const onlyCarteira = receberFilter === 'carteira';
+      document.getElementById('receberListCard').style.display = onlyCarteira ? 'none' : '';
+      document.getElementById('receberAgingCard').style.display = onlyCarteira ? 'none' : '';
 
       document.getElementById('receberFilters').innerHTML = chipsHtml([
         ['todas', `Todas (${open.length})`],
@@ -5750,6 +5777,7 @@
         ['hoje', `Vence hoje (${dueToday.length})`],
         ['7dias', `Próx. 7 dias (${next7.length})`],
         ['mes', `Este mês (${thisMonth.length})`],
+        ['carteira', `💳 Carteira (${carteiraBalances.length})`],
       ], receberFilter, 'setReceberFilter');
 
       const lists = { todas: open, atrasadas: overdue, hoje: dueToday, '7dias': next7, mes: thisMonth };
@@ -5759,7 +5787,7 @@
         .slice()
         .sort((a, b) => (a.dueDate || '').localeCompare(b.dueDate || ''));
 
-      const titles = { todas: 'Parcelas em aberto', atrasadas: 'Parcelas atrasadas', hoje: 'Vencem hoje', '7dias': 'Vencem nos próximos 7 dias', mes: 'Vencem este mês' };
+      const titles = { todas: 'Parcelas em aberto', atrasadas: 'Parcelas atrasadas', hoje: 'Vencem hoje', '7dias': 'Vencem nos próximos 7 dias', mes: 'Vencem este mês', carteira: 'Parcelas em aberto' };
       document.getElementById('receberListTitle').textContent = `${titles[receberFilter]} (${items.length})`;
 
       document.getElementById('receberList').innerHTML = items.length ? `
