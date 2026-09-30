@@ -976,7 +976,6 @@
       overflow-x: hidden;
       overscroll-behavior: contain;
       touch-action: pan-y;
-      overflow-wrap: anywhere;
     }
 
     /* Fundo escuro da janela também não arrasta de lado. */
@@ -1375,8 +1374,15 @@
       margin-bottom: 4px;
     }
 
+    /* Valor em R$ nunca quebra no meio ("R$ 3.200" / ",00" — achado do
+       usuário 2026-09-30); quem quebra linha é a descrição ao lado. */
+    .finance-row-main { gap: 10px; }
+    .finance-row-main > span:first-child { min-width: 0; overflow-wrap: anywhere; }
+
     .finance-row-value {
       font-family: 'Courier New', monospace;
+      white-space: nowrap;
+      flex-shrink: 0;
     }
 
     .finance-row-meta {
