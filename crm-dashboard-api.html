@@ -2138,6 +2138,7 @@
       <h2>🧮 Simulador de Cartão</h2>
     </div>
     <div class="module-card">
+      <div class="chip-row" id="simChannelChips"></div>
       <div class="chip-row" id="simModeChips"></div>
       <div class="sim-input-row">
         <div class="form-group">
@@ -2817,11 +2818,29 @@
     // bruto/taxa/líquido, em vez de N parcelas mensais. Tabela de taxas
     // vem da aba "Taxas Cartão" (via Apps Script, igual Procedimentos);
     // o fallback abaixo é a mesma tabela que semeia a aba.
+    // Canal (2026-09-30): Maquininha (na hora, fórmula com acréscimo
+    // mensal) ou Link de pagamento (InfinitePay "1 Dia Útil": % fechado
+    // por parcela, cai no próximo dia útil).
     let CARD_FEES = [
-      { type: 'Débito', installments: 1, mdrPct: 1.13, monthlyPct: 0 },
-      { type: 'Crédito', installments: 1, mdrPct: 3.18, monthlyPct: 0 },
-      ...[2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(n => ({ type: 'Crédito', installments: n, mdrPct: 1.93, monthlyPct: 1.93 })),
+      { type: 'Débito', installments: 1, mdrPct: 1.13, monthlyPct: 0, channel: 'Maquininha', settleDays: 0 },
+      { type: 'Crédito', installments: 1, mdrPct: 3.18, monthlyPct: 0, channel: 'Maquininha', settleDays: 0 },
+      ...[2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(n => ({ type: 'Crédito', installments: n, mdrPct: 1.93, monthlyPct: 1.93, channel: 'Maquininha', settleDays: 0 })),
+      ...[4.20, 6.09, 7.01, 7.91, 8.80, 9.67, 12.59, 13.42, 14.25, 15.06].map((pct, i) => ({ type: 'Crédito', installments: i + 1, mdrPct: pct, monthlyPct: 0, channel: 'Link', settleDays: 1 })),
     ];
+
+    function feeChannel(f) { return f.channel || 'Maquininha'; }
+    function cardChannels() { return Array.from(new Set(CARD_FEES.map(feeChannel))); }
+
+    /** Data + N dias úteis (pula sábado e domingo; feriado não). */
+    function addBusinessDays(iso, n) {
+      const d = new Date(`${iso}T00:00:00`);
+      let left = n;
+      while (left > 0) {
+        d.setDate(d.getDate() + 1);
+        if (d.getDay() !== 0 && d.getDay() !== 6) left--;
+      }
+      return localDateStr(d);
+    }
 
     async function loadCardFees() {
       const settings = loadSettings();
@@ -2840,8 +2859,9 @@
     // 1 mês na 1ª … N na última). Bateu com o extrato real a poucos
     // centavos (6x de 1.000: 83,52 vs 83,50) — por isso o campo de taxa
     // continua editável. null = combinação sem linha na tabela.
-    function estimateCardFee(gross, type, installments) {
-      const row = CARD_FEES.find(f => f.type === type && Number(f.installments) === Number(installments));
+    function estimateCardFee(gross, type, installments, channel) {
+      const ch = channel || 'Maquininha';
+      const row = CARD_FEES.find(f => f.type === type && Number(f.installments) === Number(installments) && feeChannel(f) === ch);
       if (!row || !(gross > 0)) return null;
       let fee = gross * row.mdrPct / 100;
       const monthly = (row.monthlyPct || 0) / 100;
@@ -2867,25 +2887,29 @@
       const isCard = document.getElementById(`${prefix}PaymentMethod`).value === 'Cartão';
       const box = document.getElementById(`${prefix}CardFields`);
       if (isCard && !box.innerHTML) {
+        const channels = cardChannels();
         box.innerHTML = `
+          <div class="form-group" style="${channels.length > 1 ? '' : 'display:none;'}">
+            <label>Canal:</label>
+            <select id="${prefix}CardChannel" onchange="onCardChannelChange('${prefix}')">
+              ${channels.map(c => `<option value="${c}">${c === 'Link' ? 'Link de pagamento' : c}</option>`).join('')}
+            </select>
+          </div>
           <div class="form-group">
             <label>Modalidade:</label>
-            <select id="${prefix}CardType" onchange="onCardTypeChange('${prefix}')">
-              <option value="Crédito">Crédito</option>
-              <option value="Débito">Débito</option>
-            </select>
+            <select id="${prefix}CardType" onchange="onCardTypeChange('${prefix}')"></select>
           </div>
           <div class="form-group" id="${prefix}CardInstallmentsGroup">
             <label>Parcelas no cartão:</label>
             <select id="${prefix}CardInstallments" onchange="cardFeeManual['${prefix}'] = false; recalcCardFee('${prefix}')"></select>
           </div>
           <div class="form-group">
-            <label>Taxa da maquininha (R$):</label>
+            <label>Taxa do cartão (R$):</label>
             <input type="number" id="${prefix}CardFee" min="0" step="0.01" oninput="cardFeeManual['${prefix}'] = true; recalcCardFee('${prefix}')">
             <div id="${prefix}CardFeeHint" style="font-size:12px; color:var(--cor-cinza-cacau); margin-top:4px;"></div>
           </div>
         `;
-        onCardTypeChange(prefix);
+        onCardChannelChange(prefix);
       }
       box.style.display = isCard ? 'block' : 'none';
 
@@ -2897,10 +2921,28 @@
       if (typeof updatePartsCheck === 'function' && prefix.startsWith('rp')) updatePartsCheck();
     }
 
+    function cardChannelOf(prefix) {
+      const el = document.getElementById(`${prefix}CardChannel`);
+      return (el && el.value) || 'Maquininha';
+    }
+
+    // Canal muda as modalidades disponíveis (Link não tem débito).
+    function onCardChannelChange(prefix) {
+      const channel = cardChannelOf(prefix);
+      const typeSel = document.getElementById(`${prefix}CardType`);
+      const previous = typeSel.value;
+      const types = Array.from(new Set(CARD_FEES.filter(f => feeChannel(f) === channel).map(f => f.type)))
+        .sort((a, b) => (a === 'Crédito' ? -1 : b === 'Crédito' ? 1 : 0));
+      typeSel.innerHTML = types.map(t => `<option value="${t}">${t}</option>`).join('');
+      if (types.includes(previous)) typeSel.value = previous;
+      onCardTypeChange(prefix);
+    }
+
     function onCardTypeChange(prefix) {
       const type = document.getElementById(`${prefix}CardType`).value;
+      const channel = cardChannelOf(prefix);
       const select = document.getElementById(`${prefix}CardInstallments`);
-      const options = CARD_FEES.filter(f => f.type === type).map(f => Number(f.installments)).sort((a, b) => a - b);
+      const options = CARD_FEES.filter(f => f.type === type && feeChannel(f) === channel).map(f => Number(f.installments)).sort((a, b) => a - b);
       select.innerHTML = options.map(n => `<option value="${n}">${n === 1 ? 'À vista' : `${n}x`}</option>`).join('');
       document.getElementById(`${prefix}CardInstallmentsGroup`).style.display = options.length > 1 ? 'block' : 'none';
       cardFeeManual[prefix] = false;
@@ -2913,7 +2955,8 @@
       const gross = cardGrossValue(prefix);
       const type = document.getElementById(`${prefix}CardType`).value;
       const installments = parseInt(document.getElementById(`${prefix}CardInstallments`).value, 10) || 1;
-      const estimate = estimateCardFee(gross, type, installments);
+      const channel = cardChannelOf(prefix);
+      const estimate = estimateCardFee(gross, type, installments, channel);
       if (!cardFeeManual[prefix]) feeInput.value = estimate ? estimate.fee.toFixed(2) : '';
       const fee = parseFloat(feeInput.value) || 0;
       const hint = document.getElementById(`${prefix}CardFeeHint`);
@@ -2923,7 +2966,8 @@
         hint.textContent = `Sem taxa cadastrada para ${type} ${installments}x na aba "Taxas Cartão" — informe pelo comprovante. Líquido: ${formatCurrencyBRL(gross - fee)}`;
       } else {
         const estimatePct = (estimate.fee / gross * 100).toFixed(2).replace('.', ',');
-        hint.textContent = `Líquido na conta: ${formatCurrencyBRL(gross - fee)} · tabela: ${formatCurrencyBRL(estimate.fee)} (${estimatePct}%)${cardFeeManual[prefix] ? ' — taxa ajustada à mão' : ' — confira no comprovante'}`;
+        const settle = estimate.row.settleDays ? ` · cai em ${estimate.row.settleDays} dia(s) útil(eis)` : ' · cai na hora';
+        hint.textContent = `Líquido na conta: ${formatCurrencyBRL(gross - fee)}${settle} · tabela: ${formatCurrencyBRL(estimate.fee)} (${estimatePct}%)${cardFeeManual[prefix] ? ' — taxa ajustada à mão' : ' — confira no comprovante'}`;
       }
     }
 
@@ -2932,16 +2976,18 @@
       recalcCardFee(prefix);
       const type = document.getElementById(`${prefix}CardType`).value;
       const installments = parseInt(document.getElementById(`${prefix}CardInstallments`).value, 10) || 1;
+      const channel = cardChannelOf(prefix);
+      const row = CARD_FEES.find(f => f.type === type && Number(f.installments) === installments && feeChannel(f) === channel);
       const fee = parseFloat(document.getElementById(`${prefix}CardFee`).value);
-      if (isNaN(fee) || fee < 0 || fee >= gross) return { error: 'Informe a taxa da maquininha (R$) — menor que o valor da venda.' };
+      if (isNaN(fee) || fee < 0 || fee >= gross) return { error: 'Informe a taxa do cartão (R$) — menor que o valor da venda.' };
       const roundedFee = Math.round(fee * 100) / 100;
-      return { type, installments, fee: roundedFee, net: Math.round((gross - roundedFee) * 100) / 100 };
+      return { type, installments, channel, settleDays: row ? (row.settleDays || 0) : 0, fee: roundedFee, net: Math.round((gross - roundedFee) * 100) / 100 };
     }
 
-    function cardLabel(type, installments) {
+    function cardLabel(type, installments, channel) {
       if (!type) return '';
-      if (type === 'Débito') return 'Débito';
-      return Number(installments) > 1 ? `Crédito ${installments}x` : 'Crédito à vista';
+      const base = type === 'Débito' ? 'Débito' : (Number(installments) > 1 ? `Crédito ${installments}x` : 'Crédito à vista');
+      return channel === 'Link' ? `${base} (Link)` : base;
     }
 
     function resetCardFields(prefix) {
@@ -3275,6 +3321,7 @@
       return {
         cardType: type,
         cardInstallments: col('Parcelas no Cartão'),
+        cardChannel: col('Canal Cartão') || (type ? 'Maquininha' : ''),
         cardFee: feeRaw === '' ? null : parseCurrencyCell(feeRaw),
         netValue: col('Valor Líquido') === '' ? null : parseCurrencyCell(col('Valor Líquido')),
       };
@@ -3289,7 +3336,7 @@
     function cardMetaHtml(item) {
       if (!item.cardType) return '';
       const fee = item.cardFee !== null ? ` · taxa ${formatCurrencyBRL(item.cardFee)} · líquido ${formatCurrencyBRL(netOf(item))}` : '';
-      return `<span>💳 ${cardLabel(item.cardType, item.cardInstallments)}${fee}</span>`;
+      return `<span>💳 ${cardLabel(item.cardType, item.cardInstallments, item.cardChannel)}${fee}</span>`;
     }
 
     async function fetchFinanceData() {
@@ -4465,7 +4512,7 @@
           ['Lançamento', 'Pagamento na Carteira'],
           ['Valor', formatCurrencyBRL(c.value)],
           ['Data', formatDateBR(c.date)],
-          ['Meio de pagamento', c.cardType ? `Cartão — ${cardLabel(c.cardType, c.cardInstallments)}` : (c.paymentMethod || '—')],
+          ['Meio de pagamento', c.cardType ? `Cartão — ${cardLabel(c.cardType, c.cardInstallments, c.cardChannel)}` : (c.paymentMethod || '—')],
           ...cardSummaryRows(c),
           ['Status', '✅ Recebido'],
         ];
@@ -4478,7 +4525,7 @@
           ...(item.cardType ? [] : [['Parcela', item.installmentLabel || '—']]),
           ['Valor', formatCurrencyBRL(item.value)],
           [item.cardType ? 'Data da venda' : 'Vencimento', formatDateBR(item.dueDate)],
-          ['Meio de pagamento', item.cardType ? `Cartão — ${cardLabel(item.cardType, item.cardInstallments)}` : (item.paymentMethod || '—')],
+          ['Meio de pagamento', item.cardType ? `Cartão — ${cardLabel(item.cardType, item.cardInstallments, item.cardChannel)}` : (item.paymentMethod || '—')],
           ...cardSummaryRows(item),
           ['Status', item.status === 'Recebido'
             ? `✅ Recebido${item.receivedDate ? ' em ' + formatDateBR(item.receivedDate) : ''}`
@@ -4496,7 +4543,7 @@
     function cardSummaryRows(item) {
       if (!item.cardType || item.cardFee === null) return [];
       return [
-        ['Taxa da maquininha', `− ${formatCurrencyBRL(item.cardFee)}`],
+        ['Taxa do cartão', `− ${formatCurrencyBRL(item.cardFee)}`],
         ['Líquido na conta', formatCurrencyBRL(netOf(item))],
       ];
     }
@@ -4704,7 +4751,7 @@
     }
 
     function paymentPartLabel(method, card) {
-      return card ? `Cartão ${cardLabel(card.type, card.installments)}` : method;
+      return card ? `Cartão ${cardLabel(card.type, card.installments, card.channel)}` : method;
     }
 
     function updatePartsCheck() {
@@ -4783,7 +4830,10 @@
       let firstPlanMarked = false;
       parts.forEach((part, partIndex) => {
         if (part.card) {
-          installments.push({ partIndex, paymentMethod: 'Cartão', card: part.card, label: '1/1', dueDate: saleDate, value: part.value, received: true, receivedDate: saleDate });
+          // Maquininha cai na hora; Link cai N dias úteis depois — é essa
+          // a data que conta no caixa (Vendas → Recebido).
+          const settle = part.card.settleDays ? addBusinessDays(saleDate, part.card.settleDays) : saleDate;
+          installments.push({ partIndex, paymentMethod: 'Cartão', card: part.card, label: '1/1', dueDate: saleDate, value: part.value, received: true, receivedDate: settle });
           return;
         }
         // À vista na hora (1 parcela vencendo no próprio dia da venda, ex.:
@@ -4820,8 +4870,8 @@
         const head = `<div class="review-part-title">Forma ${partIndex + 1} — ${part.card ? '💳' : (PAYMENT_METHOD_ICONS[part.method] || '📄')} ${escapeHtml(paymentPartLabel(part.method, part.card))} · ${formatCurrencyBRL(part.value)}</div>`;
         if (part.card) {
           return head + `
-            <div class="ld-row"><span class="ld-label">Taxa da maquininha</span><span class="ld-value">− ${formatCurrencyBRL(part.card.fee)} (${(part.card.fee / part.value * 100).toFixed(2).replace('.', ',')}%)</span></div>
-            <div class="ld-row"><span class="ld-label">Líquido na conta</span><span class="ld-value"><strong>${formatCurrencyBRL(part.card.net)}</strong> em ${formatDateBR(saleDate)}</span></div>`;
+            <div class="ld-row"><span class="ld-label">Taxa do cartão</span><span class="ld-value">− ${formatCurrencyBRL(part.card.fee)} (${(part.card.fee / part.value * 100).toFixed(2).replace('.', ',')}%)</span></div>
+            <div class="ld-row"><span class="ld-label">Líquido na conta</span><span class="ld-value"><strong>${formatCurrencyBRL(part.card.net)}</strong> em ${formatDateBR(part.card.settleDays ? addBusinessDays(saleDate, part.card.settleDays) : saleDate)}</span></div>`;
         }
         return head + installments.map((inst, i) => {
           if (inst.partIndex !== partIndex) return '';
@@ -4910,7 +4960,7 @@
         if (insts.some(inst => !(inst.value > 0))) problem = 'Toda parcela precisa ter valor maior que zero.';
         else if (insts.some(inst => !inst.dueDate)) problem = 'Toda parcela precisa ter data de vencimento.';
         else if (Math.abs(sum - receivableContext.totalValue) >= 0.01) problem = `A soma das parcelas (${formatCurrencyBRL(sum)}) não bate com o valor total (${formatCurrencyBRL(receivableContext.totalValue)}).`;
-        else if (insts.some(inst => inst.received && (!inst.receivedDate || inst.receivedDate > today))) problem = 'Data de recebimento vazia ou no futuro.';
+        else if (insts.some(inst => inst.received && (!inst.receivedDate || (inst.receivedDate > today && !inst.card)))) problem = 'Data de recebimento vazia ou no futuro.';
         if (problem) {
           errorEl.innerHTML = `<div class="form-error">⚠️ ${problem}</div>`;
           errorEl.scrollIntoView({ block: 'nearest' });
@@ -5281,7 +5331,7 @@
         });
         const parts = Array.from(partsMap.values());
         const partLabel = (x) => (x.method === 'Cartão'
-          ? `Cartão ${cardLabel(x.row.cardType, x.row.cardInstallments)}`
+          ? `Cartão ${cardLabel(x.row.cardType, x.row.cardInstallments, x.row.cardChannel)}`
           : `${x.method}${x.plan > 1 ? ` ${x.plan}x` : ''}`);
         const procedures = Array.from(new Set(v.lancamentos
           .flatMap(l => (l.description || '').split(PROCEDURE_JOIN_SEPARATOR))
@@ -5341,7 +5391,7 @@
         }
         l.rows.forEach(r => {
           const isCard = Boolean(r.cardType);
-          const methodText = isCard ? `💳 Cartão ${cardLabel(r.cardType, r.cardInstallments)}` : `${PAYMENT_METHOD_ICONS[r.paymentMethod] || '📄'} ${escapeHtml(r.paymentMethod || 'Outro')} · ${escapeHtml(r.installmentLabel)}`;
+          const methodText = isCard ? `💳 Cartão ${cardLabel(r.cardType, r.cardInstallments, r.cardChannel)}` : `${PAYMENT_METHOD_ICONS[r.paymentMethod] || '📄'} ${escapeHtml(r.paymentMethod || 'Outro')} · ${escapeHtml(r.installmentLabel)}`;
           const received = r.status === 'Recebido';
           const late = !received && r.dueDate && r.dueDate < today;
           const statusText = received
@@ -5522,7 +5572,7 @@
           name: f.name,
           description: `${f.description || 'Cobrança'}${isCard ? '' : ` (${f.installmentLabel})`}`,
           method: isCard ? 'Cartão' : (f.paymentMethod || 'Outro'),
-          methodLabel: isCard ? `Cartão — ${cardLabel(f.cardType, f.cardInstallments)}` : (f.paymentMethod || 'Outro'),
+          methodLabel: isCard ? `Cartão — ${cardLabel(f.cardType, f.cardInstallments, f.cardChannel)}` : (f.paymentMethod || 'Outro'),
           gross: f.value,
           fee: f.cardFee || 0,
           net: netOf(f),
@@ -5537,7 +5587,7 @@
           name: c.name,
           description: 'Pagamento na Carteira',
           method: c.cardType ? 'Cartão' : (c.paymentMethod || 'Outro'),
-          methodLabel: c.cardType ? `Cartão — ${cardLabel(c.cardType, c.cardInstallments)}` : (c.paymentMethod || 'Outro'),
+          methodLabel: c.cardType ? `Cartão — ${cardLabel(c.cardType, c.cardInstallments, c.cardChannel)}` : (c.paymentMethod || 'Outro'),
           gross: c.value,
           fee: c.cardFee || 0,
           net: netOf(c),
@@ -5822,6 +5872,9 @@
     // estimateCardFee), então valor a cobrar = líquido ÷ (1 − taxa%),
     // arredondado pra cima no centavo pra nunca receber menos.
     let simMode = 'venda';
+    let simChannel = 'Maquininha';
+
+    function setSimChannel(c) { simChannel = c; renderSimulador(); }
 
     function setSimMode(m) {
       simMode = m;
@@ -5830,6 +5883,11 @@
     }
 
     function renderSimulador() {
+      const channels = cardChannels();
+      if (!channels.includes(simChannel)) simChannel = channels[0];
+      document.getElementById('simChannelChips').innerHTML = channels.length > 1
+        ? chipsHtml(channels.map(c => [c, c === 'Link' ? '🔗 Link de pagamento' : '💳 Maquininha']), simChannel, 'setSimChannel')
+        : '';
       document.getElementById('simModeChips').innerHTML = chipsHtml([
         ['venda', 'Tenho o valor da venda'],
         ['liquido', 'Quero receber um valor líquido'],
@@ -5842,13 +5900,15 @@
         return;
       }
 
-      const options = CARD_FEES.slice().sort((a, b) => (a.type === b.type ? a.installments - b.installments : (a.type === 'Débito' ? -1 : 1)));
+      const options = CARD_FEES.filter(f => feeChannel(f) === simChannel)
+        .sort((a, b) => (a.type === b.type ? a.installments - b.installments : (a.type === 'Débito' ? -1 : 1)));
       const rows = options.map(opt => {
-        const pct = estimateCardFee(1000, opt.type, opt.installments).fee / 1000;
+        const pct = estimateCardFee(1000, opt.type, opt.installments, simChannel).fee / 1000;
         const gross = simMode === 'venda' ? value : Math.ceil(value / (1 - pct) * 100) / 100;
-        const fee = simMode === 'venda' ? estimateCardFee(gross, opt.type, opt.installments).fee : Math.round((gross - value) * 100) / 100;
+        const fee = simMode === 'venda' ? estimateCardFee(gross, opt.type, opt.installments, simChannel).fee : Math.round((gross - value) * 100) / 100;
         return { label: cardLabel(opt.type, opt.installments), n: Number(opt.installments), gross, fee, net: gross - fee, pct };
       });
+      const settleDays = options.length ? (options[0].settleDays || 0) : 0;
 
       el.innerHTML = `
         <div class="data-table-wrap"><table class="data-table">
@@ -5870,6 +5930,7 @@
           </tbody>
         </table></div>
         ${simMode === 'liquido' ? `<p style="font-size:12.5px; color:var(--cor-cinza-cacau); margin-top:10px;">Cobrando o valor da coluna "Cobrar", cai na conta ${formatCurrencyBRL(value)} em qualquer forma (arredondado pra cima no centavo).</p>` : ''}
+        <p style="font-size:12.5px; color:var(--cor-cinza-cacau); margin-top:6px;">${settleDays ? `🔗 Link de pagamento: o dinheiro cai em ${settleDays} dia(s) útil(eis).` : '💳 Maquininha: o dinheiro cai na hora.'}</p>
       `;
     }
 

@@ -1238,6 +1238,7 @@ const FINANCE_COLUMNS = [
   'Parcelas no Cartão',
   'Taxa do Cartão',
   'Valor Líquido',
+  'Canal Cartão', // Maquininha | Link (2026-09-30)
 ];
 
 function getFinanceSheet() {
@@ -1415,6 +1416,7 @@ const CARTEIRA_COLUMNS = [
   'Parcelas no Cartão',
   'Taxa do Cartão',
   'Valor Líquido',
+  'Canal Cartão', // Maquininha | Link (2026-09-30)
 ];
 
 function getCarteiraSheet() {
@@ -1446,7 +1448,7 @@ function addCarteiraDebito(payload) {
   const dateStr = date || Utilities.formatDate(new Date(), TIME_ZONE, 'yyyy-MM-dd');
   const range = sheet.getRange(sheet.getLastRow() + 1, 1, 1, CARTEIRA_COLUMNS.length);
   range.setNumberFormat('@');
-  range.setValues([[id, phone, name, 'Débito', description, value, '', dateStr, createdAt, '', '', '', '']]);
+  range.setValues([[id, phone, name, 'Débito', description, value, '', dateStr, createdAt, ...cardColumnsValues(null)]]);
   return { ok: true, id };
 }
 
@@ -1509,21 +1511,36 @@ function deleteCarteiraEntry(payload) {
 // ============================================================
 
 const CARD_FEES_SHEET_NAME = 'Taxas Cartão';
-const CARD_FEES_COLUMNS = ['Modalidade', 'Parcelas', 'Taxa de Intermediação (%)', 'Acréscimo ao Mês (%)'];
+// Canal + Prazo (2026-09-30): além da maquininha (recebe na hora, com
+// acréscimo mensal de antecipação), o LINK DE PAGAMENTO (InfinitePay,
+// plano "1 Dia Útil") — taxa fechada por nº de parcelas (acréscimo 0) e
+// dinheiro na conta no próximo dia útil. Conferido contra as simulações
+// do app: R$ 1.000 em 10x → 15,06% → recebe R$ 849,40.
+const CARD_FEES_COLUMNS = ['Modalidade', 'Parcelas', 'Taxa de Intermediação (%)', 'Acréscimo ao Mês (%)', 'Canal', 'Prazo (dias úteis)'];
 const DEFAULT_CARD_FEES = [
-  ['Débito', 1, 1.13, 0],
-  ['Crédito', 1, 3.18, 0],
-  ['Crédito', 2, 1.93, 1.93],
-  ['Crédito', 3, 1.93, 1.93],
-  ['Crédito', 4, 1.93, 1.93],
-  ['Crédito', 5, 1.93, 1.93],
-  ['Crédito', 6, 1.93, 1.93],
-  ['Crédito', 7, 1.93, 1.93],
-  ['Crédito', 8, 1.93, 1.93],
-  ['Crédito', 9, 1.93, 1.93],
-  ['Crédito', 10, 1.93, 1.93],
-  ['Crédito', 11, 1.93, 1.93],
-  ['Crédito', 12, 1.93, 1.93],
+  ['Débito', 1, 1.13, 0, 'Maquininha', 0],
+  ['Crédito', 1, 3.18, 0, 'Maquininha', 0],
+  ['Crédito', 2, 1.93, 1.93, 'Maquininha', 0],
+  ['Crédito', 3, 1.93, 1.93, 'Maquininha', 0],
+  ['Crédito', 4, 1.93, 1.93, 'Maquininha', 0],
+  ['Crédito', 5, 1.93, 1.93, 'Maquininha', 0],
+  ['Crédito', 6, 1.93, 1.93, 'Maquininha', 0],
+  ['Crédito', 7, 1.93, 1.93, 'Maquininha', 0],
+  ['Crédito', 8, 1.93, 1.93, 'Maquininha', 0],
+  ['Crédito', 9, 1.93, 1.93, 'Maquininha', 0],
+  ['Crédito', 10, 1.93, 1.93, 'Maquininha', 0],
+  ['Crédito', 11, 1.93, 1.93, 'Maquininha', 0],
+  ['Crédito', 12, 1.93, 1.93, 'Maquininha', 0],
+  ['Crédito', 1, 4.20, 0, 'Link', 1],
+  ['Crédito', 2, 6.09, 0, 'Link', 1],
+  ['Crédito', 3, 7.01, 0, 'Link', 1],
+  ['Crédito', 4, 7.91, 0, 'Link', 1],
+  ['Crédito', 5, 8.80, 0, 'Link', 1],
+  ['Crédito', 6, 9.67, 0, 'Link', 1],
+  ['Crédito', 7, 12.59, 0, 'Link', 1],
+  ['Crédito', 8, 13.42, 0, 'Link', 1],
+  ['Crédito', 9, 14.25, 0, 'Link', 1],
+  ['Crédito', 10, 15.06, 0, 'Link', 1],
 ];
 
 function getCardFeesSheet() {
@@ -1540,6 +1557,22 @@ function getCardFeesSheet() {
   return sheet;
 }
 
+/** Índice das colunas da aba Taxas Cartão pelo cabeçalho (aba antiga sem Canal/Prazo continua funcionando). */
+function cardFeesColumnIndex(headers) {
+  const find = (name, fallback) => {
+    const i = headers.map(h => String(h).trim()).indexOf(name);
+    return i === -1 ? fallback : i;
+  };
+  return {
+    type: find('Modalidade', 0),
+    installments: find('Parcelas', 1),
+    mdr: find('Taxa de Intermediação (%)', 2),
+    monthly: find('Acréscimo ao Mês (%)', 3),
+    channel: find('Canal', -1),
+    settleDays: find('Prazo (dias úteis)', -1),
+  };
+}
+
 /** Aceita número da planilha ou texto "1,93" / "1.93" / "1,93%". */
 function parsePercentCell(raw) {
   if (typeof raw === 'number') return raw;
@@ -1549,22 +1582,25 @@ function parsePercentCell(raw) {
 
 function getCardFees() {
   const data = getCardFeesSheet().getDataRange().getValues();
+  const col = cardFeesColumnIndex(data[0] || []);
   const fees = [];
   for (let i = 1; i < data.length; i++) {
-    const type = String(data[i][0] || '').trim();
-    const installments = parseInt(data[i][1], 10);
-    const mdrPct = parsePercentCell(data[i][2]);
-    const monthlyPct = parsePercentCell(data[i][3]) || 0;
+    const type = String(data[i][col.type] || '').trim();
+    const installments = parseInt(data[i][col.installments], 10);
+    const mdrPct = parsePercentCell(data[i][col.mdr]);
+    const monthlyPct = parsePercentCell(data[i][col.monthly]) || 0;
+    const channel = (col.channel !== -1 && String(data[i][col.channel] || '').trim()) || 'Maquininha';
+    const settleDays = col.settleDays !== -1 ? (parseInt(data[i][col.settleDays], 10) || 0) : 0;
     if (!type || !installments || mdrPct === null) continue;
-    fees.push({ type, installments, mdrPct, monthlyPct });
+    fees.push({ type, installments, mdrPct, monthlyPct, channel, settleDays });
   }
   return { ok: true, fees };
 }
 
-/** As 4 colunas de cartão (Financeiro/Carteira) — vazias se não foi cartão. */
+/** As 5 colunas de cartão (Financeiro/Carteira) — vazias se não foi cartão. */
 function cardColumnsValues(card) {
-  if (!card) return ['', '', '', ''];
-  return [card.type || '', card.installments || '', card.fee, card.net];
+  if (!card) return ['', '', '', '', ''];
+  return [card.type || '', card.installments || '', card.fee, card.net, card.channel || 'Maquininha'];
 }
 
 function jsonResponse(obj) {
