@@ -2101,30 +2101,40 @@
           <div class="procedure-checklist" id="recProcedureChecklist"></div>
           <div class="procedure-check-summary" id="recProcSummary"></div>
         </div>
-        <div class="form-group">
-          <label style="display:flex; justify-content:space-between; align-items:center;">
-            <span>Valor total combinado (R$):</span>
-            <button type="button" class="icon-btn-flat" onclick="toggleProcedureCalculator('rec', 'recTotalValue')" title="Calculadora — somar valor de cada procedimento" aria-label="Calculadora" style="width:24px; height:24px; font-size:13px;">🧮</button>
-          </label>
-          <input type="number" id="recTotalValue" min="0" step="0.01" placeholder="0,00">
-          <div class="procedure-calculator" id="recCalculator" style="display:none;"></div>
-        </div>
-        <div class="form-group">
-          <label>Número de parcelas:</label>
-          <input type="number" id="recInstallments" min="1" max="24" value="1">
-        </div>
-        <div class="form-group">
-          <label>Data do 1º vencimento:</label>
-          <input type="date" id="recFirstDueDate">
-        </div>
+        <!-- Meio de pagamento vem ANTES do valor (pedido do usuário
+             2026-09-30): ele define o resto do formulário — cartão pede
+             modalidade/parcelas/taxa e não tem vencimento; os demais
+             pedem nº de parcelas e 1º vencimento. -->
         <div class="form-group">
           <label>Meio de pagamento:</label>
-          <select id="recPaymentMethod">
+          <select id="recPaymentMethod" onchange="onPaymentMethodChange('rec')">
             <option value="Pix">Pix</option>
             <option value="Cartão">Cartão</option>
             <option value="Dinheiro">Dinheiro</option>
             <option value="Outro">Outro</option>
           </select>
+        </div>
+        <div class="form-group">
+          <label style="display:flex; justify-content:space-between; align-items:center;">
+            <span>Valor total combinado (R$):</span>
+            <button type="button" class="icon-btn-flat" onclick="toggleProcedureCalculator('rec', 'recTotalValue')" title="Calculadora — somar valor de cada procedimento" aria-label="Calculadora" style="width:24px; height:24px; font-size:13px;">🧮</button>
+          </label>
+          <input type="number" id="recTotalValue" min="0" step="0.01" placeholder="0,00" oninput="recalcCardFee('rec')">
+          <div class="procedure-calculator" id="recCalculator" style="display:none;"></div>
+        </div>
+        <div id="recCardFields" style="display:none;"></div>
+        <!-- Cartão lança como "hoje" por padrão; o link só abre a data pra
+             venda esquecida de outro dia (pedido do usuário 2026-09-30). -->
+        <div id="recCardDateToggle" style="display:none; margin:-6px 0 14px;">
+          <a href="#" onclick="showCardSaleDate(); return false;" style="font-size:12.5px; color:var(--cor-cinza-cacau);">📅 Venda em outra data?</a>
+        </div>
+        <div class="form-group" id="recInstallmentsGroup">
+          <label>Número de parcelas:</label>
+          <input type="number" id="recInstallments" min="1" max="24" value="1">
+        </div>
+        <div class="form-group" id="recFirstDueDateGroup">
+          <label id="recFirstDueDateLabel">Data do 1º vencimento:</label>
+          <input type="date" id="recFirstDueDate">
         </div>
         <div style="display:flex; gap:10px;">
           <button class="btn secondary" id="recSkipBtn" onclick="skipReceivableAfterComplete()" style="display:none; flex:1;">Pular</button>
@@ -2185,17 +2195,18 @@
       <div id="ccBalancePreview" style="margin-bottom:14px;"></div>
       <div class="form-group">
         <label>Valor pago (R$):</label>
-        <input type="number" id="ccValue" min="0" step="0.01" placeholder="0,00" oninput="updateCarteiraCreditoPreview()">
+        <input type="number" id="ccValue" min="0" step="0.01" placeholder="0,00" oninput="updateCarteiraCreditoPreview(); recalcCardFee('cc')">
       </div>
       <div class="form-group">
         <label>Meio de pagamento:</label>
-        <select id="ccPaymentMethod">
+        <select id="ccPaymentMethod" onchange="onPaymentMethodChange('cc')">
           <option value="Pix">Pix</option>
           <option value="Cartão">Cartão</option>
           <option value="Dinheiro">Dinheiro</option>
           <option value="Outro">Outro</option>
         </select>
       </div>
+      <div id="ccCardFields" style="display:none;"></div>
       <div class="form-group">
         <label>Data do pagamento:</label>
         <input type="date" id="ccDate">
@@ -2373,6 +2384,171 @@
       } catch (err) {
         console.error('Erro ao buscar procedimentos:', err);
       }
+    }
+
+    // Campos de valor em R$ (todo input number com step 0.01, inclusive
+    // os criados depois — calculadora, taxa do cartão) completam as
+    // casas decimais ao sair do campo: digitou 3 → vira 3,00 (pedido do
+    // usuário 2026-09-30). Delegado no document pra cobrir campos
+    // dinâmicos sem precisar lembrar de ligar um por um.
+    document.addEventListener('focusout', (e) => {
+      const el = e.target;
+      if (!el.matches || !el.matches('input[type="number"][step="0.01"]') || el.value === '') return;
+      const n = parseFloat(el.value);
+      if (!isNaN(n)) el.value = n.toFixed(2);
+    });
+
+    // --- Venda no cartão (pedido do usuário 2026-09-30) ---
+    // A maquininha credita tudo NA HORA, já descontada a taxa — então
+    // cartão vira um único lançamento Recebido na data da venda, com
+    // bruto/taxa/líquido, em vez de N parcelas mensais. Tabela de taxas
+    // vem da aba "Taxas Cartão" (via Apps Script, igual Procedimentos);
+    // o fallback abaixo é a mesma tabela que semeia a aba.
+    let CARD_FEES = [
+      { type: 'Débito', installments: 1, mdrPct: 1.13, monthlyPct: 0 },
+      { type: 'Crédito', installments: 1, mdrPct: 3.18, monthlyPct: 0 },
+      ...[2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(n => ({ type: 'Crédito', installments: n, mdrPct: 1.93, monthlyPct: 1.93 })),
+    ];
+
+    async function loadCardFees() {
+      const settings = loadSettings();
+      if (!settings || !settings.scriptUrl) return;
+      try {
+        const res = await fetch(`${settings.scriptUrl}?action=cardFees`);
+        const body = await res.json();
+        if (body.ok && Array.isArray(body.fees) && body.fees.length) CARD_FEES = body.fees;
+      } catch (err) {
+        console.error('Erro ao buscar taxas do cartão:', err);
+      }
+    }
+
+    // taxa = bruto × intermediação + desconto da antecipação (cada
+    // parcela bruto/N trazida a valor presente a acréscimo%/mês composto,
+    // 1 mês na 1ª … N na última). Bateu com o extrato real a poucos
+    // centavos (6x de 1.000: 83,52 vs 83,50) — por isso o campo de taxa
+    // continua editável. null = combinação sem linha na tabela.
+    function estimateCardFee(gross, type, installments) {
+      const row = CARD_FEES.find(f => f.type === type && Number(f.installments) === Number(installments));
+      if (!row || !(gross > 0)) return null;
+      let fee = gross * row.mdrPct / 100;
+      const monthly = (row.monthlyPct || 0) / 100;
+      if (monthly > 0) {
+        const parcel = gross / installments;
+        let presentValue = 0;
+        for (let k = 1; k <= installments; k++) presentValue += parcel / Math.pow(1 + monthly, k);
+        fee += gross - presentValue;
+      }
+      return { fee: Math.round(fee * 100) / 100, row };
+    }
+
+    // Taxa digitada à mão (valor do comprovante) não é sobrescrita pelo
+    // recálculo automático até mudar modalidade/parcelas de novo.
+    const cardFeeManual = { rec: false, cc: false };
+
+    function cardGrossValue(prefix) {
+      return parseFloat(document.getElementById(prefix === 'rec' ? 'recTotalValue' : 'ccValue').value) || 0;
+    }
+
+    function onPaymentMethodChange(prefix) {
+      const isCard = document.getElementById(`${prefix}PaymentMethod`).value === 'Cartão';
+      const box = document.getElementById(`${prefix}CardFields`);
+      if (isCard && !box.innerHTML) {
+        box.innerHTML = `
+          <div class="form-group">
+            <label>Modalidade:</label>
+            <select id="${prefix}CardType" onchange="onCardTypeChange('${prefix}')">
+              <option value="Crédito">Crédito</option>
+              <option value="Débito">Débito</option>
+            </select>
+          </div>
+          <div class="form-group" id="${prefix}CardInstallmentsGroup">
+            <label>Parcelas no cartão:</label>
+            <select id="${prefix}CardInstallments" onchange="cardFeeManual['${prefix}'] = false; recalcCardFee('${prefix}')"></select>
+          </div>
+          <div class="form-group">
+            <label>Taxa da maquininha (R$):</label>
+            <input type="number" id="${prefix}CardFee" min="0" step="0.01" oninput="cardFeeManual['${prefix}'] = true; recalcCardFee('${prefix}')">
+            <div id="${prefix}CardFeeHint" style="font-size:12px; color:var(--cor-cinza-cacau); margin-top:4px;"></div>
+          </div>
+        `;
+        onCardTypeChange(prefix);
+      }
+      box.style.display = isCard ? 'block' : 'none';
+
+      if (prefix === 'rec') {
+        // Cartão = 1 lançamento recebido hoje, na hora — "Número de
+        // parcelas" do plano e vencimento não se aplicam (quem parcela é
+        // a operadora; pedido do usuário 2026-09-30: "quando for cartão
+        // não precisa informar data de vencimento").
+        document.getElementById('recInstallmentsGroup').style.display = isCard ? 'none' : 'block';
+        document.getElementById('recFirstDueDateGroup').style.display = (!isCard || recCardOtherDate) ? 'block' : 'none';
+        document.getElementById('recCardDateToggle').style.display = (isCard && !recCardOtherDate) ? 'block' : 'none';
+        document.getElementById('recFirstDueDateLabel').textContent = isCard ? 'Data da venda:' : 'Data do 1º vencimento:';
+        document.getElementById('recFirstDueDate').max = isCard ? localDateStr(new Date()) : '';
+      }
+    }
+
+    // Venda no cartão de outro dia (esquecida de lançar) — por padrão a
+    // venda é "hoje" e o campo de data nem aparece.
+    let recCardOtherDate = false;
+
+    function showCardSaleDate() {
+      recCardOtherDate = true;
+      onPaymentMethodChange('rec');
+      document.getElementById('recFirstDueDate').focus();
+    }
+
+    function onCardTypeChange(prefix) {
+      const type = document.getElementById(`${prefix}CardType`).value;
+      const select = document.getElementById(`${prefix}CardInstallments`);
+      const options = CARD_FEES.filter(f => f.type === type).map(f => Number(f.installments)).sort((a, b) => a - b);
+      select.innerHTML = options.map(n => `<option value="${n}">${n === 1 ? 'À vista' : `${n}x`}</option>`).join('');
+      document.getElementById(`${prefix}CardInstallmentsGroup`).style.display = options.length > 1 ? 'block' : 'none';
+      cardFeeManual[prefix] = false;
+      recalcCardFee(prefix);
+    }
+
+    function recalcCardFee(prefix) {
+      const feeInput = document.getElementById(`${prefix}CardFee`);
+      if (!feeInput) return;
+      const gross = cardGrossValue(prefix);
+      const type = document.getElementById(`${prefix}CardType`).value;
+      const installments = parseInt(document.getElementById(`${prefix}CardInstallments`).value, 10) || 1;
+      const estimate = estimateCardFee(gross, type, installments);
+      if (!cardFeeManual[prefix]) feeInput.value = estimate ? estimate.fee.toFixed(2) : '';
+      const fee = parseFloat(feeInput.value) || 0;
+      const hint = document.getElementById(`${prefix}CardFeeHint`);
+      if (!gross) {
+        hint.textContent = 'Informe o valor para calcular a taxa.';
+      } else if (!estimate) {
+        hint.textContent = `Sem taxa cadastrada para ${type} ${installments}x na aba "Taxas Cartão" — informe pelo comprovante. Líquido: ${formatCurrencyBRL(gross - fee)}`;
+      } else {
+        const estimatePct = (estimate.fee / gross * 100).toFixed(2).replace('.', ',');
+        hint.textContent = `Líquido na conta: ${formatCurrencyBRL(gross - fee)} · tabela: ${formatCurrencyBRL(estimate.fee)} (${estimatePct}%)${cardFeeManual[prefix] ? ' — taxa ajustada à mão' : ' — confira no comprovante'}`;
+      }
+    }
+
+    /** {type, installments, fee, net} do formulário, ou {error}. */
+    function readCardFields(prefix, gross) {
+      recalcCardFee(prefix);
+      const type = document.getElementById(`${prefix}CardType`).value;
+      const installments = parseInt(document.getElementById(`${prefix}CardInstallments`).value, 10) || 1;
+      const fee = parseFloat(document.getElementById(`${prefix}CardFee`).value);
+      if (isNaN(fee) || fee < 0 || fee >= gross) return { error: 'Informe a taxa da maquininha (R$) — menor que o valor da venda.' };
+      const roundedFee = Math.round(fee * 100) / 100;
+      return { type, installments, fee: roundedFee, net: Math.round((gross - roundedFee) * 100) / 100 };
+    }
+
+    function cardLabel(type, installments) {
+      if (!type) return '';
+      if (type === 'Débito') return 'Débito';
+      return Number(installments) > 1 ? `Crédito ${installments}x` : 'Crédito à vista';
+    }
+
+    function resetCardFields(prefix) {
+      cardFeeManual[prefix] = false;
+      document.getElementById(`${prefix}CardFields`).innerHTML = '';
+      onPaymentMethodChange(prefix);
     }
 
     // Identifica o tipo de atendimento a partir do TÍTULO do evento do
@@ -2691,6 +2867,32 @@
       return parseFloat(String(raw).replace(',', '.')) || 0;
     }
 
+    // Colunas de venda no cartão (Financeiro e Carteira, 2026-09-30).
+    // Linhas antigas/sem cartão: cardFee null e netValue = o próprio valor.
+    function cardFieldsFromRow(row, headers) {
+      const col = (name) => { const i = headers.indexOf(name); return i === -1 ? '' : (row[i] || ''); };
+      const type = col('Modalidade Cartão');
+      const feeRaw = col('Taxa do Cartão');
+      return {
+        cardType: type,
+        cardInstallments: col('Parcelas no Cartão'),
+        cardFee: feeRaw === '' ? null : parseCurrencyCell(feeRaw),
+        netValue: col('Valor Líquido') === '' ? null : parseCurrencyCell(col('Valor Líquido')),
+      };
+    }
+
+    // Quanto de fato entra no caixa: líquido quando foi cartão com taxa
+    // registrada, senão o valor cheio.
+    function netOf(item) {
+      return item.netValue !== null && item.netValue !== undefined ? item.netValue : item.value;
+    }
+
+    function cardMetaHtml(item) {
+      if (!item.cardType) return '';
+      const fee = item.cardFee !== null ? ` · taxa ${formatCurrencyBRL(item.cardFee)} · líquido ${formatCurrencyBRL(netOf(item))}` : '';
+      return `<span>💳 ${cardLabel(item.cardType, item.cardInstallments)}${fee}</span>`;
+    }
+
     async function fetchFinanceData() {
       const settings = loadSettings();
       if (!settings || !settings.spreadsheetId || !settings.apiKey) {
@@ -2727,6 +2929,7 @@
           paymentMethod: row[headers.indexOf('Meio de Pagamento')] || '',
           status: row[headers.indexOf('Status')] || 'A receber',
           receivedDate: row[headers.indexOf('Data de Recebimento')] || '',
+          ...cardFieldsFromRow(row, headers),
         })).filter(r => r.id);
       } catch (err) {
         console.error('Erro ao buscar financeiro:', err);
@@ -2776,6 +2979,7 @@
           value: parseCurrencyCell(row[headers.indexOf('Valor')]),
           paymentMethod: row[headers.indexOf('Meio de Pagamento')] || '',
           date: row[headers.indexOf('Data')] || '',
+          ...cardFieldsFromRow(row, headers),
         })).filter(r => r.id);
       } catch (err) {
         console.error('Erro ao buscar carteira:', err);
@@ -3166,6 +3370,7 @@
       fetchFinanceData();
       fetchCarteiraData();
       loadProcedureList();
+      loadCardFees();
     }
 
     const WEEKDAY_LABELS_PT = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
@@ -3615,12 +3820,12 @@
       container.innerHTML = items.map(item => `
         <div class="finance-row">
           <div class="finance-row-main">
-            <span>${item.description || 'Cobrança'} — Parcela ${item.installmentLabel}</span>
+            <span>${item.description || 'Cobrança'} — ${item.cardType ? 'Venda no cartão' : `Parcela ${item.installmentLabel}`}</span>
             <span class="finance-row-value">${formatCurrencyBRL(item.value)}</span>
           </div>
           <div class="finance-row-meta">
-            <span>Vence ${formatDateBR(item.dueDate)}</span>
-            <span>${item.paymentMethod || '—'}</span>
+            <span>${item.cardType ? formatDateBR(item.dueDate) : `Vence ${formatDateBR(item.dueDate)}`}</span>
+            ${item.cardType ? cardMetaHtml(item) : `<span>${item.paymentMethod || '—'}</span>`}
             <span class="finance-status-badge ${item.status === 'Recebido' ? 'finance-status-paid' : 'finance-status-pending'}">${item.status}</span>
           </div>
           <div style="display:flex; gap:6px;">
@@ -3727,7 +3932,7 @@
           </div>
           <div class="finance-row-meta">
             <span>${formatDateBR(entry.date)}</span>
-            ${entry.paymentMethod ? `<span>${entry.paymentMethod}</span>` : ''}
+            ${entry.cardType ? cardMetaHtml(entry) : (entry.paymentMethod ? `<span>${entry.paymentMethod}</span>` : '')}
             <span class="finance-status-badge ${entry.type === 'Débito' ? 'finance-status-pending' : 'finance-status-paid'}">${entry.type}</span>
           </div>
           <button class="complete-btn complete-btn-danger" style="width:100%;" onclick="deleteCarteiraEntryFromUI('${entry.id}', '${phone}')" title="Excluir lançamento" aria-label="Excluir lançamento">🗑️ Excluir</button>
@@ -3842,6 +4047,7 @@
 
       document.getElementById('ccValue').value = '';
       document.getElementById('ccPaymentMethod').value = 'Pix';
+      resetCardFields('cc');
       document.getElementById('ccDate').value = localDateStr(new Date());
       document.getElementById('carteiraCreditoError').innerHTML = '';
       updateCarteiraCreditoPreview();
@@ -3894,6 +4100,17 @@
         return;
       }
 
+      // Cartão: o saldo do cliente abate o valor BRUTO (ele pagou o
+      // total); a taxa/líquido ficam registrados só pro caixa da clínica.
+      let card = null;
+      if (paymentMethod === 'Cartão') {
+        card = readCardFields('cc', value);
+        if (card.error) {
+          errorEl.innerHTML = `<div class="form-error">❌ ${card.error}</div>`;
+          return;
+        }
+      }
+
       const btn = document.getElementById('ccSubmitBtn');
       btn.disabled = true;
       btn.textContent = '⏳ Registrando...';
@@ -3902,7 +4119,7 @@
         const response = await fetch(settings.scriptUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-          body: JSON.stringify({ action: 'addCarteiraCredito', phone: carteiraTargetPhone, name: carteiraTargetName, value, paymentMethod, date })
+          body: JSON.stringify({ action: 'addCarteiraCredito', phone: carteiraTargetPhone, name: carteiraTargetName, value, paymentMethod, date, card })
         });
         const result = await response.json();
         if (!result.ok) throw new Error(result.error || 'Erro desconhecido');
@@ -4159,7 +4376,8 @@
           ['Lançamento', 'Pagamento na Carteira'],
           ['Valor', formatCurrencyBRL(c.value)],
           ['Data', formatDateBR(c.date)],
-          ['Meio de pagamento', c.paymentMethod || '—'],
+          ['Meio de pagamento', c.cardType ? `Cartão — ${cardLabel(c.cardType, c.cardInstallments)}` : (c.paymentMethod || '—')],
+          ...cardSummaryRows(c),
           ['Status', '✅ Recebido'],
         ];
       } else {
@@ -4168,10 +4386,11 @@
         rows = [
           ['Cliente', item.name],
           ['Procedimento', item.description || '—'],
-          ['Parcela', item.installmentLabel || '—'],
+          ...(item.cardType ? [] : [['Parcela', item.installmentLabel || '—']]),
           ['Valor', formatCurrencyBRL(item.value)],
-          ['Vencimento', formatDateBR(item.dueDate)],
-          ['Meio de pagamento', item.paymentMethod || '—'],
+          [item.cardType ? 'Data da venda' : 'Vencimento', formatDateBR(item.dueDate)],
+          ['Meio de pagamento', item.cardType ? `Cartão — ${cardLabel(item.cardType, item.cardInstallments)}` : (item.paymentMethod || '—')],
+          ...cardSummaryRows(item),
           ['Status', item.status === 'Recebido'
             ? `✅ Recebido${item.receivedDate ? ' em ' + formatDateBR(item.receivedDate) : ''}`
             : '🔶 A receber'],
@@ -4183,6 +4402,14 @@
       `).join('');
 
       document.getElementById('transactionSummaryModal').classList.add('open');
+    }
+
+    function cardSummaryRows(item) {
+      if (!item.cardType || item.cardFee === null) return [];
+      return [
+        ['Taxa da maquininha', `− ${formatCurrencyBRL(item.cardFee)}`],
+        ['Líquido na conta', formatCurrencyBRL(netOf(item))],
+      ];
     }
 
     function closeTransactionSummary() {
@@ -4259,6 +4486,13 @@
         .sort((a, b) => b.balance - a.balance);
       const carteiraOpenTotal = carteiraOpenBalances.reduce((s, b) => s + b.balance, 0);
 
+      // Venda no cartão (2026-09-30): "Recebido no mês" continua BRUTO (o
+      // que o cliente pagou); a taxa da maquininha sai à parte, e o
+      // líquido é o que de fato caiu na conta.
+      const receivedNetTotal = receivedInMonth.reduce((s, f) => s + netOf(f), 0)
+        + carteiraCreditsInMonth.reduce((s, c) => s + netOf(c), 0);
+      const cardFeesTotal = receivedTotal - receivedNetTotal;
+
       const methodRows = Object.keys(receivedByMethod).sort().map(method => `
         <div class="finance-summary-method">
           <span>${PAYMENT_METHOD_ICONS[method] || '📄'} ${method}</span>
@@ -4285,18 +4519,29 @@
             <div class="finance-summary-label">Em aberto na Carteira</div>
           </div>
         </div>
-        <div class="finance-summary-methods">${methodRows}</div>
+        <div class="finance-summary-methods">
+          ${methodRows}
+          ${cardFeesTotal > 0.004 ? `
+            <div class="finance-summary-method" style="color:var(--cor-cinza-cacau);">
+              <span>Taxas da maquininha</span>
+              <span>− ${formatCurrencyBRL(cardFeesTotal)}</span>
+            </div>
+            <div class="finance-summary-method" style="font-weight:600;">
+              <span>Líquido recebido</span>
+              <span>${formatCurrencyBRL(receivedNetTotal)}</span>
+            </div>` : ''}
+        </div>
       `;
 
       const financeRowHtml = (item) => `
         <div class="finance-row" onclick="openFinanceTransactionSummary('${item.id}', 'financeiro')" role="button" tabindex="0" style="cursor:pointer;">
           <div class="finance-row-main">
-            <span>${item.name} — ${item.description || 'Cobrança'} (${item.installmentLabel})</span>
+            <span>${item.name} — ${item.description || 'Cobrança'} (${item.cardType ? 'cartão' : item.installmentLabel})</span>
             <span class="finance-row-value">${formatCurrencyBRL(item.value)}</span>
           </div>
           <div class="finance-row-meta">
-            <span>Vence ${formatDateBR(item.dueDate)}</span>
-            <span>${item.paymentMethod || '—'}</span>
+            <span>${item.cardType ? formatDateBR(item.dueDate) : `Vence ${formatDateBR(item.dueDate)}`}</span>
+            ${item.cardType ? cardMetaHtml(item) : `<span>${item.paymentMethod || '—'}</span>`}
             <span class="finance-status-badge ${item.status === 'Recebido' ? 'finance-status-paid' : 'finance-status-pending'}">${item.status}</span>
           </div>
         </div>
@@ -4313,7 +4558,7 @@
           </div>
           <div class="finance-row-meta">
             <span>${formatDateBR(c.date)}</span>
-            <span>${c.paymentMethod || '—'}</span>
+            ${c.cardType ? cardMetaHtml(c) : `<span>${c.paymentMethod || '—'}</span>`}
             <span class="finance-status-badge finance-status-paid">Recebido</span>
           </div>
         </div>
@@ -4422,6 +4667,8 @@
       document.getElementById('recInstallments').value = 1;
       document.getElementById('recFirstDueDate').value = localDateStr(new Date());
       document.getElementById('recPaymentMethod').value = 'Pix';
+      recCardOtherDate = false;
+      resetCardFields('rec');
       document.getElementById('receivableError').innerHTML = '';
       document.getElementById('receivableFormStep').style.display = 'block';
       document.getElementById('receivableConfirmStep').style.display = 'none';
@@ -4480,6 +4727,11 @@
         document.getElementById('receivableError').innerHTML = '<div class="form-error">⚠️ Marque pelo menos um procedimento.</div>';
         return;
       }
+      if (paymentMethod === 'Cartão') {
+        reviewCardReceivable(description, totalValue, recCardOtherDate ? firstDueDate : localDateStr(new Date()));
+        return;
+      }
+
       if (!totalValue || totalValue <= 0 || !installmentCount || installmentCount < 1 || !firstDueDate) {
         document.getElementById('receivableError').innerHTML = '<div class="form-error">⚠️ Preencha valor total, número de parcelas e data do 1º vencimento.</div>';
         return;
@@ -4490,8 +4742,13 @@
       let sumSoFar = 0;
       const firstDue = new Date(`${firstDueDate}T00:00:00`);
       for (let i = 0; i < installmentCount; i++) {
-        const dueDate = new Date(firstDue);
-        dueDate.setMonth(dueDate.getMonth() + i);
+        // Mesmo dia do mês nas próximas parcelas, travado no último dia
+        // quando o mês é mais curto — setMonth() puro transbordava
+        // (29/01 + 1 mês virava 01/03 em ano não bissexto; bug real no
+        // lançamento de 2026-09-29, 6ª parcela caiu em 01/03/2027).
+        const dueDate = new Date(firstDue.getFullYear(), firstDue.getMonth() + i, 1);
+        const lastDay = new Date(dueDate.getFullYear(), dueDate.getMonth() + 1, 0).getDate();
+        dueDate.setDate(Math.min(firstDue.getDate(), lastDay));
         const value = (i === installmentCount - 1) ? Math.round((totalValue - sumSoFar) * 100) / 100 : baseValue;
         sumSoFar += value;
         // Vindo do fluxo de baixa, a 1ª parcela já nasce recebida — o
@@ -4538,6 +4795,50 @@
       document.getElementById('receivableConfirmStep').style.display = 'block';
     }
 
+    // Cartão: 1 lançamento só, já Recebido na data da venda (a maquininha
+    // credita na hora), com bruto/taxa/líquido — sem checklist de parcelas.
+    function reviewCardReceivable(description, totalValue, saleDate) {
+      const errorEl = document.getElementById('receivableError');
+      if (!totalValue || totalValue <= 0 || !saleDate) {
+        errorEl.innerHTML = '<div class="form-error">⚠️ Preencha o valor total e a data da venda.</div>';
+        return;
+      }
+      if (saleDate > localDateStr(new Date())) {
+        errorEl.innerHTML = '<div class="form-error">⚠️ A data da venda não pode ser no futuro.</div>';
+        return;
+      }
+      const card = readCardFields('rec', totalValue);
+      if (card.error) {
+        errorEl.innerHTML = `<div class="form-error">⚠️ ${card.error}</div>`;
+        return;
+      }
+
+      const lead = allData.find(l => l.phone === receivableTargetPhone);
+      receivableContext = {
+        phone: receivableTargetPhone,
+        name: (lead && lead.name) || '—',
+        description,
+        totalValue,
+        paymentMethod: 'Cartão',
+        installments: [{ dueDate: saleDate, value: totalValue, received: true }],
+        card,
+      };
+
+      document.getElementById('receivableConfirmBody').innerHTML = `
+        <div class="ld-row"><span class="ld-label">Paciente</span><span class="ld-value">${receivableContext.name}</span></div>
+        <div class="ld-row"><span class="ld-label">Descrição</span><span class="ld-value">${description}</span></div>
+        <div class="ld-row"><span class="ld-label">Meio de pagamento</span><span class="ld-value">💳 Cartão — ${cardLabel(card.type, card.installments)}</span></div>
+        <hr style="border:none;border-top:1px solid var(--cor-creme-avela);margin:10px 0;">
+        <div class="ld-row"><span class="ld-label">Valor da venda</span><span class="ld-value">${formatCurrencyBRL(totalValue)}</span></div>
+        <div class="ld-row"><span class="ld-label">Taxa da maquininha</span><span class="ld-value">− ${formatCurrencyBRL(card.fee)} (${(card.fee / totalValue * 100).toFixed(2).replace('.', ',')}%)</span></div>
+        <div class="ld-row"><span class="ld-label">Líquido na conta</span><span class="ld-value"><strong>${formatCurrencyBRL(card.net)}</strong> em ${formatDateBR(saleDate)}</span></div>
+        <p style="color: var(--cor-cinza-cacau); font-size: 12px; margin-top: 12px;">ℹ️ Recebimento na hora: entra como um único lançamento já recebido.</p>
+      `;
+
+      document.getElementById('receivableFormStep').style.display = 'none';
+      document.getElementById('receivableConfirmStep').style.display = 'block';
+    }
+
     function backToReceivableForm() {
       document.getElementById('receivableConfirmStep').style.display = 'none';
       document.getElementById('receivableFormStep').style.display = 'block';
@@ -4561,9 +4862,12 @@
 
         const count = receivableContext.installments.length;
         const name = receivableContext.name;
+        const card = receivableContext.card;
         const wasFromComplete = receivableFromComplete;
         closeReceivableModal();
-        showToast(`✅ ${count} parcela(s) lançada(s) para ${name}`);
+        showToast(card
+          ? `✅ Venda no cartão lançada para ${name} — líquido ${formatCurrencyBRL(card.net)}`
+          : `✅ ${count} parcela(s) lançada(s) para ${name}`);
         await fetchFinanceData();
         if (currentDetailPhone) renderLeadFinanceList(currentDetailPhone);
         if (wasFromComplete) proceedAfterReceivableStep();
@@ -4908,7 +5212,11 @@
 
     function applyCalculatorTotal(namespace, targetFieldId) {
       const sum = updateCalculatorTotal(namespace);
-      document.getElementById(targetFieldId).value = sum.toFixed(2);
+      const target = document.getElementById(targetFieldId);
+      target.value = sum.toFixed(2);
+      // Dispara os oninput do campo (prévia de saldo / taxa do cartão),
+      // igual se o valor tivesse sido digitado.
+      target.dispatchEvent(new Event('input', { bubbles: true }));
       document.getElementById(`${namespace}Calculator`).style.display = 'none';
     }
 
@@ -5681,6 +5989,7 @@
         fetchFinanceData();
         fetchCarteiraData();
         loadProcedureList();
+        loadCardFees();
       } else {
         showEmptyState();
         toggleSettings(); // Abrir config ao carregar se não tiver configurado

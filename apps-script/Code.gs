@@ -144,6 +144,9 @@ function doGet(e) {
     if (e.parameter.action === 'clientHistory') {
       return jsonResponse(getClientHistory(e.parameter.phone));
     }
+    if (e.parameter.action === 'cardFees') {
+      return jsonResponse(getCardFees());
+    }
     return jsonResponse({ ok: false, error: 'Ação desconhecida' });
   } catch (err) {
     return jsonResponse({ ok: false, error: String(err) });
@@ -1136,6 +1139,15 @@ const FINANCE_COLUMNS = [
   'Status',
   'Data de Recebimento',
   'Criado em',
+  // Venda no cartão (pedido do usuário 2026-09-30): recebimento "na hora"
+  // — a maquininha credita tudo no mesmo dia, já descontada a taxa. Vira
+  // UMA linha (Parcela 1/1, já Recebido na data da venda); as parcelas do
+  // cartão ficam só como informação, porque quem parcela é a operadora,
+  // não a clínica. Vazias pra Pix/Dinheiro/Outro.
+  'Modalidade Cartão',
+  'Parcelas no Cartão',
+  'Taxa do Cartão',
+  'Valor Líquido',
 ];
 
 function getFinanceSheet() {
@@ -1162,10 +1174,11 @@ function getFinanceSheet() {
  * (mesmo padrão de "Revisar e Confirmar" do Novo Agendamento).
  */
 function createReceivables(payload) {
-  const { phone, name, description, totalValue, paymentMethod, installments } = payload;
+  const { phone, name, description, totalValue, paymentMethod, installments, card } = payload;
   if (!phone || !name || !installments || !installments.length) {
     return { ok: false, error: 'Campos obrigatórios: phone, name, installments.' };
   }
+  const cardCells = cardColumnsValues(card);
 
   const sheet = getFinanceSheet();
   const createdAt = Utilities.formatDate(new Date(), TIME_ZONE, "yyyy-MM-dd'T'HH:mm:ss");
@@ -1191,6 +1204,7 @@ function createReceivables(payload) {
     inst.received ? 'Recebido' : 'A receber',
     inst.received ? (inst.dueDate || todayStr) : '',
     createdAt,
+    ...cardCells,
   ]);
 
   const startRow = sheet.getLastRow() + 1;
@@ -1300,6 +1314,13 @@ const CARTEIRA_COLUMNS = [
   'Meio de Pagamento',
   'Data',
   'Criado em',
+  // Mesmas colunas de cartão do Financeiro — só preenchidas em Crédito
+  // pago no cartão. O saldo devedor abate o valor BRUTO (Valor): o
+  // cliente pagou o total; a taxa é custo da clínica, não dívida dele.
+  'Modalidade Cartão',
+  'Parcelas no Cartão',
+  'Taxa do Cartão',
+  'Valor Líquido',
 ];
 
 function getCarteiraSheet() {
@@ -1331,7 +1352,7 @@ function addCarteiraDebito(payload) {
   const dateStr = date || Utilities.formatDate(new Date(), TIME_ZONE, 'yyyy-MM-dd');
   const range = sheet.getRange(sheet.getLastRow() + 1, 1, 1, CARTEIRA_COLUMNS.length);
   range.setNumberFormat('@');
-  range.setValues([[id, phone, name, 'Débito', description, value, '', dateStr, createdAt]]);
+  range.setValues([[id, phone, name, 'Débito', description, value, '', dateStr, createdAt, '', '', '', '']]);
   return { ok: true, id };
 }
 
@@ -1341,7 +1362,7 @@ function addCarteiraDebito(payload) {
  * (soma dos débitos menos soma dos créditos) é que reflete o resultado.
  */
 function addCarteiraCredito(payload) {
-  const { phone, name, value, paymentMethod, date } = payload;
+  const { phone, name, value, paymentMethod, date, card } = payload;
   if (!phone || !name || !value) {
     return { ok: false, error: 'Campos obrigatórios: phone, name, value.' };
   }
@@ -1351,7 +1372,7 @@ function addCarteiraCredito(payload) {
   const dateStr = date || Utilities.formatDate(new Date(), TIME_ZONE, 'yyyy-MM-dd');
   const range = sheet.getRange(sheet.getLastRow() + 1, 1, 1, CARTEIRA_COLUMNS.length);
   range.setNumberFormat('@');
-  range.setValues([[id, phone, name, 'Crédito', 'Pagamento', value, paymentMethod || '', dateStr, createdAt]]);
+  range.setValues([[id, phone, name, 'Crédito', 'Pagamento', value, paymentMethod || '', dateStr, createdAt, ...cardColumnsValues(card)]]);
   return { ok: true, id };
 }
 
@@ -1374,6 +1395,82 @@ function deleteCarteiraEntry(payload) {
     }
   }
   return { ok: false, error: 'Lançamento não encontrado.' };
+}
+
+// ============================================================
+// Taxas Cartão — tabela da maquininha (pedido do usuário 2026-09-30:
+// "quero uma aba na planilha com as taxas, para o caso de futuras
+// alterações"). Recebimento "na hora": a operadora credita tudo no dia
+// da venda e cobra:
+//   taxa = bruto × Intermediação%
+//        + desconto de antecipação: cada parcela (bruto/N) trazida a
+//          valor presente a Acréscimo%/mês composto, 1 mês na 1ª,
+//          2 na 2ª … N na última.
+// Conferido contra dado real: 6x de R$ 1.000 → R$ 83,52 calculado vs
+// R$ 83,50 no extrato; 10x → R$ 117,74 vs R$ 117,80 no simulador. A
+// diferença de centavos é arredondamento interno da operadora — por isso
+// a taxa é sempre só uma sugestão, editável antes de gravar.
+// Débito/crédito à vista: Acréscimo 0 → só a Intermediação.
+// O cálculo em si roda no Dashboard (prévia ao vivo); aqui só a tabela.
+// ============================================================
+
+const CARD_FEES_SHEET_NAME = 'Taxas Cartão';
+const CARD_FEES_COLUMNS = ['Modalidade', 'Parcelas', 'Taxa de Intermediação (%)', 'Acréscimo ao Mês (%)'];
+const DEFAULT_CARD_FEES = [
+  ['Débito', 1, 1.13, 0],
+  ['Crédito', 1, 3.18, 0],
+  ['Crédito', 2, 1.93, 1.93],
+  ['Crédito', 3, 1.93, 1.93],
+  ['Crédito', 4, 1.93, 1.93],
+  ['Crédito', 5, 1.93, 1.93],
+  ['Crédito', 6, 1.93, 1.93],
+  ['Crédito', 7, 1.93, 1.93],
+  ['Crédito', 8, 1.93, 1.93],
+  ['Crédito', 9, 1.93, 1.93],
+  ['Crédito', 10, 1.93, 1.93],
+  ['Crédito', 11, 1.93, 1.93],
+  ['Crédito', 12, 1.93, 1.93],
+];
+
+function getCardFeesSheet() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = ss.getSheetByName(CARD_FEES_SHEET_NAME);
+  if (!sheet) {
+    sheet = ss.insertSheet(CARD_FEES_SHEET_NAME);
+    sheet.getRange(1, 1, 1, CARD_FEES_COLUMNS.length).setValues([CARD_FEES_COLUMNS]);
+    sheet.getRange(2, 1, DEFAULT_CARD_FEES.length, CARD_FEES_COLUMNS.length).setValues(DEFAULT_CARD_FEES);
+    sheet.setFrozenRows(1);
+    sheet.getRange(1, 3).setNote('Percentual cobrado sobre o valor bruto da venda. Ex.: 1,93 = 1,93%.');
+    sheet.getRange(1, 4).setNote('Acréscimo mensal da antecipação ("Vendas parceladas, acréscimo de X%/mês"). 0 para débito e crédito à vista.');
+  }
+  return sheet;
+}
+
+/** Aceita número da planilha ou texto "1,93" / "1.93" / "1,93%". */
+function parsePercentCell(raw) {
+  if (typeof raw === 'number') return raw;
+  const n = parseFloat(String(raw || '').replace('%', '').replace(',', '.').trim());
+  return isNaN(n) ? null : n;
+}
+
+function getCardFees() {
+  const data = getCardFeesSheet().getDataRange().getValues();
+  const fees = [];
+  for (let i = 1; i < data.length; i++) {
+    const type = String(data[i][0] || '').trim();
+    const installments = parseInt(data[i][1], 10);
+    const mdrPct = parsePercentCell(data[i][2]);
+    const monthlyPct = parsePercentCell(data[i][3]) || 0;
+    if (!type || !installments || mdrPct === null) continue;
+    fees.push({ type, installments, mdrPct, monthlyPct });
+  }
+  return { ok: true, fees };
+}
+
+/** As 4 colunas de cartão (Financeiro/Carteira) — vazias se não foi cartão. */
+function cardColumnsValues(card) {
+  if (!card) return ['', '', '', ''];
+  return [card.type || '', card.installments || '', card.fee, card.net];
 }
 
 function jsonResponse(obj) {
