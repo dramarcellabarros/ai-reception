@@ -504,7 +504,35 @@
       margin-bottom: 15px;
     }
 
-    .agenda-header > span { flex-wrap: wrap; justify-content: flex-end; }
+    .agenda-header-2rows { display: block; }
+    .agenda-header-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+    .agenda-header-row + .agenda-header-row {
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px solid var(--cor-creme-avela);
+    }
+    .agenda-view-btns { display: flex; gap: 6px; flex-shrink: 0; }
+    .agenda-view-btn {
+      border: 1px solid var(--cor-creme-avela);
+      background: var(--cor-branco-perola);
+      color: var(--cor-texto-marca);
+      font: inherit;
+      font-size: 12.5px;
+      font-weight: 600;
+      padding: 6px 11px;
+      border-radius: 14px;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .agenda-view-btn:hover { background: var(--cor-rosa-sereno); border-color: var(--cor-dourado-ambar); }
+    @media (max-width: 400px) {
+      .agenda-view-btn { font-size: 12px; padding: 6px 9px; }
+    }
 
     .agenda-header h2 {
       font-size: 18px;
@@ -1704,6 +1732,38 @@
     header { padding: 18px 30px; }
     .header-actions { display: flex; align-items: center; }
 
+    /* Formas de pagamento (venda mista) no Lançar cobrança. */
+    .pay-part {
+      border: 1px solid var(--cor-creme-avela);
+      border-left: 3px solid var(--cor-dourado-ambar);
+      border-radius: 8px;
+      padding: 10px 12px 2px;
+      margin-bottom: 10px;
+      background: var(--cor-branco-perola);
+    }
+    .pay-part-head { display: flex; justify-content: space-between; align-items: center; font-size: 12.5px; font-weight: 700; color: var(--cor-texto-marca); margin-bottom: 8px; }
+    .pay-part-remove { border: none; background: none; color: var(--cor-cinza-cacau); font: inherit; font-size: 12px; cursor: pointer; text-decoration: underline; padding: 0; }
+    .pay-part-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px; }
+    .pay-part-grid label { display: flex; flex-direction: column; gap: 3px; font-size: 11.5px; color: var(--cor-cinza-cacau); min-width: 0; }
+    /* Mesmo visual dos campos de formulário (.form-group input), e os
+       campos do cartão dentro da forma ficam no mesmo tamanho compacto
+       dos de Forma/Valor — antes uns saíam minúsculos e outros grandes. */
+    .pay-part-grid input, .pay-part-grid select,
+    .installment-edit-fields input {
+      width: 100%;
+      min-width: 0;
+      padding: 9px 10px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 14px;
+      background: white;
+      color: var(--cor-texto);
+    }
+    .pay-part .form-group { margin-bottom: 10px; }
+    .pay-part .form-group label { font-size: 11.5px; font-weight: 400; color: var(--cor-cinza-cacau); margin-bottom: 3px; }
+    .pay-part .form-group input, .pay-part .form-group select { padding: 9px 10px; }
+    .review-part-title { font-size: 12.5px; font-weight: 700; color: var(--cor-texto-marca); margin: 14px 0 8px; padding-top: 10px; border-top: 1px dashed var(--cor-creme-avela); }
+
     /* Revisão editável das parcelas (Lançar cobrança). */
     .installment-edit {
       border: 1px solid var(--cor-creme-avela);
@@ -2098,14 +2158,22 @@
     <!-- Módulo Agenda = só a agenda (revisão de redundância 2026-09-30):
          cards/busca/tabela de leads foram para o módulo Clientes. -->
     <div class="agenda-section">
-      <div class="agenda-header">
-        <h2 id="agendaTitle">📅 Agenda</h2>
-        <span style="display:flex; align-items:center; gap:12px;">
-          <span class="agenda-status" id="agendaStatus"></span>
+      <!-- Duas linhas com papéis claros (pedido do usuário 2026-09-30,
+           "não estou gostando da disposição desses botões"): 1ª = título
+           + ação principal; 2ª = contador à esquerda + atalhos de
+           visualização à direita, como botões iguais (não links soltos). -->
+      <div class="agenda-header agenda-header-2rows">
+        <div class="agenda-header-row">
+          <h2 id="agendaTitle">📅 Agenda</h2>
           <button class="btn-primary-soft" onclick="openNewAppointmentModal()">➕ Novo agendamento</button>
-          <button class="agenda-toggle-btn" onclick="openMonthCalendar()">🗓️ Visão do mês</button>
-          <button class="agenda-toggle-btn" id="agendaToggleBtn" onclick="toggleAgendaHistory()">📜 Ver histórico</button>
-        </span>
+        </div>
+        <div class="agenda-header-row">
+          <span class="agenda-status" id="agendaStatus"></span>
+          <div class="agenda-view-btns">
+            <button class="agenda-view-btn" onclick="openMonthCalendar()">🗓️ Visão do mês</button>
+            <button class="agenda-view-btn" id="agendaToggleBtn" onclick="toggleAgendaHistory()">📜 Ver histórico</button>
+          </div>
+        </div>
       </div>
       <div id="agendaList" class="agenda-list">
         <div class="loading">⏳ Carregando agenda...</div>
@@ -2442,41 +2510,27 @@
           <div class="procedure-checklist" id="recProcedureChecklist"></div>
           <div class="procedure-check-summary" id="recProcSummary"></div>
         </div>
-        <!-- Meio de pagamento vem ANTES do valor (pedido do usuário
-             2026-09-30): ele define o resto do formulário — cartão pede
-             modalidade/parcelas/taxa e não tem vencimento; os demais
-             pedem nº de parcelas e 1º vencimento. -->
-        <div class="form-group">
-          <label>Meio de pagamento:</label>
-          <select id="recPaymentMethod" onchange="onPaymentMethodChange('rec')">
-            <option value="Pix">Pix</option>
-            <option value="Cartão">Cartão</option>
-            <option value="Dinheiro">Dinheiro</option>
-            <option value="Outro">Outro</option>
-          </select>
-        </div>
         <div class="form-group">
           <label style="display:flex; justify-content:space-between; align-items:center;">
-            <span>Valor total combinado (R$):</span>
+            <span>Valor total da venda (R$):</span>
             <button type="button" class="icon-btn-flat" onclick="toggleProcedureCalculator('rec', 'recTotalValue')" title="Calculadora — somar valor de cada procedimento" aria-label="Calculadora" style="width:24px; height:24px; font-size:13px;">🧮</button>
           </label>
-          <input type="number" id="recTotalValue" min="0" step="0.01" placeholder="0,00" oninput="recalcCardFee('rec')">
+          <input type="number" id="recTotalValue" min="0" step="0.01" placeholder="0,00" oninput="onRecTotalChange()">
           <div class="procedure-calculator" id="recCalculator" style="display:none;"></div>
         </div>
-        <div id="recCardFields" style="display:none;"></div>
-        <!-- Cartão lança como "hoje" por padrão; o link só abre a data pra
-             venda esquecida de outro dia (pedido do usuário 2026-09-30). -->
-        <div id="recCardDateToggle" style="display:none; margin:-6px 0 14px;">
-          <a href="#" onclick="showCardSaleDate(); return false;" style="font-size:12.5px; color:var(--cor-cinza-cacau);">📅 Venda em outra data?</a>
+        <div class="form-group">
+          <label>Data da venda:</label>
+          <input type="date" id="recSaleDate" onchange="onRecSaleDateChange()">
         </div>
-        <div class="form-group" id="recInstallmentsGroup">
-          <label>Número de parcelas:</label>
-          <input type="number" id="recInstallments" min="1" max="24" value="1">
-        </div>
-        <div class="form-group" id="recFirstDueDateGroup">
-          <label id="recFirstDueDateLabel">Data do 1º vencimento:</label>
-          <input type="date" id="recFirstDueDate">
-        </div>
+        <!-- Pagamento misto (pedido do usuário 2026-09-30: "Total 1000,
+             400 no dinheiro e 600 em 6x no cartão, assim como outras
+             combinações"). Cada forma é um bloco; cartão pede modalidade/
+             parcelas/taxa e entra recebido na data da venda; Pix/Dinheiro/
+             Outro pedem nº de parcelas e 1º vencimento. -->
+        <label style="display:block; font-weight:600; margin-bottom:8px;">Formas de pagamento:</label>
+        <div id="recPayParts"></div>
+        <button type="button" class="agenda-toggle-btn" onclick="addPaymentPart()" style="margin:2px 0 8px;">➕ Adicionar outra forma de pagamento</button>
+        <div id="recPartsCheck" style="font-size:13px; margin-bottom:14px;"></div>
         <div style="display:flex; gap:10px;">
           <button class="btn secondary" id="recSkipBtn" onclick="skipReceivableAfterComplete()" style="display:none; flex:1;">Pular</button>
           <button class="btn" onclick="reviewReceivable()" style="flex:1;">Revisar →</button>
@@ -2790,7 +2844,8 @@
     const cardFeeManual = { rec: false, cc: false };
 
     function cardGrossValue(prefix) {
-      return parseFloat(document.getElementById(prefix === 'rec' ? 'recTotalValue' : 'ccValue').value) || 0;
+      // 'cc' = pagamento na Carteira; 'rpN' = forma N da venda mista.
+      return parseFloat(document.getElementById(prefix === 'cc' ? 'ccValue' : `${prefix}Value`).value) || 0;
     }
 
     function onPaymentMethodChange(prefix) {
@@ -2819,27 +2874,12 @@
       }
       box.style.display = isCard ? 'block' : 'none';
 
-      if (prefix === 'rec') {
-        // Cartão = 1 lançamento recebido hoje, na hora — "Número de
-        // parcelas" do plano e vencimento não se aplicam (quem parcela é
-        // a operadora; pedido do usuário 2026-09-30: "quando for cartão
-        // não precisa informar data de vencimento").
-        document.getElementById('recInstallmentsGroup').style.display = isCard ? 'none' : 'block';
-        document.getElementById('recFirstDueDateGroup').style.display = (!isCard || recCardOtherDate) ? 'block' : 'none';
-        document.getElementById('recCardDateToggle').style.display = (isCard && !recCardOtherDate) ? 'block' : 'none';
-        document.getElementById('recFirstDueDateLabel').textContent = isCard ? 'Data da venda:' : 'Data do 1º vencimento:';
-        document.getElementById('recFirstDueDate').max = isCard ? localDateStr(new Date()) : '';
-      }
-    }
-
-    // Venda no cartão de outro dia (esquecida de lançar) — por padrão a
-    // venda é "hoje" e o campo de data nem aparece.
-    let recCardOtherDate = false;
-
-    function showCardSaleDate() {
-      recCardOtherDate = true;
-      onPaymentMethodChange('rec');
-      document.getElementById('recFirstDueDate').focus();
+      // Forma de pagamento da venda mista: cartão esconde nº de parcelas/
+      // vencimento (quem parcela é a operadora; entra recebido na data
+      // da venda).
+      const plan = document.getElementById(`${prefix}PlanFields`);
+      if (plan) plan.style.display = isCard ? 'none' : '';
+      if (typeof updatePartsCheck === 'function' && prefix.startsWith('rp')) updatePartsCheck();
     }
 
     function onCardTypeChange(prefix) {
@@ -4484,11 +4524,9 @@
       onProcedureCheckChange('rec');
       document.getElementById('recTotalValue').value = '';
       document.getElementById('recCalculator').style.display = 'none';
-      document.getElementById('recInstallments').value = 1;
-      document.getElementById('recFirstDueDate').value = localDateStr(new Date());
-      document.getElementById('recPaymentMethod').value = 'Pix';
-      recCardOtherDate = false;
-      resetCardFields('rec');
+      document.getElementById('recSaleDate').value = localDateStr(new Date());
+      document.getElementById('recSaleDate').max = localDateStr(new Date());
+      resetPaymentParts();
       document.getElementById('receivableError').innerHTML = '';
       document.getElementById('receivableFormStep').style.display = 'block';
       document.getElementById('receivableConfirmStep').style.display = 'none';
@@ -4531,100 +4569,275 @@
       }
     }
 
-    // Divide o valor total em parcelas mensais iguais, ajustando a última
-    // pra fechar exatamente o total (evita sobra/falta de centavos por
-    // arredondamento nas outras).
-    function reviewReceivable() {
-      const description = getProcedureValue('rec');
-      const totalValue = parseFloat(document.getElementById('recTotalValue').value);
-      const installmentCount = parseInt(document.getElementById('recInstallments').value, 10);
-      const firstDueDate = document.getElementById('recFirstDueDate').value;
-      const paymentMethod = document.getElementById('recPaymentMethod').value;
+    // ---------- Formas de pagamento (venda mista) ----------
+    // Pedido do usuário 2026-09-30: "Total 1000, 400 no dinheiro e 600 em
+    // 6x no cartão, assim como outras combinações". Cada forma é um bloco
+    // com prefixo rpN (os helpers de cartão — onPaymentMethodChange,
+    // recalcCardFee, readCardFields — já trabalham por prefixo). Com uma
+    // forma só, o valor dela acompanha o total sozinho (caso comum = o
+    // mesmo de antes); ao adicionar outra, a nova já vem com o que falta.
+    let payParts = [];        // ids das formas visíveis, na ordem
+    let payPartSeq = 0;
+    const payPartManual = {}; // id -> valor digitado à mão (não acompanha o total)
+    const payPartDueManual = {}; // id -> 1º vencimento mudado à mão
 
-      document.getElementById('receivableError').innerHTML = '';
+    function payPartHtml(k, n) {
+      const p = `rp${k}`;
+      return `
+        <div class="pay-part" id="${p}Box">
+          <div class="pay-part-head">
+            <span id="${p}Title">Forma ${n}</span>
+            ${n > 1 ? `<button type="button" class="pay-part-remove" onclick="removePaymentPart(${k})">✕ remover</button>` : ''}
+          </div>
+          <div class="pay-part-grid">
+            <label>Forma
+              <select id="${p}PaymentMethod" onchange="onPaymentMethodChange('${p}')">
+                <option value="Pix">Pix</option>
+                <option value="Cartão">Cartão</option>
+                <option value="Dinheiro">Dinheiro</option>
+                <option value="Outro">Outro</option>
+              </select>
+            </label>
+            <label>Valor (R$)
+              <input type="number" id="${p}Value" min="0" step="0.01" placeholder="0,00" oninput="onPartValueInput(${k})">
+            </label>
+          </div>
+          <div id="${p}CardFields" style="display:none;"></div>
+          <div class="pay-part-grid" id="${p}PlanFields">
+            <label>Nº de parcelas
+              <input type="number" id="${p}Installments" min="1" max="24" value="1">
+            </label>
+            <label>1º vencimento
+              <input type="date" id="${p}FirstDueDate" onchange="payPartDueManual[${k}] = true">
+            </label>
+          </div>
+        </div>
+      `;
+    }
 
-      if (!description) {
-        document.getElementById('receivableError').innerHTML = '<div class="form-error">⚠️ Marque pelo menos um procedimento.</div>';
-        return;
+    function resetPaymentParts() {
+      payParts = [];
+      document.getElementById('recPayParts').innerHTML = '';
+      addPaymentPart('Pix');
+    }
+
+    function addPaymentPart(method) {
+      const k = payPartSeq++;
+      payParts.push(k);
+      const wrap = document.createElement('div');
+      wrap.innerHTML = payPartHtml(k, payParts.length).trim();
+      document.getElementById('recPayParts').appendChild(wrap.firstChild);
+      const p = `rp${k}`;
+      // Nova forma: cartão se ainda não tem cartão na venda (combinação
+      // mais comum — entrada + cartão), senão Pix.
+      const hasCard = payParts.slice(0, -1).some(id => document.getElementById(`rp${id}PaymentMethod`).value === 'Cartão');
+      document.getElementById(`${p}PaymentMethod`).value = method || (hasCard ? 'Pix' : 'Cartão');
+      document.getElementById(`${p}FirstDueDate`).value = document.getElementById('recSaleDate').value || localDateStr(new Date());
+      cardFeeManual[p] = false;
+      document.getElementById(`${p}CardFields`).innerHTML = '';
+
+      if (payParts.length === 1) {
+        payPartManual[k] = false;
+        document.getElementById(`${p}Value`).value = document.getElementById('recTotalValue').value;
+      } else {
+        // As formas anteriores param de acompanhar o total; a nova recebe o restante.
+        payParts.forEach(id => { payPartManual[id] = true; });
+        const remaining = Math.round((recTotal() - partsSum(k)) * 100) / 100;
+        document.getElementById(`${p}Value`).value = remaining > 0 ? remaining.toFixed(2) : '';
       }
-      if (paymentMethod === 'Cartão') {
-        reviewCardReceivable(description, totalValue, recCardOtherDate ? firstDueDate : localDateStr(new Date()));
-        return;
-      }
+      onPaymentMethodChange(p);
+      updatePartsCheck();
+    }
 
-      if (!totalValue || totalValue <= 0 || !installmentCount || installmentCount < 1 || !firstDueDate) {
-        document.getElementById('receivableError').innerHTML = '<div class="form-error">⚠️ Preencha valor total, número de parcelas e data do 1º vencimento.</div>';
-        return;
-      }
+    function removePaymentPart(k) {
+      payParts = payParts.filter(id => id !== k);
+      const box = document.getElementById(`rp${k}Box`);
+      if (box) box.remove();
+      payParts.forEach((id, i) => { document.getElementById(`rp${id}Title`).textContent = `Forma ${i + 1}`; });
+      updatePartsCheck();
+    }
 
-      const baseValue = Math.floor((totalValue / installmentCount) * 100) / 100;
-      const installments = [];
-      let sumSoFar = 0;
+    function recTotal() {
+      return parseFloat(document.getElementById('recTotalValue').value) || 0;
+    }
+
+    /** Soma dos valores das formas (menos `exceptId`, se passado). */
+    function partsSum(exceptId) {
+      return payParts.filter(id => id !== exceptId)
+        .reduce((s, id) => s + (parseFloat(document.getElementById(`rp${id}Value`).value) || 0), 0);
+    }
+
+    function onRecTotalChange() {
+      if (payParts.length === 1 && !payPartManual[payParts[0]]) {
+        document.getElementById(`rp${payParts[0]}Value`).value = document.getElementById('recTotalValue').value;
+        recalcCardFee(`rp${payParts[0]}`);
+      }
+      updatePartsCheck();
+    }
+
+    function onPartValueInput(k) {
+      payPartManual[k] = true;
+      recalcCardFee(`rp${k}`);
+      updatePartsCheck();
+    }
+
+    // Data da venda muda → 1º vencimento das formas que ainda não foram
+    // mexidas à mão acompanha.
+    function onRecSaleDateChange() {
+      const d = document.getElementById('recSaleDate').value;
+      payParts.forEach(id => { if (!payPartDueManual[id]) document.getElementById(`rp${id}FirstDueDate`).value = d; });
+    }
+
+    function paymentPartLabel(method, card) {
+      return card ? `Cartão ${cardLabel(card.type, card.installments)}` : method;
+    }
+
+    function updatePartsCheck() {
+      const el = document.getElementById('recPartsCheck');
+      if (!el) return;
+      const total = recTotal();
+      const sum = Math.round(partsSum() * 100) / 100;
+      if (!total) { el.innerHTML = ''; return; }
+      const diff = Math.round((sum - total) * 100) / 100;
+      el.innerHTML = Math.abs(diff) < 0.01
+        ? (payParts.length > 1 ? `<span style="color:#4A7A3B; font-weight:600;">✓ Formas somam ${formatCurrencyBRL(sum)}</span>` : '')
+        : `<span style="color:#B3462F; font-weight:600;">⚠️ Formas somam ${formatCurrencyBRL(sum)} — ${diff > 0 ? 'passa' : 'falta'} ${formatCurrencyBRL(Math.abs(diff))} do total</span>`;
+    }
+
+    /** Parcelas mensais iguais a partir de firstDueDate; última fecha o centavo. */
+    function splitInstallments(value, count, firstDueDate) {
+      const base = Math.floor((value / count) * 100) / 100;
       const firstDue = new Date(`${firstDueDate}T00:00:00`);
-      for (let i = 0; i < installmentCount; i++) {
-        // Mesmo dia do mês nas próximas parcelas, travado no último dia
-        // quando o mês é mais curto — setMonth() puro transbordava
-        // (29/01 + 1 mês virava 01/03 em ano não bissexto; bug real no
-        // lançamento de 2026-09-29, 6ª parcela caiu em 01/03/2027).
-        const dueDate = new Date(firstDue.getFullYear(), firstDue.getMonth() + i, 1);
-        const lastDay = new Date(dueDate.getFullYear(), dueDate.getMonth() + 1, 0).getDate();
-        dueDate.setDate(Math.min(firstDue.getDate(), lastDay));
-        const value = (i === installmentCount - 1) ? Math.round((totalValue - sumSoFar) * 100) / 100 : baseValue;
-        sumSoFar += value;
-        // Vindo do fluxo de baixa, a 1ª parcela já nasce recebida — o
-        // pagamento (ou a entrada) costuma acontecer na hora do
-        // atendimento, não precisa marcar de novo depois.
-        const dueStr = localDateStr(dueDate);
-        const today = localDateStr(new Date());
-        const receivedNow = receivableFromComplete && i === 0;
-        installments.push({ dueDate: dueStr, value, received: receivedNow, receivedDate: receivedNow ? (dueStr > today ? today : dueStr) : '' });
+      const out = [];
+      let sumSoFar = 0;
+      for (let i = 0; i < count; i++) {
+        // Mesmo dia do mês, travado no último dia quando o mês é mais
+        // curto — setMonth() puro transbordava (29/01 + 1 mês virava
+        // 01/03; bug real no lançamento de 2026-09-29).
+        const due = new Date(firstDue.getFullYear(), firstDue.getMonth() + i, 1);
+        const lastDay = new Date(due.getFullYear(), due.getMonth() + 1, 0).getDate();
+        due.setDate(Math.min(firstDue.getDate(), lastDay));
+        const v = (i === count - 1) ? Math.round((value - sumSoFar) * 100) / 100 : base;
+        sumSoFar += v;
+        out.push({ dueDate: localDateStr(due), value: v });
       }
+      return out;
+    }
+
+    function reviewReceivable() {
+      const errorEl = document.getElementById('receivableError');
+      const fail = (msg) => { errorEl.innerHTML = `<div class="form-error">⚠️ ${msg}</div>`; errorEl.scrollIntoView({ block: 'nearest' }); };
+      errorEl.innerHTML = '';
+
+      const description = getProcedureValue('rec');
+      const totalValue = recTotal();
+      const saleDate = document.getElementById('recSaleDate').value;
+      const today = localDateStr(new Date());
+
+      if (!description) return fail('Marque pelo menos um procedimento.');
+      if (!(totalValue > 0)) return fail('Informe o valor total da venda.');
+      if (!saleDate || saleDate > today) return fail('Informe a data da venda (não pode ser no futuro).');
+
+      const parts = [];
+      for (let idx = 0; idx < payParts.length; idx++) {
+        const p = `rp${payParts[idx]}`;
+        const method = document.getElementById(`${p}PaymentMethod`).value;
+        const value = Math.round((parseFloat(document.getElementById(`${p}Value`).value) || 0) * 100) / 100;
+        if (!(value > 0)) return fail(`Forma ${idx + 1}: informe o valor.`);
+        if (method === 'Cartão') {
+          const card = readCardFields(p, value);
+          if (card.error) return fail(`Forma ${idx + 1}: ${card.error}`);
+          parts.push({ method, value, card });
+        } else {
+          const count = parseInt(document.getElementById(`${p}Installments`).value, 10);
+          const firstDue = document.getElementById(`${p}FirstDueDate`).value;
+          if (!(count >= 1) || !firstDue) return fail(`Forma ${idx + 1}: informe nº de parcelas e 1º vencimento.`);
+          parts.push({ method, value, count, firstDue });
+        }
+      }
+      const partsTotal = Math.round(parts.reduce((s, x) => s + x.value, 0) * 100) / 100;
+      if (Math.abs(partsTotal - totalValue) >= 0.01) {
+        return fail(`As formas de pagamento somam ${formatCurrencyBRL(partsTotal)}, mas o total da venda é ${formatCurrencyBRL(totalValue)}.`);
+      }
+
+      // Cada forma vira linhas próprias no Financeiro (com a própria forma
+      // de pagamento e, no cartão, taxa/líquido), todas com o mesmo total
+      // e "Criado em" — é isso que buildSales usa pra juntar de volta numa
+      // venda só.
+      const installments = [];
+      let firstPlanMarked = false;
+      parts.forEach((part, partIndex) => {
+        if (part.card) {
+          installments.push({ partIndex, paymentMethod: 'Cartão', card: part.card, label: '1/1', dueDate: saleDate, value: part.value, received: true, receivedDate: saleDate });
+          return;
+        }
+        // À vista na hora (1 parcela vencendo no próprio dia da venda, ex.:
+        // "400 no dinheiro") já nasce recebida — dá pra desmarcar na revisão.
+        const paidOnTheSpot = part.count === 1 && part.firstDue === saleDate;
+        splitInstallments(part.value, part.count, part.firstDue).forEach((inst, i) => {
+          // Vindo da baixa do atendimento, a 1ª parcela (da 1ª forma
+          // parcelada) já nasce recebida — a entrada costuma ser na hora.
+          const receivedNow = paidOnTheSpot || (receivableFromComplete && !firstPlanMarked && i === 0);
+          if (receivedNow) firstPlanMarked = true;
+          installments.push({
+            partIndex, paymentMethod: part.method, label: `${i + 1}/${part.count}`,
+            dueDate: inst.dueDate, value: inst.value,
+            received: receivedNow, receivedDate: receivedNow ? (inst.dueDate > today ? today : inst.dueDate) : '',
+          });
+        });
+      });
 
       const lead = allData.find(l => l.phone === receivableTargetPhone);
+      const summary = parts.map(x => paymentPartLabel(x.method, x.card)).join(' + ');
       receivableContext = {
         phone: receivableTargetPhone,
         name: (lead && lead.name) || '—',
         description,
         totalValue,
-        paymentMethod,
+        paymentMethod: summary,
         installments,
       };
 
-      // Checkbox "já recebida" em cada parcela — pedido do usuário
-      // 2026-09-24: lançar um plano que já estava parcialmente pago antes
-      // de existir no CRM (ex.: cliente que já pagou as 3 primeiras de 6
-      // parcelas), sem precisar marcar uma por uma depois de criado.
-      //
-      // Editável (pedido do usuário 2026-09-30, migração manual de planos
-      // antigos): valor e vencimento de cada parcela (entrada maior, datas
-      // irregulares) e a data REAL em que a parcela já recebida foi paga —
-      // é essa data que conta no caixa (Vendas → Recebido).
-      const rows = installments.map((inst, i) => `
-        <div class="installment-edit">
-          <div class="installment-edit-title">Parcela ${i + 1}/${installmentCount}</div>
-          <div class="installment-edit-fields">
-            <label>Valor (R$)<input type="number" min="0" step="0.01" value="${inst.value.toFixed(2)}" oninput="updateInstallmentField(${i}, 'value', this.value)"></label>
-            <label>Vencimento<input type="date" value="${inst.dueDate}" onchange="updateInstallmentField(${i}, 'dueDate', this.value)"></label>
-          </div>
-          <label class="installment-edit-check">
-            <input type="checkbox" style="width:auto;" ${inst.received ? 'checked' : ''} onchange="toggleInstallmentReceived(${i}, this.checked)">
-            Já recebida
-            <span id="instRecvWrap_${i}" style="display:${inst.received ? 'inline-flex' : 'none'}; align-items:center; gap:6px;">em
-              <input type="date" id="instRecvDate_${i}" value="${inst.receivedDate || inst.dueDate}" max="${localDateStr(new Date())}" onchange="updateInstallmentField(${i}, 'receivedDate', this.value)" style="width:auto; padding:4px 6px; font-size:12.5px;">
-            </span>
-          </label>
-        </div>
-      `).join('');
+      // Revisão por forma: cartão mostra bruto/taxa/líquido (fixo); as
+      // parceladas mostram cada parcela editável (valor, vencimento, "já
+      // recebida em").
+      const sections = parts.map((part, partIndex) => {
+        const head = `<div class="review-part-title">Forma ${partIndex + 1} — ${part.card ? '💳' : (PAYMENT_METHOD_ICONS[part.method] || '📄')} ${escapeHtml(paymentPartLabel(part.method, part.card))} · ${formatCurrencyBRL(part.value)}</div>`;
+        if (part.card) {
+          return head + `
+            <div class="ld-row"><span class="ld-label">Taxa da maquininha</span><span class="ld-value">− ${formatCurrencyBRL(part.card.fee)} (${(part.card.fee / part.value * 100).toFixed(2).replace('.', ',')}%)</span></div>
+            <div class="ld-row"><span class="ld-label">Líquido na conta</span><span class="ld-value"><strong>${formatCurrencyBRL(part.card.net)}</strong> em ${formatDateBR(saleDate)}</span></div>`;
+        }
+        return head + installments.map((inst, i) => {
+          if (inst.partIndex !== partIndex) return '';
+          return `
+            <div class="installment-edit">
+              <div class="installment-edit-title">Parcela ${inst.label}</div>
+              <div class="installment-edit-fields">
+                <label>Valor (R$)<input type="number" min="0" step="0.01" value="${inst.value.toFixed(2)}" oninput="updateInstallmentField(${i}, 'value', this.value)"></label>
+                <label>Vencimento<input type="date" value="${inst.dueDate}" onchange="updateInstallmentField(${i}, 'dueDate', this.value)"></label>
+              </div>
+              <label class="installment-edit-check">
+                <input type="checkbox" style="width:auto;" ${inst.received ? 'checked' : ''} onchange="toggleInstallmentReceived(${i}, this.checked)">
+                Já recebida
+                <span id="instRecvWrap_${i}" style="display:${inst.received ? 'inline-flex' : 'none'}; align-items:center; gap:6px;">em
+                  <input type="date" id="instRecvDate_${i}" value="${inst.receivedDate || inst.dueDate}" max="${today}" onchange="updateInstallmentField(${i}, 'receivedDate', this.value)" style="width:auto; padding:4px 6px; font-size:12.5px;">
+                </span>
+              </label>
+            </div>`;
+        }).join('');
+      }).join('');
 
+      const hasPlan = parts.some(x => !x.card);
       document.getElementById('receivableConfirmBody').innerHTML = `
-        <div class="ld-row"><span class="ld-label">Paciente</span><span class="ld-value">${receivableContext.name}</span></div>
-        <div class="ld-row"><span class="ld-label">Descrição</span><span class="ld-value">${description || '—'}</span></div>
-        <div class="ld-row"><span class="ld-label">Meio de pagamento</span><span class="ld-value">${paymentMethod}</span></div>
+        <div class="ld-row"><span class="ld-label">Paciente</span><span class="ld-value">${escapeHtml(receivableContext.name)}</span></div>
+        <div class="ld-row"><span class="ld-label">Descrição</span><span class="ld-value">${escapeHtml(description)}</span></div>
+        <div class="ld-row"><span class="ld-label">Data da venda</span><span class="ld-value">${formatDateBR(saleDate)}</span></div>
         <div class="ld-row"><span class="ld-label">Valor total</span><span class="ld-value">${formatCurrencyBRL(totalValue)}</span></div>
-        <hr style="border:none;border-top:1px solid var(--cor-creme-avela);margin:10px 0;">
-        <p style="font-size:12px; color:var(--cor-cinza-cacau); margin-bottom:10px;">✏️ Ajuste valor e vencimento de cada parcela se precisar. Parcela já paga: marque "Já recebida" e informe o dia em que foi paga.</p>
-        ${rows}
-        <div id="installmentSumCheck" style="font-size:13px; margin-top:6px;"></div>
+        <div class="ld-row"><span class="ld-label">Pagamento</span><span class="ld-value">${escapeHtml(summary)}</span></div>
+        ${hasPlan ? '<p style="font-size:12px; color:var(--cor-cinza-cacau); margin:10px 0 0;">✏️ Ajuste valor e vencimento das parcelas se precisar. Parcela já paga: marque "Já recebida" e informe o dia em que foi paga.</p>' : ''}
+        ${sections}
+        <div id="installmentSumCheck" style="font-size:13px; margin-top:10px;"></div>
       `;
       updateInstallmentSumCheck();
 
@@ -4662,50 +4875,6 @@
         : `<span style="color:#B3462F; font-weight:600;">⚠️ Soma das parcelas: ${formatCurrencyBRL(sum)} — ${diff > 0 ? 'passa' : 'falta'} ${formatCurrencyBRL(Math.abs(diff))} do total de ${formatCurrencyBRL(receivableContext.totalValue)}</span>`;
     }
 
-    // Cartão: 1 lançamento só, já Recebido na data da venda (a maquininha
-    // credita na hora), com bruto/taxa/líquido — sem checklist de parcelas.
-    function reviewCardReceivable(description, totalValue, saleDate) {
-      const errorEl = document.getElementById('receivableError');
-      if (!totalValue || totalValue <= 0 || !saleDate) {
-        errorEl.innerHTML = '<div class="form-error">⚠️ Preencha o valor total e a data da venda.</div>';
-        return;
-      }
-      if (saleDate > localDateStr(new Date())) {
-        errorEl.innerHTML = '<div class="form-error">⚠️ A data da venda não pode ser no futuro.</div>';
-        return;
-      }
-      const card = readCardFields('rec', totalValue);
-      if (card.error) {
-        errorEl.innerHTML = `<div class="form-error">⚠️ ${card.error}</div>`;
-        return;
-      }
-
-      const lead = allData.find(l => l.phone === receivableTargetPhone);
-      receivableContext = {
-        phone: receivableTargetPhone,
-        name: (lead && lead.name) || '—',
-        description,
-        totalValue,
-        paymentMethod: 'Cartão',
-        installments: [{ dueDate: saleDate, value: totalValue, received: true }],
-        card,
-      };
-
-      document.getElementById('receivableConfirmBody').innerHTML = `
-        <div class="ld-row"><span class="ld-label">Paciente</span><span class="ld-value">${receivableContext.name}</span></div>
-        <div class="ld-row"><span class="ld-label">Descrição</span><span class="ld-value">${description}</span></div>
-        <div class="ld-row"><span class="ld-label">Meio de pagamento</span><span class="ld-value">💳 Cartão — ${cardLabel(card.type, card.installments)}</span></div>
-        <hr style="border:none;border-top:1px solid var(--cor-creme-avela);margin:10px 0;">
-        <div class="ld-row"><span class="ld-label">Valor da venda</span><span class="ld-value">${formatCurrencyBRL(totalValue)}</span></div>
-        <div class="ld-row"><span class="ld-label">Taxa da maquininha</span><span class="ld-value">− ${formatCurrencyBRL(card.fee)} (${(card.fee / totalValue * 100).toFixed(2).replace('.', ',')}%)</span></div>
-        <div class="ld-row"><span class="ld-label">Líquido na conta</span><span class="ld-value"><strong>${formatCurrencyBRL(card.net)}</strong> em ${formatDateBR(saleDate)}</span></div>
-        <p style="color: var(--cor-cinza-cacau); font-size: 12px; margin-top: 12px;">ℹ️ Recebimento na hora: entra como um único lançamento já recebido.</p>
-      `;
-
-      document.getElementById('receivableFormStep').style.display = 'none';
-      document.getElementById('receivableConfirmStep').style.display = 'block';
-    }
-
     function backToReceivableForm() {
       document.getElementById('receivableConfirmStep').style.display = 'none';
       document.getElementById('receivableFormStep').style.display = 'block';
@@ -4715,9 +4884,9 @@
       if (!receivableContext) return;
       const settings = loadSettings();
 
-      // Validação da revisão editável (parcelas; cartão não passa por aqui
-      // com mais de 1 linha).
-      if (!receivableContext.card) {
+      // Validação da revisão (vale pra todas as linhas — as de cartão já
+      // vêm com valor, data e recebimento preenchidos).
+      {
         const errorEl = document.getElementById('receivableError');
         const today = localDateStr(new Date());
         const insts = receivableContext.installments;
@@ -4748,14 +4917,12 @@
         const result = await response.json();
         if (!result.ok) throw new Error(result.error || 'Erro desconhecido');
 
-        const count = receivableContext.installments.length;
         const name = receivableContext.name;
-        const card = receivableContext.card;
+        const summary = receivableContext.paymentMethod;
+        const total = receivableContext.totalValue;
         const wasFromComplete = receivableFromComplete;
         closeReceivableModal();
-        showToast(card
-          ? `✅ Venda no cartão lançada para ${name} — líquido ${formatCurrencyBRL(card.net)}`
-          : `✅ ${count} parcela(s) lançada(s) para ${name}`);
+        showToast(`✅ Venda de ${formatCurrencyBRL(total)} lançada para ${name} — ${summary}`);
         await fetchFinanceData();
         if (currentDetailPhone) renderLeadFinanceList(currentDetailPhone);
         if (wasFromComplete) proceedAfterReceivableStep();
@@ -5040,7 +5207,10 @@
     function buildSales() {
       const groups = new Map();
       allFinance.forEach(f => {
-        const key = [f.phone, f.createdAt, f.description, f.totalValue, f.paymentMethod].join('|');
+        // Sem a forma de pagamento na chave: numa venda mista (2026-09-30)
+        // cada forma tem suas linhas, mas todas nasceram no mesmo
+        // lançamento (mesmo "Criado em" + total) — é uma venda só.
+        const key = [f.phone, f.createdAt, f.description, f.totalValue].join('|');
         if (!groups.has(key)) groups.set(key, []);
         groups.get(key).push(f);
       });
@@ -5053,7 +5223,20 @@
         const date = dates.sort()[0] || '';
         const gross = parseCurrencyCell(first.totalValue) || rows.reduce((s, r) => s + r.value, 0);
         const fee = rows.reduce((s, r) => s + (r.cardFee || 0), 0);
-        const isCard = Boolean(first.cardType);
+        // Partes por forma (na ordem em que aparecem): valor de cada uma e
+        // rótulo ("Dinheiro", "Pix 3x", "Cartão Crédito 6x").
+        const partsMap = new Map();
+        rows.forEach(r => {
+          const method = r.cardType ? 'Cartão' : (r.paymentMethod || 'Outro');
+          if (!partsMap.has(method)) partsMap.set(method, { method, gross: 0, count: 0, row: r });
+          const part = partsMap.get(method);
+          part.gross += r.value;
+          part.count++;
+        });
+        const parts = Array.from(partsMap.values());
+        const partLabel = (x) => (x.method === 'Cartão'
+          ? `Cartão ${cardLabel(x.row.cardType, x.row.cardInstallments)}`
+          : `${x.method}${x.count > 1 ? ` ${x.count}x` : ''}`);
         sales.push({
           id: first.id,
           source: 'financeiro',
@@ -5061,8 +5244,9 @@
           phone: first.phone,
           name: first.name,
           description: first.description,
-          method: isCard ? 'Cartão' : (first.paymentMethod || 'Outro'),
-          methodLabel: isCard ? `Cartão — ${cardLabel(first.cardType, first.cardInstallments)}` : `${first.paymentMethod || 'Outro'}${rows.length > 1 ? ` ${rows.length}x` : ''}`,
+          method: parts.length > 1 ? 'Misto' : parts[0].method,
+          methodLabel: parts.map(partLabel).join(' + '),
+          parts: parts.map(x => ({ method: x.method, gross: x.gross })),
           gross,
           fee,
           net: gross - fee,
@@ -5079,6 +5263,7 @@
           description: c.description,
           method: 'Carteira',
           methodLabel: 'Carteira',
+          parts: [{ method: 'Carteira', gross: c.value }],
           gross: c.value,
           fee: 0,
           net: c.value,
@@ -5367,11 +5552,16 @@
         bindChartTooltip(chartEl);
       }
 
+      // Venda mista entra em cada forma com o valor daquela parte
+      // (400 em Dinheiro + 600 em Cartão), não inteira numa forma só.
+      // Recebimentos já são uma linha por forma (sem .parts).
       const byMethod = {};
       sales.forEach(s => {
-        byMethod[s.method] = byMethod[s.method] || { value: 0, count: 0 };
-        byMethod[s.method].value += s.gross;
-        byMethod[s.method].count++;
+        (s.parts || [{ method: s.method, gross: s.gross }]).forEach(part => {
+          byMethod[part.method] = byMethod[part.method] || { value: 0, count: 0 };
+          byMethod[part.method].value += part.gross;
+          byMethod[part.method].count++;
+        });
       });
       const methodItems = Object.entries(byMethod)
         // Carteira ganha ícone próprio aqui: 💳 já é o Cartão nesta lista.

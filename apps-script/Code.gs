@@ -1268,7 +1268,6 @@ function createReceivables(payload) {
   if (!phone || !name || !installments || !installments.length) {
     return { ok: false, error: 'Campos obrigatórios: phone, name, installments.' };
   }
-  const cardCells = cardColumnsValues(card);
 
   const sheet = getFinanceSheet();
   const createdAt = Utilities.formatDate(new Date(), TIME_ZONE, "yyyy-MM-dd'T'HH:mm:ss");
@@ -1287,16 +1286,19 @@ function createReceivables(payload) {
     name,
     description || '',
     totalValue || '',
-    `${i + 1}/${total}`,
+    // Venda mista (2026-09-30): cada linha traz a PRÓPRIA forma de
+    // pagamento, cartão e rótulo de parcela ("2/3" dentro da forma dela).
+    // payload.paymentMethod/card ficam só de reserva (formato antigo).
+    inst.label || `${i + 1}/${total}`,
     inst.value,
     inst.dueDate,
-    paymentMethod || '',
+    inst.paymentMethod || paymentMethod || '',
     inst.received ? 'Recebido' : 'A receber',
     // receivedDate (2026-09-30): data REAL do pagamento informada na
     // revisão editável; sem ela, cai no vencimento como antes.
     inst.received ? (inst.receivedDate || inst.dueDate || todayStr) : '',
     createdAt,
-    ...cardCells,
+    ...cardColumnsValues(inst.card || card),
   ]);
 
   const startRow = sheet.getLastRow() + 1;
