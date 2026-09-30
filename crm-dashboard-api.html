@@ -1860,6 +1860,10 @@
       cursor: pointer;
     }
     .chip.active { background: var(--cor-rosa-sereno); border-color: var(--cor-dourado-ambar); font-weight: 700; }
+    /* Abas do Financeiro: controle segmentado (é troca de tela, não filtro). */
+    .fin-tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; background: var(--cor-creme-avela); border-radius: 12px; padding: 3px; }
+    .fin-tabs .chip { border: none; background: transparent; border-radius: 10px; padding: 8px 6px; font-size: 13px; font-weight: 600; }
+    .fin-tabs .chip.active { background: var(--cor-branco-perola); box-shadow: 0 1px 4px rgba(107,68,35,0.18); color: var(--cor-texto-marca); }
 
     .period-bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
     .period-bar input[type="date"] { width: auto; padding: 6px 8px; font-size: 13px; }
@@ -2069,7 +2073,7 @@
     <nav class="module-nav" id="moduleNav" aria-label="Módulos" onscroll="updateModuleNavArrows()">
       <button class="module-nav-btn active" data-module="agenda" onclick="switchModule('agenda')">📅 Agenda</button>
       <button class="module-nav-btn" data-module="clientes" onclick="switchModule('clientes')">👥 Clientes</button>
-      <button class="module-nav-btn" data-module="vendas" onclick="switchModule('vendas')">💰 Vendas</button>
+      <button class="module-nav-btn" data-module="vendas" onclick="switchModule('vendas')">💰 Financeiro</button>
       <button class="module-nav-btn" data-module="receber" onclick="switchModule('receber')">🧾 A Receber</button>
       <button class="module-nav-btn" data-module="simulador" onclick="switchModule('simulador')">🧮 Simulador</button>
       <button class="module-nav-btn" onclick="toggleSettings()" title="Configurações">⚙️ Config</button>
@@ -2101,10 +2105,13 @@
   <!-- ===== Módulo Vendas ===== -->
   <div class="container module-view" id="view-vendas" hidden>
     <div class="module-title">
-      <h2>💰 Vendas</h2>
+      <h2>💰 Financeiro</h2>
       <button class="btn-primary-soft" onclick="openClientPicker('Lançar venda para…', openReceivableModal)">➕ Lançar venda</button>
     </div>
-    <div class="chip-row" id="vendasModeChips"></div>
+    <!-- Abas Resumo | Vendas | Recebido (pedido do usuário 2026-09-30: "não
+         estou encontrando o resumo financeiro e visualizar separadamente o
+         que eu já recebi por forma de pagamento"). -->
+    <div class="chip-row fin-tabs" id="vendasModeChips"></div>
     <div class="chip-row" id="vendasPeriodChips"></div>
     <div class="period-bar">
       <label style="font-size:13px; color:var(--cor-cinza-cacau);">De</label>
@@ -2112,12 +2119,17 @@
       <label style="font-size:13px; color:var(--cor-cinza-cacau);">até</label>
       <input type="date" id="vendasTo" onchange="vendasPeriod = 'custom'; renderVendas()">
     </div>
+    <div class="chip-row" id="vendasMethodChips" style="align-items:center;"></div>
     <div class="kpi-grid" id="vendasKpis"></div>
-    <div class="module-card">
+    <div class="module-card" id="vendasResumoCard">
+      <h3>Recebido por forma de pagamento</h3>
+      <div id="vendasResumo"></div>
+    </div>
+    <div class="module-card" id="vendasChartCard">
       <h3 id="vendasChartTitle">Vendido por dia</h3>
       <div id="vendasChart"></div>
     </div>
-    <div class="module-card">
+    <div class="module-card" id="vendasByMethodCard">
       <h3>Por forma de pagamento</h3>
       <div id="vendasByMethod"></div>
     </div>
@@ -2125,7 +2137,7 @@
       <h3>Por procedimento</h3>
       <div id="vendasByProcedure"></div>
     </div>
-    <div class="module-card">
+    <div class="module-card" id="vendasListCard">
       <h3 id="vendasListTitle">Vendas do período</h3>
       <div id="vendasList"></div>
     </div>
@@ -5223,7 +5235,7 @@
       if (!items.length) return '<div class="chart-empty">Nada no período.</div>';
       const max = Math.max(...items.map(i => i.value)) || 1;
       return items.map(i => `
-        <div class="hbar-row" title="${escapeHtml(i.label)}: ${escapeHtml(formatValue(i))}">
+        <div class="hbar-row" title="${escapeHtml(i.label)}: ${escapeHtml(formatValue(i))}"${i.onclick ? ` onclick="${i.onclick}" role="button" tabindex="0" style="cursor:pointer;"` : ''}>
           <span class="hbar-label">${escapeHtml(i.label)}</span>
           <div class="hbar-track"><div class="hbar-fill" style="width:${Math.max(1, i.value / max * 100)}%"></div></div>
           <span class="hbar-value">${formatValue(i)}</span>
@@ -5581,9 +5593,27 @@
     // antigo modal "Relatório Financeiro"): competência (o que foi vendido
     // no período) × caixa (o que entrou na conta no período). Mesmo
     // período, mesmos cards e gráficos — só muda a base.
-    let vendasMode = 'vendido';
+    let vendasMode = 'resumo'; // resumo | vendido | recebido
+    let vendasMethod = 'todas'; // filtro de forma na aba Recebido
 
     function setVendasMode(m) { vendasMode = m; renderVendas(); }
+
+    function setVendasMethod(m) { vendasMethod = (m === vendasMethod) ? 'todas' : m; renderVendas(); }
+
+    // Resumo → toca numa forma → aba Recebido já filtrada por ela.
+    function openRecebidoByMethod(m) {
+      vendasMode = 'recebido';
+      vendasMethod = m;
+      renderVendas();
+      document.getElementById('vendasListCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    // Cards do Resumo que levam pra A Receber já filtrado.
+    function goToReceber(filter) {
+      receberFilter = filter;
+      receberMethod = 'todas';
+      switchModule('receber');
+    }
 
     // Recebimentos = parcelas marcadas Recebido (pela Data de
     // Recebimento, não pelo vencimento) + pagamentos (Créditos) da
@@ -5642,6 +5672,57 @@
       renderVendas();
     }
 
+    // Resumo do período (substitui o antigo "Relatório Financeiro"):
+    // vendido × recebido × taxas × líquido, o que falta receber e a
+    // tabela por forma de pagamento — cada linha abre a aba Recebido já
+    // filtrada naquela forma.
+    function renderFinanceResumo(from, to) {
+      const today = localDateStr(new Date());
+      const sales = buildSales().filter(x => x.date >= from && x.date <= to);
+      const receipts = buildReceipts().filter(x => x.date >= from && x.date <= to);
+      const sum = (arr, k) => arr.reduce((s, x) => s + x[k], 0);
+      const sold = sum(sales, 'gross');
+      const recGross = sum(receipts, 'gross');
+      const recFee = sum(receipts, 'fee');
+      const pending = allFinance.filter(f => f.status !== 'Recebido' && f.dueDate && f.dueDate >= from && f.dueDate <= to);
+      const overdue = allFinance.filter(f => f.status !== 'Recebido' && f.dueDate && f.dueDate < today);
+      const carteiraOpen = Array.from(new Set(allCarteira.map(c => c.phone))).reduce((s, ph) => s + Math.max(0, getCarteiraBalance(ph)), 0);
+      const go = (onclick) => ({ onclick, active: false });
+
+      document.getElementById('vendasKpis').innerHTML = [
+        kpiHtml('Vendido', formatCurrencyBRL(sold), `${sales.length} venda(s)`, 'kpi-hero', go("setVendasMode('vendido')")),
+        kpiHtml('Recebido (bruto)', formatCurrencyBRL(recGross), `${receipts.length} recebimento(s)`, '', go("setVendasMode('recebido')")),
+        kpiHtml('Taxas do cartão', `− ${formatCurrencyBRL(recFee)}`, recGross ? `${(recFee / recGross * 100).toFixed(2).replace('.', ',')}% do recebido` : ''),
+        kpiHtml('Entrou na conta', formatCurrencyBRL(recGross - recFee), 'líquido', 'kpi-good', go("setVendasMode('recebido')")),
+        kpiHtml('A receber', formatCurrencyBRL(sum(pending, 'value')), `vencendo no período · ${pending.length}`, '', go("goToReceber('todas')")),
+        kpiHtml('Atrasado', formatCurrencyBRL(sum(overdue, 'value')), `hoje · ${overdue.length} parcela(s)`, overdue.length ? 'kpi-alert' : '', go("goToReceber('atrasadas')")),
+        kpiHtml('Em aberto na Carteira', formatCurrencyBRL(carteiraOpen), 'saldo de hoje', carteiraOpen > 0 ? 'kpi-alert' : '', go("goToReceber('carteira')")),
+      ].join('');
+
+      const byMethod = new Map();
+      receipts.forEach(r => {
+        if (!byMethod.has(r.method)) byMethod.set(r.method, { method: r.method, gross: 0, fee: 0, count: 0 });
+        const m = byMethod.get(r.method);
+        m.gross += r.gross; m.fee += r.fee; m.count++;
+      });
+      const rows = Array.from(byMethod.values()).sort((a, b) => b.gross - a.gross);
+      document.getElementById('vendasResumo').innerHTML = rows.length ? `
+        <div class="data-table-wrap"><table class="data-table">
+          <thead><tr><th>Forma</th><th class="num">Recebido</th><th class="num hide-mobile">Taxa</th><th class="num">Líquido</th></tr></thead>
+          <tbody>${rows.map(m => `
+            <tr class="clickable" onclick="openRecebidoByMethod('${m.method}')">
+              <td>${PAYMENT_METHOD_ICONS[m.method] || '📄'} ${escapeHtml(m.method)}<div class="muted">${m.count} recebimento(s) ›</div></td>
+              <td class="num">${formatCurrencyBRL(m.gross)}</td>
+              <td class="num hide-mobile muted">${m.fee ? `− ${formatCurrencyBRL(m.fee)}` : '—'}</td>
+              <td class="num"><strong>${formatCurrencyBRL(m.gross - m.fee)}</strong></td>
+            </tr>`).join('')}
+          </tbody>
+          <tfoot><tr><td>Total</td><td class="num">${formatCurrencyBRL(recGross)}</td><td class="num hide-mobile">${recFee ? `− ${formatCurrencyBRL(recFee)}` : '—'}</td><td class="num">${formatCurrencyBRL(recGross - recFee)}</td></tr></tfoot>
+        </table></div>
+        <p style="color: var(--cor-cinza-cacau); font-size: 12px; margin-top: 10px;">ℹ️ Toque numa forma para ver só os recebimentos dela. Toque nos cards acima para abrir Vendas, Recebido ou A Receber.</p>
+      ` : '<div class="chart-empty">Nenhum recebimento no período.</div>';
+    }
+
     function renderVendas() {
       const fromEl = document.getElementById('vendasFrom');
       const toEl = document.getElementById('vendasTo');
@@ -5653,13 +5734,30 @@
         ['hoje', 'Hoje'], ['7dias', '7 dias'], ['mes', 'Este mês'], ['mespassado', 'Mês passado'], ['ano', 'Este ano'],
       ], vendasPeriod, 'setVendasPeriod');
 
-      const received = vendasMode === 'recebido';
       document.getElementById('vendasModeChips').innerHTML = chipsHtml([
-        ['vendido', '🛍️ Vendido'],
-        ['recebido', '💵 Recebido (caixa)'],
+        ['resumo', '📊 Resumo'],
+        ['vendido', '🛍️ Vendas'],
+        ['recebido', '💵 Recebido'],
       ], vendasMode, 'setVendasMode');
 
-      const sales = (received ? buildReceipts() : buildSales()).filter(s => s.date >= from && s.date <= to);
+      const resumo = vendasMode === 'resumo';
+      ['vendasChartCard', 'vendasByMethodCard', 'vendasListCard'].forEach(id => { document.getElementById(id).style.display = resumo ? 'none' : ''; });
+      document.getElementById('vendasByProcedureCard').style.display = vendasMode === 'vendido' ? '' : 'none';
+      document.getElementById('vendasResumoCard').style.display = resumo ? '' : 'none';
+      document.getElementById('vendasMethodChips').innerHTML = '';
+      if (resumo) { renderFinanceResumo(from, to); return; }
+
+      const received = vendasMode === 'recebido';
+      let sales = (received ? buildReceipts() : buildSales()).filter(s => s.date >= from && s.date <= to);
+      if (received) {
+        // Filtro de forma (Pix, Cartão, Dinheiro…) — ver separado o que entrou em cada uma.
+        const methods = Array.from(new Set(sales.map(x => x.method))).sort();
+        if (vendasMethod !== 'todas' && !methods.includes(vendasMethod)) vendasMethod = 'todas';
+        document.getElementById('vendasMethodChips').innerHTML =
+          `<span style="font-size:12.5px; color:var(--cor-cinza-cacau); margin-right:2px;">Forma:</span>`
+          + chipsHtml([['todas', 'Todas'], ...methods.map(m => [m, `${PAYMENT_METHOD_ICONS[m] || '📄'} ${m} (${sales.filter(x => x.method === m).length})`])], vendasMethod, 'setVendasMethod');
+        if (vendasMethod !== 'todas') sales = sales.filter(x => x.method === vendasMethod);
+      }
       const gross = sales.reduce((s, x) => s + x.gross, 0);
       const fee = sales.reduce((s, x) => s + x.fee, 0);
       const net = gross - fee;
@@ -5738,7 +5836,7 @@
       });
       const methodItems = Object.entries(byMethod)
         // Carteira ganha ícone próprio aqui: 💳 já é o Cartão nesta lista.
-        .map(([m, v]) => ({ label: `${m === 'Carteira' ? '📒' : (PAYMENT_METHOD_ICONS[m] || '📄')} ${m}`, value: v.value, count: v.count }))
+        .map(([m, v]) => ({ label: `${m === 'Carteira' ? '📒' : (PAYMENT_METHOD_ICONS[m] || '📄')} ${m}`, value: v.value, count: v.count, onclick: received ? `setVendasMethod('${m}')` : '' }))
         .sort((a, b) => b.value - a.value);
       document.getElementById('vendasByMethod').innerHTML = hbarsHtml(methodItems, i => `${formatCurrencyBRL(i.value)} · ${gross ? Math.round(i.value / gross * 100) : 0}%`);
 
@@ -5753,7 +5851,9 @@
       document.getElementById('vendasByProcedure').innerHTML = hbarsHtml(procItems, i => `${i.value} venda${i.value > 1 ? 's' : ''}`);
       document.getElementById('vendasByProcedureCard').style.display = received ? 'none' : '';
 
-      document.getElementById('vendasListTitle').textContent = received ? `Recebimentos do período (${sales.length})` : `Vendas do período (${sales.length})`;
+      document.getElementById('vendasListTitle').textContent = received
+        ? `Recebimentos do período${vendasMethod !== 'todas' ? ` — ${vendasMethod}` : ''} (${sales.length})`
+        : `Vendas do período (${sales.length})`;
       document.getElementById('vendasList').innerHTML = sales.length ? `
         <div class="data-table-wrap"><table class="data-table">
           <thead><tr><th class="hide-mobile">Data</th><th>Cliente</th><th class="hide-mobile">Procedimento</th><th class="hide-mobile">Pagamento</th><th class="num">Bruto</th><th class="num hide-mobile">Taxa</th><th class="num">Líquido</th></tr></thead>
