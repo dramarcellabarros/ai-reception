@@ -2414,6 +2414,21 @@
     </div>
   </div>
 
+  <!-- Detalhe da venda (pedido do usuário 2026-09-30: "quero por venda,
+       não por recebimento. vejo o recebimento ao clicar na venda total").
+       Venda = tudo que o cliente comprou no mesmo dia; aqui embaixo, cada
+       recebimento (forma, parcela, status, taxa/líquido do cartão). -->
+  <div class="modal" id="saleDetailModal">
+    <div class="modal-content">
+      <span class="close-btn" onclick="closeSaleDetail()">&times;</span>
+      <h2>🧾 Detalhe da venda</h2>
+      <div class="lead-detail-grid" id="saleDetailBody"></div>
+      <h3 style="font-size: 14px; color: var(--cor-texto-marca); margin: 20px 0 10px; border-top: 1px solid var(--cor-creme-avela); padding-top: 16px;">Recebimentos</h3>
+      <div id="saleDetailReceipts"></div>
+      <button class="btn secondary" id="saleDetailClientBtn" style="width:100%; margin-top:12px;">👤 Abrir ficha do cliente</button>
+    </div>
+  </div>
+
   <!-- Seletor de cliente (pedido do usuário 2026-09-30, migração manual):
        lançar cobrança/venda direto de Vendas ou A Receber, sem abrir a
        ficha de cada cliente antes. -->
@@ -5198,79 +5213,159 @@
     }
 
     // ---------- Vendas (base comum de Vendas e Clientes) ----------
-    // Uma VENDA = um lançamento de "Lançar Cobrança" (todas as parcelas
-    // criadas juntas: mesmo telefone + "Criado em" + descrição + total) ou
-    // um Débito da Carteira (procedimento fechado, pago depois). Data da
-    // venda = a mais antiga entre o dia do lançamento e o 1º vencimento —
-    // cobre tanto plano futuro (lançado hoje, 1ª parcela mês que vem)
-    // quanto lançamento retroativo (lançado hoje, venda de semanas atrás).
+    // VENDA = tudo que o cliente comprou no MESMO DIA (pedido do usuário
+    // 2026-09-30: "quero por venda, não por recebimento" — caso real da
+    // Juciane, 300 no dinheiro + 600 em 10x no cartão lançados em dois
+    // lançamentos separados, aparecia em duas linhas). Junta:
+    //   - lançamentos do Financeiro (cada "Lançar cobrança": todas as
+    //     parcelas/formas criadas juntas, mesmo "Criado em" + total);
+    //   - Débitos da Carteira (procedimento fechado, pago depois).
+    // Data de cada lançamento = a mais antiga entre o dia do lançamento e
+    // o 1º vencimento (cobre plano futuro e lançamento retroativo).
+    // O detalhe (openSaleDetail) mostra os recebimentos um a um.
+    let salesIndex = new Map();
+
     function buildSales() {
       const groups = new Map();
       allFinance.forEach(f => {
-        // Sem a forma de pagamento na chave: numa venda mista (2026-09-30)
-        // cada forma tem suas linhas, mas todas nasceram no mesmo
-        // lançamento (mesmo "Criado em" + total) — é uma venda só.
         const key = [f.phone, f.createdAt, f.description, f.totalValue].join('|');
         if (!groups.has(key)) groups.set(key, []);
         groups.get(key).push(f);
       });
 
-      const sales = [];
+      // 1) lançamentos
+      const lancamentos = [];
       groups.forEach(rows => {
         const first = rows[0];
         const dates = rows.map(r => r.dueDate).filter(Boolean);
         if (first.createdAt) dates.push(first.createdAt.slice(0, 10));
-        const date = dates.sort()[0] || '';
-        const gross = parseCurrencyCell(first.totalValue) || rows.reduce((s, r) => s + r.value, 0);
-        const fee = rows.reduce((s, r) => s + (r.cardFee || 0), 0);
-        // Partes por forma (na ordem em que aparecem): valor de cada uma e
-        // rótulo ("Dinheiro", "Pix 3x", "Cartão Crédito 6x").
+        lancamentos.push({
+          date: dates.sort()[0] || '',
+          phone: first.phone,
+          name: first.name,
+          description: first.description,
+          gross: parseCurrencyCell(first.totalValue) || rows.reduce((s, r) => s + r.value, 0),
+          fee: rows.reduce((s, r) => s + (r.cardFee || 0), 0),
+          rows,
+        });
+      });
+      allCarteira.filter(c => c.type === 'Débito').forEach(c => {
+        lancamentos.push({ date: c.date, phone: c.phone, name: c.name, description: c.description, gross: c.value, fee: 0, carteira: c });
+      });
+
+      // 2) cliente + dia = uma venda
+      const byDay = new Map();
+      lancamentos.forEach(l => {
+        const key = `${l.phone}|${l.date}`;
+        if (!byDay.has(key)) byDay.set(key, { id: key, date: l.date, phone: l.phone, name: l.name, lancamentos: [] });
+        byDay.get(key).lancamentos.push(l);
+      });
+
+      const sales = [];
+      byDay.forEach(v => {
+        // Partes por forma: valor de cada uma e rótulo ("Dinheiro",
+        // "Pix 3x", "Cartão Crédito 10x", "Carteira").
         const partsMap = new Map();
-        rows.forEach(r => {
-          const method = r.cardType ? 'Cartão' : (r.paymentMethod || 'Outro');
-          if (!partsMap.has(method)) partsMap.set(method, { method, gross: 0, count: 0, row: r });
+        const addPart = (method, value, row) => {
+          if (!partsMap.has(method)) partsMap.set(method, { method, gross: 0, plan: 1, row });
           const part = partsMap.get(method);
-          part.gross += r.value;
-          part.count++;
+          part.gross += value;
+          // "Nx" só quando é parcelamento de verdade (Parcela "1/3" → 3x),
+          // não quando são dois pagamentos à vista na mesma forma.
+          const n = row ? parseInt(String(row.installmentLabel || '').split('/')[1], 10) : 1;
+          if (n > part.plan) part.plan = n;
+        };
+        v.lancamentos.forEach(l => {
+          if (l.carteira) addPart('Carteira', l.gross, null);
+          else l.rows.forEach(r => addPart(r.cardType ? 'Cartão' : (r.paymentMethod || 'Outro'), r.value, r));
         });
         const parts = Array.from(partsMap.values());
         const partLabel = (x) => (x.method === 'Cartão'
           ? `Cartão ${cardLabel(x.row.cardType, x.row.cardInstallments)}`
-          : `${x.method}${x.count > 1 ? ` ${x.count}x` : ''}`);
-        sales.push({
-          id: first.id,
-          source: 'financeiro',
-          date,
-          phone: first.phone,
-          name: first.name,
-          description: first.description,
+          : `${x.method}${x.plan > 1 ? ` ${x.plan}x` : ''}`);
+        const procedures = Array.from(new Set(v.lancamentos
+          .flatMap(l => (l.description || '').split(PROCEDURE_JOIN_SEPARATOR))
+          .map(x => x.trim()).filter(Boolean)));
+        const gross = v.lancamentos.reduce((s, l) => s + l.gross, 0);
+        const fee = v.lancamentos.reduce((s, l) => s + l.fee, 0);
+        const sale = {
+          id: v.id,
+          source: 'venda',
+          date: v.date,
+          phone: v.phone,
+          name: v.name,
+          description: procedures.join(PROCEDURE_JOIN_SEPARATOR),
           method: parts.length > 1 ? 'Misto' : parts[0].method,
           methodLabel: parts.map(partLabel).join(' + '),
           parts: parts.map(x => ({ method: x.method, gross: x.gross })),
           gross,
           fee,
           net: gross - fee,
-        });
-      });
-
-      allCarteira.filter(c => c.type === 'Débito').forEach(c => {
-        sales.push({
-          id: c.id,
-          source: 'carteira',
-          date: c.date,
-          phone: c.phone,
-          name: c.name,
-          description: c.description,
-          method: 'Carteira',
-          methodLabel: 'Carteira',
-          parts: [{ method: 'Carteira', gross: c.value }],
-          gross: c.value,
-          fee: 0,
-          net: c.value,
-        });
+          lancamentos: v.lancamentos,
+        };
+        salesIndex.set(sale.id, sale);
+        sales.push(sale);
       });
 
       return sales.sort((a, b) => (a.date < b.date ? 1 : -1));
+    }
+
+    function openSaleDetail(id) {
+      const sale = salesIndex.get(id);
+      if (!sale) return;
+      const pct = sale.gross ? ` (${(sale.fee / sale.gross * 100).toFixed(2).replace('.', ',')}%)` : '';
+      const rows = [
+        ['Cliente', escapeHtml(sale.name)],
+        ['Data da venda', formatDateBR(sale.date)],
+        ['Procedimento(s)', escapeHtml(sale.description || '—')],
+        ['Pagamento', escapeHtml(sale.methodLabel)],
+        ['Total vendido', `<strong>${formatCurrencyBRL(sale.gross)}</strong>`],
+        ...(sale.fee ? [['Taxas do cartão', `− ${formatCurrencyBRL(sale.fee)}${pct}`], ['Líquido', formatCurrencyBRL(sale.net)]] : []),
+      ];
+      document.getElementById('saleDetailBody').innerHTML = rows.map(([label, value]) => `
+        <div class="ld-row"><span class="ld-label">${label}</span><span class="ld-value">${value}</span></div>
+      `).join('');
+
+      // Recebimentos: cada linha do Financeiro (forma, parcela, status,
+      // taxa/líquido) + débitos da Carteira (a prazo, sem forma ainda).
+      const today = localDateStr(new Date());
+      const items = [];
+      sale.lancamentos.forEach(l => {
+        if (l.carteira) {
+          items.push({ sort: l.date, html: `
+            <div class="finance-row">
+              <div class="finance-row-main"><span>📒 Carteira — ${escapeHtml(l.description || 'Débito')}</span><span class="finance-row-value">${formatCurrencyBRL(l.gross)}</span></div>
+              <div class="finance-row-meta"><span>Lançado na carteira em ${formatDateShortBR(l.date)}</span><span class="finance-status-badge finance-status-pending">A prazo</span></div>
+            </div>` });
+          return;
+        }
+        l.rows.forEach(r => {
+          const isCard = Boolean(r.cardType);
+          const methodText = isCard ? `💳 Cartão ${cardLabel(r.cardType, r.cardInstallments)}` : `${PAYMENT_METHOD_ICONS[r.paymentMethod] || '📄'} ${escapeHtml(r.paymentMethod || 'Outro')} · ${escapeHtml(r.installmentLabel)}`;
+          const received = r.status === 'Recebido';
+          const late = !received && r.dueDate && r.dueDate < today;
+          const statusText = received
+            ? `Recebido${r.receivedDate ? ' ' + formatDateShortBR(r.receivedDate).slice(0, 5) : ''}`
+            : (late ? `Atrasado — venceu ${formatDateShortBR(r.dueDate).slice(0, 5)}` : `A receber — vence ${formatDateShortBR(r.dueDate).slice(0, 5)}`);
+          items.push({ sort: r.dueDate || '', html: `
+            <div class="finance-row" onclick="closeSaleDetail(); openFinanceTransactionSummary('${r.id}', 'financeiro')" role="button" tabindex="0" style="cursor:pointer;">
+              <div class="finance-row-main"><span>${methodText}</span><span class="finance-row-value">${formatCurrencyBRL(r.value)}</span></div>
+              <div class="finance-row-meta">
+                ${isCard && r.cardFee !== null ? `<span>taxa ${formatCurrencyBRL(r.cardFee)} · líquido ${formatCurrencyBRL(netOf(r))}</span>` : ''}
+                <span class="finance-status-badge ${received ? 'finance-status-paid' : 'finance-status-pending'}" ${late ? 'style="background:#FBEAE5; color:#B3462F;"' : ''}>${statusText}</span>
+              </div>
+            </div>` });
+        });
+      });
+      items.sort((a, b) => a.sort.localeCompare(b.sort));
+      document.getElementById('saleDetailReceipts').innerHTML = items.map(i => i.html).join('');
+
+      document.getElementById('saleDetailClientBtn').onclick = () => { closeSaleDetail(); openLeadDetail(sale.phone); };
+      document.getElementById('saleDetailModal').classList.add('open');
+    }
+
+    function closeSaleDetail() {
+      document.getElementById('saleDetailModal').classList.remove('open');
     }
 
     // ---------- Clientes ----------
@@ -5585,7 +5680,7 @@
         <div class="data-table-wrap"><table class="data-table">
           <thead><tr><th class="hide-mobile">Data</th><th>Cliente</th><th class="hide-mobile">Procedimento</th><th class="hide-mobile">Pagamento</th><th class="num">Bruto</th><th class="num hide-mobile">Taxa</th><th class="num">Líquido</th></tr></thead>
           <tbody>${sales.map(s => `
-            <tr class="clickable" onclick="${s.source === 'carteira' ? (received ? `openFinanceTransactionSummary('${s.id}', 'carteira')` : `openLeadDetail('${s.phone}')`) : `openFinanceTransactionSummary('${s.id}', 'financeiro')`}">
+            <tr class="clickable" onclick="${s.source === 'venda' ? `openSaleDetail('${s.id}')` : `openFinanceTransactionSummary('${s.id}', '${s.source}')`}">
               <td class="hide-mobile">${formatDateShortBR(s.date).slice(0, 5)}</td>
               <td>${escapeHtml(s.name)}<span class="mobile-only muted">${formatDateShortBR(s.date).slice(0, 5)} · ${escapeHtml(s.methodLabel)}</span></td>
               <td class="hide-mobile muted">${escapeHtml(s.description || '—')}</td>
@@ -5599,7 +5694,7 @@
         </table></div>
         <p style="color: var(--cor-cinza-cacau); font-size: 12px; margin-top: 10px;">${received
           ? 'ℹ️ Recebido = parcelas baixadas como recebidas (pela data do recebimento) + pagamentos na Carteira. Cartão entra na data da venda, já com a taxa.'
-          : 'ℹ️ Venda = cada cobrança lançada (todas as parcelas juntas) ou débito na Carteira. Para o que já entrou na conta, toque em 💵 Recebido.'}</p>
+          : 'ℹ️ Venda = tudo que o cliente comprou no mesmo dia (cobranças lançadas + débitos na Carteira). Toque numa venda para ver os recebimentos.'}</p>
       ` : `<div class="agenda-empty">${received ? 'Nenhum recebimento no período.' : 'Nenhuma venda no período.'}</div>`;
     }
 
