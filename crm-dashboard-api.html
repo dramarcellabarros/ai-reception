@@ -3192,6 +3192,48 @@
       return `+${digits}`;
     }
 
+    // --- Cliente duplicado (pedido do usuário 2026-10-01) ---
+    // Gravar com um telefone que já existe SOBRESCREVE aquele cadastro
+    // (nome/origem/procedimento) — o Apps Script também recusa
+    // (checkPhoneOwner, code PHONE_TAKEN), isto aqui avisa antes, com a
+    // lista já carregada. Mesmo nome com outro telefone é só aviso: pode
+    // ser homônima.
+    function phoneDigits(phone) {
+      return String(phone || '').replace(/\D/g, '');
+    }
+
+    function nameKey(name) {
+      return String(name || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
+    }
+
+    function findLeadByPhone(phone) {
+      const d = phoneDigits(phone);
+      return d ? allData.find(l => phoneDigits(l.phone) === d) : null;
+    }
+
+    function findHomonyms(name, phone) {
+      const k = nameKey(name);
+      const d = phoneDigits(phone);
+      return k ? allData.filter(l => nameKey(l.name) === k && phoneDigits(l.phone) && phoneDigits(l.phone) !== d) : [];
+    }
+
+    /** Aviso com botões dentro do container de erro do formulário. buttons: [[rótulo, onclick, classe]]. */
+    function showDuplicateNotice(containerId, html, buttons) {
+      const el = document.getElementById(containerId);
+      el.innerHTML = `
+        <div class="form-error" style="display:block;">
+          <div style="margin-bottom:10px;">${html}</div>
+          <div style="display:flex; gap:8px; flex-wrap:wrap;">
+            ${buttons.map(([label, onclick, cls]) => `<button type="button" class="btn ${cls || ''}" onclick="${onclick}" style="flex:1; min-width:140px;">${label}</button>`).join('')}
+          </div>
+        </div>`;
+      el.scrollIntoView({ block: 'nearest' });
+    }
+
+    function clearFormError(containerId) {
+      document.getElementById(containerId).innerHTML = '';
+    }
+
     // Máscara de celular BR ao vivo, enquanto digita — pedido do usuário
     // 2026-09-24: "no telefone deixe um padrão de celular". Reconhece
     // tanto digitação livre (DDD + número) quanto colar do WhatsApp
@@ -4470,11 +4512,30 @@
       resetProcedureChecklist('nl');
       onProcedureCheckChange('nl');
       document.getElementById('newLeadError').innerHTML = '';
+      nlHomonymOk = '';
       document.getElementById('newLeadModal').classList.add('open');
     }
 
     function closeNewLeadModal() {
       document.getElementById('newLeadModal').classList.remove('open');
+    }
+
+    // "Nome|telefone" que a usuária já confirmou ser outra pessoa (homônima).
+    let nlHomonymOk = '';
+    let nlHomonymPending = '';
+
+    function nlPhoneTakenNotice(existingName, existingPhone) {
+      showDuplicateNotice('newLeadError',
+        `⚠️ Este telefone já está cadastrado para <strong>${escapeHtml(existingName)}</strong>. Adicionar de novo trocaria os dados desse cadastro.`,
+        [
+          [`Abrir cadastro de ${escapeHtml(existingName)}`, `openExistingFromNewLead('${existingPhone}')`, ''],
+          ['Corrigir telefone', "clearFormError('newLeadError'); document.getElementById('nlPhone').focus()", 'secondary'],
+        ]);
+    }
+
+    function openExistingFromNewLead(phone) {
+      closeNewLeadModal();
+      openLeadDetail(phone);
     }
 
     async function submitNewLead() {
@@ -4507,6 +4568,29 @@
         return;
       }
 
+      // Telefone já cadastrado: adicionar de novo sobrescreveria aquele
+      // cadastro — sempre bloqueia (linha sem nome = lead do WhatsApp que
+      // ainda não disse o nome, completar é o esperado).
+      const taken = findLeadByPhone(phone);
+      if (taken && nameKey(taken.name)) {
+        nlPhoneTakenNotice(taken.name, taken.phone);
+        return;
+      }
+      const homonymKey = `${nameKey(name)}|${phoneDigits(phone)}`;
+      if (!taken && nlHomonymOk !== homonymKey) {
+        const homonyms = findHomonyms(name, phone);
+        if (homonyms.length) {
+          nlHomonymPending = homonymKey;
+          showDuplicateNotice('newLeadError',
+            `⚠️ Já existe <strong>${escapeHtml(homonyms[0].name)}</strong> com outro telefone (${homonyms.map(h => formatPhone(h.phone)).join(', ')}). É a mesma pessoa?`,
+            [
+              ['Sim, abrir cadastro existente', `openExistingFromNewLead('${homonyms[0].phone}')`, ''],
+              ['Não, é outra pessoa — adicionar', `nlHomonymOk = nlHomonymPending; submitNewLead()`, 'secondary'],
+            ]);
+          return;
+        }
+      }
+
       const btn = document.getElementById('nlSubmitBtn');
       btn.disabled = true;
       btn.textContent = '⏳ Adicionando...';
@@ -4518,12 +4602,16 @@
           body: JSON.stringify({ action: 'createLead', phone, name, source, appointmentType, procedure, birthDate })
         });
         const result = await response.json();
+        if (result.code === 'PHONE_TAKEN') {
+          nlPhoneTakenNotice(result.existingName, result.existingPhone);
+          return;
+        }
         if (!result.ok) throw new Error(result.error || 'Erro desconhecido');
 
         closeNewLeadModal();
         showToast(`✅ Cliente ${name} adicionado(a)`);
         await fetchSheetsData();
-        openLeadDetail(phone);
+        openLeadDetail(result.phone || phone);
       } catch (err) {
         document.getElementById('newLeadError').innerHTML = `<div class="form-error">❌ ${err.message}</div>`;
       } finally {
@@ -6140,6 +6228,7 @@
       dateInput.min = new Date().toISOString().slice(0, 10);
       apPicker.reset('Escolha uma data primeiro');
       document.getElementById('appointmentError').innerHTML = '';
+      apHomonymOk = '';
       document.getElementById('apFormStep').style.display = 'block';
       document.getElementById('apConfirmStep').style.display = 'none';
       document.getElementById('newAppointmentModal').classList.add('open');
@@ -6574,6 +6663,28 @@
         showAppointmentError('⚠️ Telefone inválido — digite DDD + número (ex: 15997892900) ou cole do WhatsApp (ex: +55 15 99789-2900).');
         return;
       }
+      // Telefone de outra pessoa: gravar renomearia o cadastro dela. Mesmo
+      // telefone + mesmo nome é a própria cliente (recorrente) — segue.
+      const taken = findLeadByPhone(phone);
+      if (taken && nameKey(taken.name) && nameKey(taken.name) !== nameKey(name)) {
+        apPhoneTakenNotice(taken.name, taken.phone);
+        return;
+      }
+      const homonymKey = `${nameKey(name)}|${phoneDigits(phone)}`;
+      if (!taken && apHomonymOk !== homonymKey) {
+        const homonyms = findHomonyms(name, phone);
+        if (homonyms.length) {
+          apHomonymPending = homonymKey;
+          showDuplicateNotice('appointmentError',
+            `⚠️ Já existe <strong>${escapeHtml(homonyms[0].name)}</strong> com outro telefone. É a mesma pessoa?`,
+            [
+              ...homonyms.slice(0, 3).map(h => [`Sim, usar ${formatPhone(h.phone)}`, `useExistingForAppointment('${h.phone}')`, '']),
+              ['Não, é outra pessoa', 'apHomonymOk = apHomonymPending; reviewAppointment()', 'secondary'],
+            ]);
+          return;
+        }
+      }
+
       // Grava o valor completo (+55...) de volta no campo, é o que
       // submitNewAppointment envia pro backend.
       document.getElementById('apPhone').value = phone;
@@ -6607,6 +6718,26 @@
     function backToForm() {
       document.getElementById('apConfirmStep').style.display = 'none';
       document.getElementById('apFormStep').style.display = 'block';
+    }
+
+    // Cliente duplicado no Novo Agendamento (pedido do usuário 2026-10-01).
+    let apHomonymOk = '';
+    let apHomonymPending = '';
+
+    function apPhoneTakenNotice(existingName, existingPhone) {
+      showDuplicateNotice('appointmentError',
+        `⚠️ Este telefone já está cadastrado para <strong>${escapeHtml(existingName)}</strong>. Agendar com outro nome trocaria o nome desse cadastro.`,
+        [
+          [`Usar cadastro de ${escapeHtml(existingName)}`, `useExistingForAppointment('${existingPhone}')`, ''],
+          ['Corrigir telefone', "clearFormError('appointmentError'); document.getElementById('apPhone').focus()", 'secondary'],
+        ]);
+    }
+
+    // Preenche com o cadastro existente (mesmo da busca) e segue pra revisão.
+    function useExistingForAppointment(phone) {
+      clearFormError('appointmentError');
+      selectExistingClient(phone);
+      reviewAppointment();
     }
 
     // --- Fluxo de "baixa" + encadeamento (achado do usuário 2026-09-23) ---
@@ -7054,7 +7185,14 @@
         });
         const result = await response.json();
 
+        if (result.code === 'PHONE_TAKEN') {
+          backToForm();
+          apPhoneTakenNotice(result.existingName, result.existingPhone);
+          return;
+        }
         if (!result.ok) throw new Error(result.error || 'Erro desconhecido');
+        // Telefone como já estava na planilha (pode diferir só na formatação).
+        const savedPhone = result.phone || phone;
 
         closeNewAppointmentModal();
         showToast(`✅ Agendamento criado para ${name} — ${formatDateBR(date)} às ${start}`);
@@ -7066,7 +7204,7 @@
         // "Pular"/"Lançar" já usado no fluxo de Concluir Atendimento. A
         // 1ª parcela já nasce marcada "já recebida" (o sinal costuma ser
         // cobrado na hora de marcar).
-        openReceivableModal(phone, {
+        openReceivableModal(savedPhone, {
           fromComplete: true,
           description: procedure,
           title: '💰 Cobrar sinal ou valor do agendamento?',

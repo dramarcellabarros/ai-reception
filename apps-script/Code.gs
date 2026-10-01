@@ -176,10 +176,13 @@ const APPOINTMENT_TYPE_LABELS = {
 };
 
 function createAppointment(payload) {
-  const { phone, name, source, date, start, end, appointmentType, procedure } = payload;
-  if (!phone || !name || !date || !start || !end) {
+  const { name, source, date, start, end, appointmentType, procedure } = payload;
+  if (!payload.phone || !name || !date || !start || !end) {
     return { ok: false, error: 'Campos obrigatórios: phone, name, date, start, end.' };
   }
+  const dup = checkPhoneOwner(payload.phone, name);
+  if (dup.error) return dup.error;
+  const phone = dup.phone;
   const typeLabel = APPOINTMENT_TYPE_LABELS[appointmentType] || APPOINTMENT_TYPE_LABELS.AVALIACAO;
 
   const calendar = CalendarApp.getCalendarById(CALENDAR_ID);
@@ -243,7 +246,7 @@ function createAppointment(payload) {
     // Silencioso de propósito — ver nota acima.
   }
 
-  return { ok: true, event: confirmedAppointment };
+  return { ok: true, event: confirmedAppointment, phone };
 }
 
 /**
@@ -695,8 +698,11 @@ function replacePhoneInCalendarEvents(oldPhone, newPhone) {
  * "adicionar esta pessoa".
  */
 function createLead(payload) {
-  const { phone, name, source, appointmentType, procedure, birthDate } = payload;
-  if (!phone || !name) return { ok: false, error: 'Campos obrigatórios: phone, name.' };
+  const { name, source, appointmentType, procedure, birthDate } = payload;
+  if (!payload.phone || !name) return { ok: false, error: 'Campos obrigatórios: phone, name.' };
+  const dup = checkPhoneOwner(payload.phone, name);
+  if (dup.error) return dup.error;
+  const phone = dup.phone;
 
   upsertLeadRow({
     phone,
@@ -707,7 +713,60 @@ function createLead(payload) {
     ...(birthDate ? { birthDate } : {}),
   });
 
-  return { ok: true };
+  return { ok: true, phone };
+}
+
+// ============================================================
+// Cliente duplicado (pedido do usuário 2026-10-01). upsertLeadRow casa
+// pelo telefone e SOBRESCREVE a linha — sem esta trava, cadastrar "Maria"
+// com o telefone que já é da "Ana" renomeava a Ana (e o Financeiro/
+// Carteira dela, ligados ao telefone, passavam a aparecer como da Maria).
+// O Dashboard já avisa antes; isto aqui é a garantia do lado do servidor
+// (outro aparelho com a lista desatualizada, por exemplo).
+// ============================================================
+
+/** Só os dígitos — "+55 15 99789-2900" e "5515997892900" são o mesmo número. */
+function phoneDigitsOf(phone) {
+  return String(phone || '').replace(/\D/g, '');
+}
+
+/** Nome comparável: sem acento, sem diferença de maiúscula e de espaços. */
+function nameKey(name) {
+  return String(name || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * Telefone já é de outra pessoa (nome diferente) → { error } pronto pra
+ * devolver. Senão → { phone } a usar: o telefone EXATAMENTE como já está
+ * na planilha quando o número existe (upsertLeadRow casa string exata —
+ * "5515..." vs "+5515..." criaria linha duplicada), ou o recebido.
+ */
+function checkPhoneOwner(phone, name) {
+  const digits = phoneDigitsOf(phone);
+  const data = getSheet().getDataRange().getValues();
+  const headers = data[0];
+  const phoneCol = headers.indexOf('Telefone');
+  const nameCol = headers.indexOf('Nome');
+  for (let i = 1; i < data.length; i++) {
+    const stored = String(data[i][phoneCol] || '');
+    if (!digits || phoneDigitsOf(stored) !== digits) continue;
+    const existingName = String(data[i][nameCol] || '');
+    // Linha sem nome (lead que chegou pelo WhatsApp e ainda não disse o
+    // nome) não é "de outra pessoa" — completar o nome é o esperado.
+    if (nameKey(existingName) && nameKey(existingName) !== nameKey(name)) {
+      return {
+        error: {
+          ok: false,
+          code: 'PHONE_TAKEN',
+          existingName,
+          existingPhone: stored,
+          error: `Este telefone já está cadastrado para ${existingName}.`,
+        },
+      };
+    }
+    return { phone: stored };
+  }
+  return { phone };
 }
 
 /**
