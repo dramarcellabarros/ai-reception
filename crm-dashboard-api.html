@@ -2955,9 +2955,11 @@
 
       // Forma de pagamento da venda mista: cartão esconde nº de parcelas/
       // vencimento (quem parcela é a operadora; entra recebido na data
-      // da venda).
+      // da venda). Carteira também: vira débito no saldo, sem parcela nem
+      // vencimento.
       const plan = document.getElementById(`${prefix}PlanFields`);
-      if (plan) plan.style.display = isCard ? 'none' : '';
+      const isCarteira = document.getElementById(`${prefix}PaymentMethod`).value === 'Carteira';
+      if (plan) plan.style.display = (isCard || isCarteira) ? 'none' : '';
       if (typeof updatePartsCheck === 'function' && prefix.startsWith('rp')) updatePartsCheck();
     }
 
@@ -4534,7 +4536,7 @@
     // lançar o que recebi em pix, cartao, dinheiro para depois saber
     // quanto recebi por período") ---
 
-    const PAYMENT_METHOD_ICONS = { Pix: '💠', 'Cartão': '💳', Dinheiro: '💵', Outro: '📄' };
+    const PAYMENT_METHOD_ICONS = { Pix: '💠', 'Cartão': '💳', Dinheiro: '💵', Outro: '📄', Carteira: '📒' };
 
     // Detalhe do lançamento (pedido do usuário 2026-09-26: clicar num
     // lançamento do Relatório Financeiro abre um resumo dentro do próprio
@@ -4698,6 +4700,7 @@
                 <option value="Cartão">Cartão</option>
                 <option value="Dinheiro">Dinheiro</option>
                 <option value="Outro">Outro</option>
+                <option value="Carteira">Carteira (fica devendo)</option>
               </select>
             </label>
             <label>Valor (R$)
@@ -4846,7 +4849,9 @@
         const method = document.getElementById(`${p}PaymentMethod`).value;
         const value = Math.round((parseFloat(document.getElementById(`${p}Value`).value) || 0) * 100) / 100;
         if (!(value > 0)) return fail(`Forma ${idx + 1}: informe o valor.`);
-        if (method === 'Cartão') {
+        if (method === 'Carteira') {
+          parts.push({ method, value, carteira: true });
+        } else if (method === 'Cartão') {
           const card = readCardFields(p, value);
           if (card.error) return fail(`Forma ${idx + 1}: ${card.error}`);
           parts.push({ method, value, card });
@@ -4869,6 +4874,10 @@
       const installments = [];
       let firstPlanMarked = false;
       parts.forEach((part, partIndex) => {
+        // Carteira (pedido do usuário 2026-10-01: "pago parcialmente em
+        // alguma forma e o restante fica em carteira") não vira linha no
+        // Financeiro — vira um Débito na Carteira, gravado em submitReceivable.
+        if (part.carteira) return;
         if (part.card) {
           // Maquininha cai na hora; Link cai N dias úteis depois — é essa
           // a data que conta no caixa (Vendas → Recebido).
@@ -4894,11 +4903,18 @@
 
       const lead = allData.find(l => l.phone === receivableTargetPhone);
       const summary = parts.map(x => paymentPartLabel(x.method, x.card)).join(' + ');
+      const carteiraValue = Math.round(parts.filter(x => x.carteira).reduce((s, x) => s + x.value, 0) * 100) / 100;
       receivableContext = {
         phone: receivableTargetPhone,
         name: (lead && lead.name) || '—',
         description,
         totalValue,
+        // Parte que vai pro Financeiro — é o "Valor Total" gravado nas
+        // linhas de lá, senão buildSales somaria a parte da Carteira duas
+        // vezes (uma no total do Financeiro, outra no Débito).
+        financeTotal: Math.round((totalValue - carteiraValue) * 100) / 100,
+        carteiraValue,
+        saleDate,
         paymentMethod: summary,
         installments,
       };
@@ -4908,6 +4924,13 @@
       // recebida em").
       const sections = parts.map((part, partIndex) => {
         const head = `<div class="review-part-title">Forma ${partIndex + 1} — ${part.card ? '💳' : (PAYMENT_METHOD_ICONS[part.method] || '📄')} ${escapeHtml(paymentPartLabel(part.method, part.card))} · ${formatCurrencyBRL(part.value)}</div>`;
+        if (part.carteira) {
+          const before = getCarteiraBalance(receivableTargetPhone);
+          const after = Math.round((before + part.value) * 100) / 100;
+          return head + `
+            <div class="ld-row"><span class="ld-label">Saldo devedor atual</span><span class="ld-value">${formatCurrencyBRL(before)}</span></div>
+            <div class="ld-row"><span class="ld-label">Saldo após lançar</span><span class="ld-value"><strong>${formatCurrencyBRL(after)}</strong></span></div>`;
+        }
         if (part.card) {
           return head + `
             <div class="ld-row"><span class="ld-label">Taxa do cartão</span><span class="ld-value">− ${formatCurrencyBRL(part.card.fee)} (${(part.card.fee / part.value * 100).toFixed(2).replace('.', ',')}%)</span></div>
@@ -4933,7 +4956,7 @@
         }).join('');
       }).join('');
 
-      const hasPlan = parts.some(x => !x.card);
+      const hasPlan = parts.some(x => !x.card && !x.carteira);
       document.getElementById('receivableConfirmBody').innerHTML = `
         <div class="ld-row"><span class="ld-label">Paciente</span><span class="ld-value">${escapeHtml(receivableContext.name)}</span></div>
         <div class="ld-row"><span class="ld-label">Descrição</span><span class="ld-value">${escapeHtml(description)}</span></div>
@@ -4973,11 +4996,14 @@
     function updateInstallmentSumCheck() {
       const el = document.getElementById('installmentSumCheck');
       if (!el || !receivableContext) return;
+      if (!receivableContext.installments.length) { el.innerHTML = ''; return; } // tudo na Carteira
+      // Compara com a parte do Financeiro — a da Carteira não tem parcela.
+      const target = receivableContext.financeTotal;
       const sum = receivableContext.installments.reduce((s, inst) => s + inst.value, 0);
-      const diff = Math.round((sum - receivableContext.totalValue) * 100) / 100;
+      const diff = Math.round((sum - target) * 100) / 100;
       el.innerHTML = Math.abs(diff) < 0.01
         ? `<span style="color:#4A7A3B; font-weight:600;">✓ Soma das parcelas: ${formatCurrencyBRL(sum)}</span>`
-        : `<span style="color:#B3462F; font-weight:600;">⚠️ Soma das parcelas: ${formatCurrencyBRL(sum)} — ${diff > 0 ? 'passa' : 'falta'} ${formatCurrencyBRL(Math.abs(diff))} do total de ${formatCurrencyBRL(receivableContext.totalValue)}</span>`;
+        : `<span style="color:#B3462F; font-weight:600;">⚠️ Soma das parcelas: ${formatCurrencyBRL(sum)} — ${diff > 0 ? 'passa' : 'falta'} ${formatCurrencyBRL(Math.abs(diff))} do total de ${formatCurrencyBRL(target)}</span>`;
     }
 
     function backToReceivableForm() {
@@ -4999,7 +5025,7 @@
         let problem = '';
         if (insts.some(inst => !(inst.value > 0))) problem = 'Toda parcela precisa ter valor maior que zero.';
         else if (insts.some(inst => !inst.dueDate)) problem = 'Toda parcela precisa ter data de vencimento.';
-        else if (Math.abs(sum - receivableContext.totalValue) >= 0.01) problem = `A soma das parcelas (${formatCurrencyBRL(sum)}) não bate com o valor total (${formatCurrencyBRL(receivableContext.totalValue)}).`;
+        else if (Math.abs(sum - receivableContext.financeTotal) >= 0.01) problem = `A soma das parcelas (${formatCurrencyBRL(sum)}) não bate com o valor total (${formatCurrencyBRL(receivableContext.financeTotal)}).`;
         else if (insts.some(inst => inst.received && (!inst.receivedDate || (inst.receivedDate > today && !inst.card)))) problem = 'Data de recebimento vazia ou no futuro.';
         if (problem) {
           errorEl.innerHTML = `<div class="form-error">⚠️ ${problem}</div>`;
@@ -5014,13 +5040,33 @@
       btn.textContent = '⏳ Lançando...';
 
       try {
-        const response = await fetch(settings.scriptUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-          body: JSON.stringify({ action: 'createReceivables', ...receivableContext })
-        });
-        const result = await response.json();
-        if (!result.ok) throw new Error(result.error || 'Erro desconhecido');
+        const ctx = receivableContext;
+        const post = async (body) => {
+          const response = await fetch(settings.scriptUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify(body)
+          });
+          const result = await response.json();
+          if (!result.ok) throw new Error(result.error || 'Erro desconhecido');
+        };
+        // financeDone/carteiraDone: se a 2ª gravação falhar, "Confirmar"
+        // de novo refaz só o que faltou — nunca duplica a 1ª.
+        if (ctx.installments.length && !ctx.financeDone) {
+          const { installments, phone, name, description, paymentMethod } = ctx;
+          await post({ action: 'createReceivables', phone, name, description, paymentMethod, installments, totalValue: ctx.financeTotal });
+          ctx.financeDone = true;
+        }
+        if (ctx.carteiraValue > 0 && !ctx.carteiraDone) {
+          try {
+            await post({ action: 'addCarteiraDebito', phone: ctx.phone, name: ctx.name, description: ctx.description, value: ctx.carteiraValue, date: ctx.saleDate });
+          } catch (err) {
+            throw new Error(ctx.financeDone
+              ? `A parte do Financeiro foi lançada, mas o débito na Carteira falhou (${err.message}). Toque em Confirmar de novo para lançar só a Carteira.`
+              : err.message);
+          }
+          ctx.carteiraDone = true;
+        }
 
         const name = receivableContext.name;
         const summary = receivableContext.paymentMethod;
@@ -5028,8 +5074,11 @@
         const wasFromComplete = receivableFromComplete;
         closeReceivableModal();
         showToast(`✅ Venda de ${formatCurrencyBRL(total)} lançada para ${name} — ${summary}`);
-        await fetchFinanceData();
-        if (currentDetailPhone) renderLeadFinanceList(currentDetailPhone);
+        await Promise.all([fetchFinanceData(), ctx.carteiraValue > 0 ? fetchCarteiraData() : null]);
+        if (currentDetailPhone) {
+          renderLeadFinanceList(currentDetailPhone);
+          renderLeadCarteira(currentDetailPhone);
+        }
         if (wasFromComplete) proceedAfterReceivableStep();
       } catch (err) {
         document.getElementById('receivableError').innerHTML = `<div class="form-error">❌ ${err.message}</div>`;
