@@ -131,6 +131,12 @@ function doPost(e) {
     if (payload.action === 'deleteCarteiraEntry') {
       return jsonResponse(deleteCarteiraEntry(payload));
     }
+    if (payload.action === 'createBlock') {
+      return jsonResponse(createBlock(payload));
+    }
+    if (payload.action === 'deleteBlock') {
+      return jsonResponse(deleteBlock(payload));
+    }
 
     return jsonResponse({ ok: false, error: 'Ação desconhecida: ' + payload.action });
   } catch (err) {
@@ -513,6 +519,105 @@ function cancelAppointmentAction(payload) {
     upsertLeadRow({ phone: phoneMatch[1], leadStatus: 'desmarcado', confirmedAppointment: null });
   }
 
+  return { ok: true };
+}
+
+/**
+ * Bloqueio de agenda (pedido do usuário 2026-10-02: "bloquear a agenda,
+ * por exemplo quando tiver um compromisso pessoal"). É um evento comum no
+ * Calendar com título "🔒 Bloqueio" (ou "🔒 Bloqueio - motivo"): como
+ * getAvailability, a checagem de conflito de createAppointment e a IA do
+ * WhatsApp (src/availability.js) já tratam qualquer evento como ocupado,
+ * o horário some de todas as ofertas sem mexer nessas lógicas.
+ *
+ * Dia inteiro vira um evento por dia cobrindo o expediente de
+ * BUSINESS_HOURS (não um evento "all-day" do Google): src/availability.js
+ * #extractLocalTime só entende dateTime com hora, e quebraria a IA com um
+ * evento { date } sem hora. Dias sem expediente (domingo) são pulados.
+ */
+const BLOCK_PREFIX = '🔒';
+const BLOCK_MAX_DAYS = 62;
+
+function isBlockTitle(title) {
+  return String(title || '').trim().startsWith(BLOCK_PREFIX);
+}
+
+function createBlock(payload) {
+  const { date, start, end, allDay } = payload;
+  const endDate = payload.endDate || date;
+  const reason = String(payload.reason || '').trim().slice(0, 60);
+  if (!date) return { ok: false, error: 'Campo obrigatório: date.' };
+  if (!allDay && (!start || !end)) return { ok: false, error: 'Informe o horário de início e de fim.' };
+  if (endDate < date) return { ok: false, error: 'A data final precisa ser igual ou depois da inicial.' };
+
+  const calendar = CalendarApp.getCalendarById(CALENDAR_ID);
+  if (!calendar) return { ok: false, error: 'Agenda não encontrada — verifique CALENDAR_ID no script.' };
+
+  // Monta os intervalos a bloquear antes de gravar qualquer coisa — se um
+  // dia der conflito, nada é criado (nunca deixa um bloqueio pela metade).
+  const intervals = [];
+  if (allDay) {
+    let cursor = parseLocalDateTime(date, '12:00');
+    const last = parseLocalDateTime(endDate, '12:00');
+    let guard = 0;
+    while (cursor <= last) {
+      if (++guard > BLOCK_MAX_DAYS) return { ok: false, error: `Bloqueio limitado a ${BLOCK_MAX_DAYS} dias por vez.` };
+      const dateStr = Utilities.formatDate(cursor, TIME_ZONE, 'yyyy-MM-dd');
+      const weekday = Number(Utilities.formatDate(cursor, TIME_ZONE, 'u')) % 7; // 'u': 1=seg … 7=dom
+      const hours = BUSINESS_HOURS[weekday];
+      if (hours) intervals.push({ start: parseLocalDateTime(dateStr, hours.open), end: parseLocalDateTime(dateStr, hours.close) });
+      cursor = new Date(cursor.getTime() + 24 * 3600000);
+    }
+    if (intervals.length === 0) return { ok: false, error: 'Nenhum dia com expediente nesse período — não há o que bloquear.' };
+  } else {
+    const s = parseLocalDateTime(date, start);
+    const e = parseLocalDateTime(date, end);
+    if (e <= s) return { ok: false, error: 'Horário de término precisa ser depois do início.' };
+    intervals.push({ start: s, end: e });
+  }
+
+  // Conflito = atendimento ainda ativo ou outro bloqueio no período.
+  // Concluídos/desmarcados/não compareceu (✅❌🚫) não impedem.
+  const conflicts = [];
+  intervals.forEach((iv) => {
+    calendar.getEvents(iv.start, iv.end).forEach((ev) => {
+      const title = ev.getTitle() || '';
+      if (Object.values(STATUS_PREFIXES).some((p) => title.trim().startsWith(p))) return;
+      conflicts.push(`${Utilities.formatDate(ev.getStartTime(), TIME_ZONE, 'dd/MM HH:mm')} ${title}`);
+    });
+  });
+  if (conflicts.length > 0) {
+    return {
+      ok: false,
+      error: 'Já existe compromisso nesse período. Remarque ou desmarque antes de bloquear:\n' + conflicts.join('\n'),
+    };
+  }
+
+  const title = reason ? `${BLOCK_PREFIX} Bloqueio - ${reason}` : `${BLOCK_PREFIX} Bloqueio`;
+  const ids = intervals.map((iv) => calendar.createEvent(title, iv.start, iv.end, {
+    description: 'Bloqueio de agenda via CRM.',
+  }).getId());
+
+  return { ok: true, count: ids.length, ids };
+}
+
+/**
+ * Libera um horário bloqueado — apaga o evento de vez (não vai pro
+ * histórico: não é atendimento). Recusa qualquer evento que não seja
+ * bloqueio, pra esta ação nunca conseguir apagar um agendamento de cliente.
+ */
+function deleteBlock(payload) {
+  const { eventId } = payload;
+  if (!eventId) return { ok: false, error: 'Campo obrigatório: eventId.' };
+
+  const calendar = CalendarApp.getCalendarById(CALENDAR_ID);
+  if (!calendar) return { ok: false, error: 'Agenda não encontrada — verifique CALENDAR_ID no script.' };
+
+  const event = calendar.getEventById(eventId);
+  if (!event) return { ok: false, error: 'Bloqueio não encontrado na agenda (pode já ter sido removido).' };
+  if (!isBlockTitle(event.getTitle())) return { ok: false, error: 'Esse evento não é um bloqueio.' };
+
+  event.deleteEvent();
   return { ok: true };
 }
 
@@ -948,19 +1053,23 @@ function sendTomorrowSummary() {
     })
     .sort((a, b) => a.getStartTime() - b.getStartTime());
 
+  // Bloqueios (🔒) aparecem no e-mail, mas não contam como atendimento.
+  const appointmentCount = events.filter((e) => !isBlockTitle(e.getTitle())).length;
   const dateLabel = Utilities.formatDate(dayStart, TIME_ZONE, 'dd/MM/yyyy');
   const subject =
-    events.length > 0
-      ? `Agenda de amanhã (${dateLabel}) — ${events.length} atendimento(s)`
+    appointmentCount > 0
+      ? `Agenda de amanhã (${dateLabel}) — ${appointmentCount} atendimento(s)`
       : `Agenda de amanhã (${dateLabel}) — nenhum atendimento`;
 
   const lines = [`Resumo dos atendimentos de amanhã (${dateLabel}):`, ''];
   if (events.length === 0) {
     lines.push('Nenhum atendimento agendado.');
   } else {
+    if (appointmentCount === 0) lines.push('Nenhum atendimento agendado.', '');
     events.forEach((e) => {
       const time = e.isAllDayEvent() ? 'Dia todo' : Utilities.formatDate(e.getStartTime(), TIME_ZONE, 'HH:mm');
-      lines.push(`${time} — ${e.getTitle()}`);
+      const until = isBlockTitle(e.getTitle()) && !e.isAllDayEvent() ? ` às ${Utilities.formatDate(e.getEndTime(), TIME_ZONE, 'HH:mm')}` : '';
+      lines.push(`${time}${until} — ${e.getTitle()}`);
     });
   }
 

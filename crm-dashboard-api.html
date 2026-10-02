@@ -526,6 +526,15 @@
       border-top: 1px solid var(--cor-creme-avela);
     }
     .agenda-view-btns { display: flex; gap: 6px; flex-shrink: 0; }
+    .agenda-header-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+    /* Celular: título + 2 ações não cabem numa linha — ações descem pra
+       uma linha própria, ocupando a largura toda. */
+    @media (max-width: 480px) {
+      .agenda-header-row:first-child { flex-wrap: wrap; }
+      .agenda-header-actions { width: 100%; }
+      .agenda-header-actions .agenda-view-btn { flex: 1; padding: 8px 11px; }
+      .agenda-header-actions .btn-primary-soft { flex: 1.6; }
+    }
     .agenda-view-btn {
       border: 1px solid var(--cor-creme-avela);
       background: var(--cor-branco-perola);
@@ -758,6 +767,47 @@
       background: var(--cor-tipo-retorno);
       color: white;
     }
+
+    /* Bloqueio de agenda (2026-10-02): visual "riscado" neutro, pra nunca
+       ser confundido com atendimento de cliente. Não é clicável. */
+    .agenda-day-group .agenda-event.agenda-event-block,
+    .agenda-day-group .agenda-event.agenda-event-block:hover {
+      border-left-color: var(--cor-cinza-cacau);
+      background: repeating-linear-gradient(135deg, var(--cor-branco-perola) 0 8px, var(--cor-rosa-sereno) 8px 16px);
+      cursor: default;
+    }
+    .agenda-event-block .agenda-event-summary:hover { text-decoration: none; }
+    .agenda-event-block .agenda-event-actions { flex-basis: auto; }
+    .type-bloqueio {
+      background: var(--cor-cinza-cacau);
+      color: white;
+    }
+    .block-period-toggle {
+      display: flex;
+      gap: 6px;
+    }
+    .block-period-toggle button {
+      flex: 1;
+      border: 1px solid var(--cor-creme-avela);
+      background: var(--cor-branco-perola);
+      color: var(--cor-texto-marca);
+      font: inherit;
+      font-size: 13px;
+      font-weight: 600;
+      padding: 8px 10px;
+      border-radius: 18px;
+      cursor: pointer;
+    }
+    .block-period-toggle button.active {
+      background: var(--cor-texto-marca);
+      border-color: var(--cor-texto-marca);
+      color: #fff;
+    }
+    .block-time-row {
+      display: flex;
+      gap: 10px;
+    }
+    .block-time-row > div { flex: 1; min-width: 0; }
 
     .agenda-empty {
       text-align: center;
@@ -2206,7 +2256,10 @@
       <div class="agenda-header agenda-header-2rows">
         <div class="agenda-header-row">
           <h2 id="agendaTitle">📅 Agenda</h2>
-          <button class="btn-primary-soft" onclick="openNewAppointmentModal()">➕ Novo agendamento</button>
+          <div class="agenda-header-actions">
+            <button class="agenda-view-btn" onclick="openBlockModal()" title="Bloquear horário (compromisso pessoal)">🔒 Bloquear</button>
+            <button class="btn-primary-soft" onclick="openNewAppointmentModal()">➕ Novo agendamento</button>
+          </div>
         </div>
         <div class="agenda-header-row">
           <span class="agenda-status" id="agendaStatus"></span>
@@ -2347,6 +2400,54 @@
       <h2>✅ Concluir Atendimento</h2>
       <div class="lead-detail-grid" id="cmBody"></div>
       <div id="cmQuestion" style="margin-top:20px;"></div>
+    </div>
+  </div>
+
+  <!-- Modal de Bloquear Agenda (pedido do usuário 2026-10-02: compromisso
+       pessoal). Cria evento "🔒 Bloqueio" — ver apps-script/Code.gs#createBlock. -->
+  <div class="modal" id="blockModal">
+    <div class="modal-content">
+      <span class="close-btn" onclick="closeBlockModal()">&times;</span>
+      <h2>🔒 Bloquear Agenda</h2>
+      <div id="blockError"></div>
+      <div class="form-group">
+        <label>Período:</label>
+        <div class="block-period-toggle">
+          <button type="button" id="blockModeHours" onclick="setBlockMode(false)">Algumas horas</button>
+          <button type="button" id="blockModeDay" onclick="setBlockMode(true)">Dia inteiro</button>
+        </div>
+      </div>
+      <div class="block-time-row">
+        <div class="form-group">
+          <label id="blockDateLabel">Data:</label>
+          <input type="date" id="blockDate" onchange="onBlockDateChange()">
+        </div>
+        <div class="form-group" id="blockEndDateGroup">
+          <label>Até:</label>
+          <input type="date" id="blockEndDate">
+        </div>
+      </div>
+      <div class="block-time-row" id="blockHoursGroup">
+        <div class="form-group">
+          <label>Das:</label>
+          <select id="blockStart"></select>
+        </div>
+        <div class="form-group">
+          <label>Até:</label>
+          <select id="blockEnd"></select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Motivo (opcional):</label>
+        <input type="text" id="blockReason" maxlength="60" placeholder="Ex.: compromisso pessoal">
+        <small style="color: var(--cor-cinza-cacau); margin-top: 5px; display: block;">
+          Aparece no título do evento, e a agenda é pública. Evite detalhes pessoais.
+        </small>
+      </div>
+      <button class="btn" id="blockSubmitBtn" onclick="submitBlock()">🔒 Bloquear</button>
+      <p style="color: var(--cor-cinza-cacau); font-size: 12px; margin-top: 16px;">
+        ℹ️ O horário bloqueado deixa de ser oferecido no agendamento e pela IA do WhatsApp.
+      </p>
     </div>
   </div>
 
@@ -3059,7 +3160,22 @@
     // apps-script/Code.gs#STATUS_PREFIXES) — os três saem da Agenda ativa
     // e vão pro histórico.
     function isAppointmentCompleted(summary) {
-      return /^[\s✅❌🚫]*[✅❌🚫]/.test(summary || '');
+      // Flag "u" obrigatória: sem ela, 🚫 (par surrogate) vira duas
+      // unidades soltas na classe e qualquer emoji da mesma faixa (ex. 🔒
+      // do bloqueio) passava por "concluído" (achado 2026-10-02).
+      return /^[\s✅❌🚫]*[✅❌🚫]/u.test(summary || '');
+    }
+
+    // Bloqueio de agenda (🔒, ver apps-script/Code.gs#BLOCK_PREFIX): não é
+    // atendimento — fica na Agenda ativa só pra mostrar o horário tomado,
+    // nunca vai pro histórico nem abre resumo de paciente.
+    function isBlockEvent(summary) {
+      return (summary || '').trim().startsWith('🔒');
+    }
+
+    function blockReason(summary) {
+      const m = (summary || '').match(/^\s*🔒\s*Bloqueio\s*[-—]\s*(.+)$/);
+      return m ? m[1].trim() : '';
     }
 
     function getHistoryStatusLabel(summary) {
@@ -3085,7 +3201,7 @@
     // duplicidade visual. O título completo continua intacto no evento
     // real do Calendar (só a exibição aqui na Agenda muda).
     function agendaDisplayTitle(summary) {
-      const withoutStatus = (summary || '').replace(/^[\s✅❌🚫]+/, '');
+      const withoutStatus = (summary || '').replace(/^[\s✅❌🚫]+/u, '');
       const m = withoutStatus.match(/^[^-—]+[-—]\s*(.+)$/);
       return m ? m[1].trim() : withoutStatus;
     }
@@ -3714,6 +3830,11 @@
         const time = ev.start.dateTime
           ? new Date(raw).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
           : 'Dia todo';
+        if (isBlockEvent(ev.summary)) {
+          const until = ev.end && ev.end.dateTime ? `–${new Date(ev.end.dateTime).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}` : '';
+          const reason = blockReason(ev.summary);
+          return `<div class="month-day-detail-row" style="color:var(--cor-cinza-cacau);"><span class="month-day-detail-time">${time}${until}</span><span>🔒 ${reason ? escapeHtml(reason) : 'Horário bloqueado'}</span></div>`;
+        }
         return `<div class="month-day-detail-row" onclick="openAppointmentSummary('${ev.id}')" role="button" tabindex="0" style="cursor:pointer;"><span class="month-day-detail-time">${time}</span><span>${agendaDisplayTitle(ev.summary)}</span></div>`;
       }).join('');
 
@@ -3763,7 +3884,7 @@
         const result = await response.json();
         allCalendarEvents = result.items || [];
         renderAgenda();
-        const activeCount = allCalendarEvents.filter(e => !isAppointmentCompleted(e.summary)).length;
+        const activeCount = allCalendarEvents.filter(e => !isAppointmentCompleted(e.summary) && !isBlockEvent(e.summary)).length;
         agendaStatus.textContent = `✅ ${activeCount} evento(s)`;
       } catch (err) {
         console.error('Erro ao buscar agenda:', err);
@@ -3898,8 +4019,10 @@
         const isAllDay = !event.start.dateTime;
         const time = isAllDay ? 'Dia todo' : startDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 
+        const endRaw = event.end && event.end.dateTime;
         currentGroup.events.push({
           time,
+          endTime: endRaw ? new Date(endRaw).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '',
           summary: event.summary || '(sem título)',
           link: event.htmlLink,
           id: event.id,
@@ -3911,6 +4034,18 @@
         <div class="agenda-day-group${group.isToday ? ' agenda-today' : ''}">
           <div class="agenda-day-label">${group.isToday ? `🔶 Hoje — ${group.label}` : group.label}</div>
           ${group.events.map(ev => {
+            if (isBlockEvent(ev.summary)) {
+              const reason = blockReason(ev.summary);
+              return `
+            <div class="agenda-event agenda-event-block">
+              <span class="agenda-event-time">${ev.time}${ev.endTime ? `–${ev.endTime}` : ''}</span>
+              <span class="agenda-event-summary">${reason ? escapeHtml(reason) : 'Horário bloqueado'}</span>
+              <span class="type-badge type-bloqueio">🔒 Bloqueio</span>
+              <div class="agenda-event-actions">
+                <button class="complete-btn complete-btn-danger complete-btn-compact" onclick="removeBlock('${ev.id}')" title="Liberar horário (remove o bloqueio)" aria-label="Liberar horário">✕</button>
+              </div>
+            </div>`;
+            }
             const type = detectAppointmentType(ev.summary);
             const completed = isAppointmentCompleted(ev.summary);
             const statusInfo = getHistoryStatusLabel(ev.summary);
@@ -6995,6 +7130,131 @@
       } finally {
         btn.disabled = false;
         btn.textContent = '💾 Salvar Agendamento';
+      }
+    }
+
+    // --- Bloquear agenda (pedido do usuário 2026-10-02) ---
+    // Cria "🔒 Bloqueio" no Calendar via apps-script/Code.gs#createBlock.
+    // A disponibilidade do agendamento e da IA já trata qualquer evento como
+    // ocupado, então o horário bloqueado some sozinho das ofertas.
+
+    let blockAllDay = false;
+
+    function blockTimeOptions(fromMin, toMin, selected) {
+      let html = '';
+      for (let m = fromMin; m <= toMin; m += 30) {
+        const hhmm = `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+        html += `<option value="${hhmm}"${hhmm === selected ? ' selected' : ''}>${hhmm}</option>`;
+      }
+      return html;
+    }
+
+    function openBlockModal() {
+      const settings = loadSettings();
+      if (!settings || !settings.scriptUrl) {
+        alert('Configure a "URL do Apps Script" em ⚙️ Config primeiro (ver apps-script/SETUP.md para gerar essa URL).');
+        toggleSettings();
+        return;
+      }
+      const today = localDateStr(new Date());
+      const dateInput = document.getElementById('blockDate');
+      dateInput.value = today;
+      dateInput.min = today;
+      document.getElementById('blockEndDate').value = today;
+      document.getElementById('blockEndDate').min = today;
+      // 06h–22h cobre o expediente (08h–20h) com folga, sem depender dele.
+      document.getElementById('blockStart').innerHTML = blockTimeOptions(6 * 60, 21 * 60 + 30, '08:00');
+      document.getElementById('blockEnd').innerHTML = blockTimeOptions(6 * 60 + 30, 22 * 60, '12:00');
+      document.getElementById('blockReason').value = '';
+      document.getElementById('blockError').innerHTML = '';
+      setBlockMode(false);
+      document.getElementById('blockModal').classList.add('open');
+    }
+
+    function closeBlockModal() {
+      document.getElementById('blockModal').classList.remove('open');
+    }
+
+    function setBlockMode(allDay) {
+      blockAllDay = allDay;
+      document.getElementById('blockModeHours').classList.toggle('active', !allDay);
+      document.getElementById('blockModeDay').classList.toggle('active', allDay);
+      document.getElementById('blockHoursGroup').style.display = allDay ? 'none' : 'flex';
+      document.getElementById('blockEndDateGroup').style.display = allDay ? 'block' : 'none';
+      document.getElementById('blockDateLabel').textContent = allDay ? 'De:' : 'Data:';
+    }
+
+    function onBlockDateChange() {
+      const start = document.getElementById('blockDate').value;
+      const endInput = document.getElementById('blockEndDate');
+      endInput.min = start;
+      if (!endInput.value || endInput.value < start) endInput.value = start;
+    }
+
+    async function submitBlock() {
+      const settings = loadSettings();
+      const errorBox = document.getElementById('blockError');
+      const date = document.getElementById('blockDate').value;
+      const endDate = blockAllDay ? document.getElementById('blockEndDate').value : date;
+      const start = document.getElementById('blockStart').value;
+      const end = document.getElementById('blockEnd').value;
+      const reason = document.getElementById('blockReason').value.trim();
+
+      errorBox.innerHTML = '';
+      if (!date) { errorBox.innerHTML = '<div class="form-error">❌ Escolha a data.</div>'; return; }
+      if (blockAllDay && endDate < date) { errorBox.innerHTML = '<div class="form-error">❌ A data final precisa ser igual ou depois da inicial.</div>'; return; }
+      if (!blockAllDay && end <= start) { errorBox.innerHTML = '<div class="form-error">❌ O horário final precisa ser depois do inicial.</div>'; return; }
+
+      const btn = document.getElementById('blockSubmitBtn');
+      btn.disabled = true;
+      btn.textContent = '⏳ Bloqueando...';
+      try {
+        const response = await fetch(settings.scriptUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({ action: 'createBlock', date, endDate, start, end, allDay: blockAllDay, reason })
+        });
+        const result = await response.json();
+        if (!result.ok) throw new Error(result.error || 'Erro desconhecido');
+
+        closeBlockModal();
+        showToast(result.count > 1 ? `🔒 Agenda bloqueada em ${result.count} dias` : '🔒 Horário bloqueado');
+        refreshData();
+      } catch (err) {
+        errorBox.innerHTML = `<div class="form-error">❌ ${escapeHtml(err.message).replace(/\n/g, '<br>')}</div>`;
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '🔒 Bloquear';
+      }
+    }
+
+    // Liberar = apagar o evento de bloqueio (não é atendimento, não vai
+    // pro histórico). O Apps Script recusa apagar qualquer coisa que não
+    // comece com 🔒.
+    async function removeBlock(eventId) {
+      const ev = allCalendarEvents.find(e => e.id === eventId);
+      if (!ev) return;
+      const raw = ev.start && (ev.start.dateTime || ev.start.date);
+      const when = raw ? `${formatDateBR(localDateStr(new Date(raw)))} ${ev.start.dateTime ? localTimeStr(new Date(raw)) : ''}`.trim() : '';
+      if (!confirm(`Liberar o horário bloqueado${when ? ` de ${when}` : ''}?`)) return;
+
+      const settings = loadSettings();
+      if (!settings || !settings.scriptUrl) {
+        alert('Configure a "URL do Apps Script" em ⚙️ Config primeiro.');
+        return;
+      }
+      try {
+        const response = await fetch(settings.scriptUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({ action: 'deleteBlock', eventId })
+        });
+        const result = await response.json();
+        if (!result.ok) throw new Error(result.error || 'Erro desconhecido');
+        showToast('🔓 Horário liberado');
+        refreshData();
+      } catch (err) {
+        showToast(`❌ Não foi possível liberar: ${err.message}`);
       }
     }
 
