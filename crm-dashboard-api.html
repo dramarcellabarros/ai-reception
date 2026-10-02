@@ -3058,9 +3058,12 @@
       // vencimento (quem parcela é a operadora; entra recebido na data
       // da venda). Carteira também: vira débito no saldo, sem parcela nem
       // vencimento.
+      // Pix e Dinheiro (pedido do usuário 2026-10-02: "Pix é pix, já
+      // pago") também escondem: entram recebidos na data da venda. Só
+      // Carnê (parcelas com vencimento) e Outro mostram parcelas.
       const plan = document.getElementById(`${prefix}PlanFields`);
-      const isCarteira = document.getElementById(`${prefix}PaymentMethod`).value === 'Carteira';
-      if (plan) plan.style.display = (isCard || isCarteira) ? 'none' : '';
+      const method = document.getElementById(`${prefix}PaymentMethod`).value;
+      if (plan) plan.style.display = (method === 'Carnê' || method === 'Outro') ? '' : 'none';
       if (typeof updatePartsCheck === 'function' && prefix.startsWith('rp')) updatePartsCheck();
     }
 
@@ -4759,7 +4762,9 @@
     // lançar o que recebi em pix, cartao, dinheiro para depois saber
     // quanto recebi por período") ---
 
-    const PAYMENT_METHOD_ICONS = { Pix: '💠', 'Cartão': '💳', Dinheiro: '💵', Outro: '📄', Carteira: '📒' };
+    const PAYMENT_METHOD_ICONS = { Pix: '💠', 'Cartão': '💳', Dinheiro: '💵', 'Carnê': '🧾', Outro: '📄', Carteira: '📒' };
+    // Formas que são dinheiro na mão no ato da venda — nunca viram parcela.
+    const PAID_ON_SALE_METHODS = ['Pix', 'Dinheiro'];
 
     // Detalhe do lançamento (pedido do usuário 2026-09-26: clicar num
     // lançamento do Relatório Financeiro abre um resumo dentro do próprio
@@ -4922,6 +4927,7 @@
                 <option value="Pix">Pix</option>
                 <option value="Cartão">Cartão</option>
                 <option value="Dinheiro">Dinheiro</option>
+                <option value="Carnê">Carnê (parcelas com vencimento)</option>
                 <option value="Outro">Outro</option>
                 <option value="Carteira">Carteira (fica devendo)</option>
               </select>
@@ -5078,6 +5084,8 @@
           const card = readCardFields(p, value);
           if (card.error) return fail(`Forma ${idx + 1}: ${card.error}`);
           parts.push({ method, value, card });
+        } else if (PAID_ON_SALE_METHODS.includes(method)) {
+          parts.push({ method, value, paidOnSale: true });
         } else {
           const count = parseInt(document.getElementById(`${p}Installments`).value, 10);
           const firstDue = document.getElementById(`${p}FirstDueDate`).value;
@@ -5108,13 +5116,21 @@
           installments.push({ partIndex, paymentMethod: 'Cartão', card: part.card, label: '1/1', dueDate: saleDate, value: part.value, received: true, receivedDate: settle });
           return;
         }
+        if (part.paidOnSale) {
+          installments.push({ partIndex, paymentMethod: part.method, label: '1/1', dueDate: saleDate, value: part.value, received: true, receivedDate: saleDate });
+          return;
+        }
         // À vista na hora (1 parcela vencendo no próprio dia da venda, ex.:
         // "400 no dinheiro") já nasce recebida — dá pra desmarcar na revisão.
-        const paidOnTheSpot = part.count === 1 && part.firstDue === saleDate;
+        // Carnê nunca nasce recebido: a entrada, se houver, é lançada como
+        // outra forma (Pix/Dinheiro/Cartão). Parcela já paga de um carnê
+        // antigo se marca na revisão.
+        const isCarne = part.method === 'Carnê';
+        const paidOnTheSpot = !isCarne && part.count === 1 && part.firstDue === saleDate;
         splitInstallments(part.value, part.count, part.firstDue).forEach((inst, i) => {
           // Vindo da baixa do atendimento, a 1ª parcela (da 1ª forma
           // parcelada) já nasce recebida — a entrada costuma ser na hora.
-          const receivedNow = paidOnTheSpot || (receivableFromComplete && !firstPlanMarked && i === 0);
+          const receivedNow = paidOnTheSpot || (!isCarne && receivableFromComplete && !firstPlanMarked && i === 0);
           if (receivedNow) firstPlanMarked = true;
           installments.push({
             partIndex, paymentMethod: part.method, label: `${i + 1}/${part.count}`,
@@ -5159,6 +5175,10 @@
             <div class="ld-row"><span class="ld-label">Taxa do cartão</span><span class="ld-value">− ${formatCurrencyBRL(part.card.fee)} (${(part.card.fee / part.value * 100).toFixed(2).replace('.', ',')}%)</span></div>
             <div class="ld-row"><span class="ld-label">Líquido na conta</span><span class="ld-value"><strong>${formatCurrencyBRL(part.card.net)}</strong> em ${formatDateBR(part.card.settleDays ? addBusinessDays(saleDate, part.card.settleDays) : saleDate)}</span></div>`;
         }
+        if (part.paidOnSale) {
+          return head + `
+            <div class="ld-row"><span class="ld-label">Situação</span><span class="ld-value">✅ Recebido em ${formatDateBR(saleDate)}</span></div>`;
+        }
         return head + installments.map((inst, i) => {
           if (inst.partIndex !== partIndex) return '';
           return `
@@ -5179,7 +5199,7 @@
         }).join('');
       }).join('');
 
-      const hasPlan = parts.some(x => !x.card && !x.carteira);
+      const hasPlan = parts.some(x => !x.card && !x.carteira && !x.paidOnSale);
       document.getElementById('receivableConfirmBody').innerHTML = `
         <div class="ld-row"><span class="ld-label">Paciente</span><span class="ld-value">${escapeHtml(receivableContext.name)}</span></div>
         <div class="ld-row"><span class="ld-label">Descrição</span><span class="ld-value">${escapeHtml(description)}</span></div>

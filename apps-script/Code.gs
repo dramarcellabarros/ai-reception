@@ -1511,6 +1511,33 @@ function createReceivables(payload) {
   return { ok: true, count: rows.length };
 }
 
+/**
+ * Carnê (pedido do usuário 2026-10-02): "Pix é pix, já pago" — parcela
+ * com vencimento é Carnê, não Pix. Antes disso, planos parcelados eram
+ * lançados como "Pix" em N parcelas. RODE ESTA FUNÇÃO MANUALMENTE UMA VEZ
+ * (selecione "migrarPixParceladoParaCarne" no editor e clique Executar):
+ * troca "Pix" → "Carnê" em toda linha cuja Parcela não seja "1/1"
+ * (recebidas ou não — fazem parte do mesmo carnê). Pix 1/1 fica como está.
+ * Rodar de novo não faz nada (não sobra Pix parcelado).
+ */
+function migrarPixParceladoParaCarne() {
+  const sheet = getFinanceSheet();
+  const data = sheet.getDataRange().getValues();
+  const headers = data[0];
+  const methodCol = headers.indexOf('Meio de Pagamento');
+  const labelCol = headers.indexOf('Parcela');
+  let changed = 0;
+  for (let i = 1; i < data.length; i++) {
+    const label = String(data[i][labelCol]).trim();
+    if (String(data[i][methodCol]).trim() === 'Pix' && label && label !== '1/1') {
+      sheet.getRange(i + 1, methodCol + 1).setValue('Carnê');
+      changed++;
+    }
+  }
+  Logger.log(`${changed} parcela(s) trocadas de Pix para Carnê.`);
+  return { ok: true, changed };
+}
+
 /** Marca uma parcela como recebida (ou desfaz, volta pra "A receber"). */
 function markReceivableStatus(payload) {
   const { id, status } = payload;
