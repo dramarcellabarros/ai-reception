@@ -206,7 +206,7 @@ function createAppointment(payload) {
   // Nunca cria em cima de um evento já existente — mesma garantia de
   // src/schedulingService.js#listAvailableSlots, checada aqui de novo pois
   // esta é a via de escrita real.
-  const conflicting = calendar.getEvents(startDateTime, endDateTime);
+  const conflicting = getBusyEvents(calendar, startDateTime, endDateTime);
   if (conflicting.length > 0) {
     return { ok: false, error: 'Esse horário já está ocupado na agenda. Escolha outro.' };
   }
@@ -307,6 +307,22 @@ function markCalendarEvent(eventId, prefix) {
   return { ok: true };
 }
 
+/**
+ * Desmarcado (❌) não ocupa mais o horário (pedido do usuário 2026-10-02:
+ * "se for desmarcado ou remarcado para outra data o horário deve ficar
+ * disponível"). Remarcar já libera sozinho (editAppointment move o mesmo
+ * evento); desmarcar mantém o evento pro histórico, então quem calcula
+ * ocupação precisa ignorá-lo explicitamente.
+ */
+function isCanceledTitle(title) {
+  return String(title || '').trim().startsWith(STATUS_PREFIXES.CANCELED);
+}
+
+/** Eventos que realmente ocupam a agenda no intervalo (exclui desmarcados). */
+function getBusyEvents(calendar, start, end) {
+  return calendar.getEvents(start, end).filter((ev) => !isCanceledTitle(ev.getTitle()));
+}
+
 /** Remove qualquer um dos STATUS_PREFIXES do início do título, se houver. */
 function stripStatusPrefix(title) {
   let t = (title || '').trim();
@@ -404,7 +420,7 @@ function editAppointment(payload) {
   // Mesma checagem de conflito de createAppointment, excluindo o próprio
   // evento (senão ele sempre "colidiria" consigo mesmo ao manter o mesmo
   // horário).
-  const conflicting = calendar.getEvents(newStart, newEnd).filter((e) => e.getId() !== event.getId());
+  const conflicting = getBusyEvents(calendar, newStart, newEnd).filter((e) => e.getId() !== event.getId());
   if (conflicting.length > 0) {
     return { ok: false, error: 'Esse horário já está ocupado na agenda. Escolha outro.' };
   }
@@ -459,6 +475,23 @@ function reopenAppointment(payload) {
 
   const event = calendar.getEventById(eventId);
   if (!event) return { ok: false, error: 'Evento não encontrado na agenda (pode já ter sido apagado).' };
+
+  // Desmarcado libera o horário (isCanceledTitle) — se outro atendimento
+  // ou bloqueio já ocupou esse espaço, reabrir criaria dois no mesmo
+  // horário. Nesse caso recusa; o caminho é reabrir e editar outra data
+  // depois que o horário estiver livre, ou agendar de novo.
+  if (isCanceledTitle(event.getTitle())) {
+    const taken = getBusyEvents(calendar, event.getStartTime(), event.getEndTime())
+      .filter((e) => e.getId() !== event.getId());
+    if (taken.length > 0) {
+      return {
+        ok: false,
+        error: 'Esse horário já foi ocupado depois da desmarcação: ' +
+          taken.map((e) => `${Utilities.formatDate(e.getStartTime(), TIME_ZONE, 'HH:mm')} ${e.getTitle()}`).join('; ') +
+          '. Agende de novo em outro horário.',
+      };
+    }
+  }
 
   event.setTitle(stripStatusPrefix(event.getTitle()));
 
@@ -531,9 +564,9 @@ function cancelAppointmentAction(payload) {
  * o horário some de todas as ofertas sem mexer nessas lógicas.
  *
  * Dia inteiro vira um evento por dia cobrindo o expediente de
- * BUSINESS_HOURS (não um evento "all-day" do Google): src/availability.js
- * #extractLocalTime só entende dateTime com hora, e quebraria a IA com um
- * evento { date } sem hora. Dias sem expediente (domingo) são pulados.
+ * BUSINESS_HOURS (não um evento "all-day" do Google): a IA do WhatsApp
+ * (src/schedulingService.js) ignora eventos { date } sem hora, então um
+ * all-day não bloquearia nada lá. Dias sem expediente (domingo) são pulados.
  */
 const BLOCK_PREFIX = '🔒';
 const BLOCK_MAX_DAYS = 62;
@@ -978,7 +1011,7 @@ function getAvailability(fromDateStr, daysAhead, excludeEventId) {
     // normalizar os dois, a comparação nunca batia e excludeEventId nunca
     // excluía nada de verdade (achado do teste ao vivo 2026-09-24).
     const bareExcludeId = excludeEventId ? String(excludeEventId).split('@')[0] : null;
-    const events = calendar.getEvents(dayStart, dayEnd).filter((ev) => ev.getId().split('@')[0] !== bareExcludeId);
+    const events = getBusyEvents(calendar, dayStart, dayEnd).filter((ev) => ev.getId().split('@')[0] !== bareExcludeId);
 
     const slots = [];
     let cursor = new Date(dayStart);
