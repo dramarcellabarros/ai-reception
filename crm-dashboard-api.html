@@ -2451,6 +2451,21 @@
     </div>
   </div>
 
+  <!-- Baixa de parcela de Carnê: como foi paga (2026-10-02) -->
+  <!-- z-index acima dos demais: abre por cima do Detalhe do Lead. -->
+  <div class="modal" id="receivedViaModal" style="z-index: 1100;">
+    <div class="modal-content">
+      <span class="close-btn" onclick="closeReceivedViaModal()">&times;</span>
+      <h2>🧾 Parcela do Carnê</h2>
+      <div class="lead-detail-grid" id="rvInfo"></div>
+      <p style="margin: 16px 0 10px; font-weight: 600;">Como foi paga?</p>
+      <div style="display:flex; gap:10px;">
+        <button class="btn" onclick="chooseReceivedVia('Pix')" style="flex:1;">💠 Pix</button>
+        <button class="btn" onclick="chooseReceivedVia('Dinheiro')" style="flex:1;">💵 Dinheiro</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Modal de Desmarcar Atendimento -->
   <div class="modal" id="cancelModal">
     <div class="modal-content">
@@ -3579,6 +3594,7 @@
           status: row[headers.indexOf('Status')] || 'A receber',
           receivedDate: row[headers.indexOf('Data de Recebimento')] || '',
           createdAt: row[headers.indexOf('Criado em')] || '',
+          receivedVia: headers.indexOf('Recebido via') >= 0 ? (row[headers.indexOf('Recebido via')] || '') : '',
           ...cardFieldsFromRow(row, headers),
         })).filter(r => r.id);
         renderCurrentModule();
@@ -4205,7 +4221,7 @@
           </div>
           <div class="finance-row-meta">
             <span>${item.cardType ? formatDateBR(item.dueDate) : `Vence ${formatDateBR(item.dueDate)}`}</span>
-            ${item.cardType ? cardMetaHtml(item) : `<span>${item.paymentMethod || '—'}</span>`}
+            ${item.cardType ? cardMetaHtml(item) : `<span>${escapeHtml(carneLabel(item))}</span>`}
             <span class="finance-status-badge ${item.status === 'Recebido' ? 'finance-status-paid' : 'finance-status-pending'}">${item.status}</span>
           </div>
           <div style="display:flex; gap:6px;">
@@ -4610,22 +4626,50 @@
       }
     }
 
-    async function toggleReceivableStatus(id, newStatus) {
+    // Parcela de Carnê sendo baixada: pergunta antes como foi paga.
+    let receivedViaPendingId = null;
+
+    function openReceivedViaModal(id) {
+      const f = allFinance.find(x => x.id === id);
+      receivedViaPendingId = id;
+      document.getElementById('rvInfo').innerHTML = f ? `
+        <div class="ld-row"><span class="ld-label">Cliente</span><span class="ld-value">${escapeHtml(f.name)}</span></div>
+        <div class="ld-row"><span class="ld-label">Parcela</span><span class="ld-value">${escapeHtml(f.installmentLabel)} · ${formatCurrencyBRL(f.value)}</span></div>` : '';
+      document.getElementById('receivedViaModal').classList.add('open');
+    }
+
+    function closeReceivedViaModal() {
+      document.getElementById('receivedViaModal').classList.remove('open');
+      receivedViaPendingId = null;
+    }
+
+    function chooseReceivedVia(via) {
+      const id = receivedViaPendingId;
+      closeReceivedViaModal();
+      if (id) toggleReceivableStatus(id, 'Recebido', via);
+    }
+
+    async function toggleReceivableStatus(id, newStatus, receivedVia) {
       const settings = loadSettings();
       if (!settings || !settings.scriptUrl) {
         alert('Configure a "URL do Apps Script" em ⚙️ Config primeiro.');
+        return;
+      }
+      const item = allFinance.find(x => x.id === id);
+      if (newStatus === 'Recebido' && item && item.paymentMethod === 'Carnê' && !receivedVia) {
+        openReceivedViaModal(id);
         return;
       }
       try {
         const response = await fetch(settings.scriptUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-          body: JSON.stringify({ action: 'markReceivableStatus', id, status: newStatus })
+          body: JSON.stringify({ action: 'markReceivableStatus', id, status: newStatus, receivedVia: receivedVia || '' })
         });
         const result = await response.json();
         if (!result.ok) throw new Error(result.error || 'Erro desconhecido');
 
-        showToast(newStatus === 'Recebido' ? '✅ Marcado como recebido' : '↩️ Voltou pra "a receber"');
+        showToast(newStatus === 'Recebido' ? `✅ Marcado como recebido${receivedVia ? ` em ${receivedVia}` : ''}` : '↩️ Voltou pra "a receber"');
         await fetchFinanceData();
         if (currentDetailPhone) renderLeadFinanceList(currentDetailPhone);
       } catch (err) {
@@ -4765,6 +4809,21 @@
     const PAYMENT_METHOD_ICONS = { Pix: '💠', 'Cartão': '💳', Dinheiro: '💵', 'Carnê': '🧾', Outro: '📄', Carteira: '📒' };
     // Formas que são dinheiro na mão no ato da venda — nunca viram parcela.
     const PAID_ON_SALE_METHODS = ['Pix', 'Dinheiro'];
+    // Como uma parcela de Carnê é paga (2026-10-02) — vai na coluna
+    // "Recebido via" e é o que conta nos recebimentos por forma.
+    const CARNE_RECEIVED_VIA = ['Pix', 'Dinheiro'];
+
+    /** Forma em que o dinheiro realmente entrou (Carnê → Pix/Dinheiro). */
+    function receivedMethodOf(f) {
+      if (f.cardType) return 'Cartão';
+      if (f.paymentMethod === 'Carnê') return f.receivedVia || 'Carnê';
+      return f.paymentMethod || 'Outro';
+    }
+
+    /** "Carnê · Pix" depois de pago; só "Carnê" enquanto em aberto. */
+    function carneLabel(f) {
+      return f.paymentMethod === 'Carnê' && f.status === 'Recebido' && f.receivedVia ? `Carnê · ${f.receivedVia}` : (f.paymentMethod || '—');
+    }
 
     // Detalhe do lançamento (pedido do usuário 2026-09-26: clicar num
     // lançamento do Relatório Financeiro abre um resumo dentro do próprio
@@ -4795,7 +4854,7 @@
           ...(item.cardType ? [] : [['Parcela', item.installmentLabel || '—']]),
           ['Valor', formatCurrencyBRL(item.value)],
           [item.cardType ? 'Data da venda' : 'Vencimento', formatDateBR(item.dueDate)],
-          ['Meio de pagamento', item.cardType ? `Cartão — ${cardLabel(item.cardType, item.cardInstallments, item.cardChannel)}` : (item.paymentMethod || '—')],
+          ['Meio de pagamento', item.cardType ? `Cartão — ${cardLabel(item.cardType, item.cardInstallments, item.cardChannel)}` : escapeHtml(carneLabel(item))],
           ...cardSummaryRows(item),
           ['Status', item.status === 'Recebido'
             ? `✅ Recebido${item.receivedDate ? ' em ' + formatDateBR(item.receivedDate) : ''}`
@@ -5193,6 +5252,10 @@
                 Já recebida
                 <span id="instRecvWrap_${i}" style="display:${inst.received ? 'inline-flex' : 'none'}; align-items:center; gap:6px;">em
                   <input type="date" id="instRecvDate_${i}" value="${inst.receivedDate || inst.dueDate}" max="${today}" onchange="updateInstallmentField(${i}, 'receivedDate', this.value)" style="width:auto; padding:4px 6px; font-size:12.5px;">
+                  ${inst.paymentMethod === 'Carnê' ? `via
+                  <select onchange="updateInstallmentField(${i}, 'receivedVia', this.value)" style="width:auto; padding:4px 6px; font-size:12.5px;">
+                    ${CARNE_RECEIVED_VIA.map(v => `<option value="${v}"${(inst.receivedVia || 'Pix') === v ? ' selected' : ''}>${v}</option>`).join('')}
+                  </select>` : ''}
                 </span>
               </label>
             </div>`;
@@ -5225,6 +5288,7 @@
     function toggleInstallmentReceived(i, checked) {
       const inst = receivableContext.installments[i];
       inst.received = checked;
+      if (checked && inst.paymentMethod === 'Carnê' && !inst.receivedVia) inst.receivedVia = 'Pix';
       if (checked && !inst.receivedDate) {
         // Padrão = vencimento, mas nunca no futuro (não dá pra ter recebido amanhã).
         const today = localDateStr(new Date());
@@ -5723,7 +5787,7 @@
         }
         l.rows.forEach(r => {
           const isCard = Boolean(r.cardType);
-          const methodText = isCard ? `💳 Cartão ${cardLabel(r.cardType, r.cardInstallments, r.cardChannel)}` : `${PAYMENT_METHOD_ICONS[r.paymentMethod] || '📄'} ${escapeHtml(r.paymentMethod || 'Outro')} · ${escapeHtml(r.installmentLabel)}`;
+          const methodText = isCard ? `💳 Cartão ${cardLabel(r.cardType, r.cardInstallments, r.cardChannel)}` : `${PAYMENT_METHOD_ICONS[r.paymentMethod] || '📄'} ${escapeHtml(r.paymentMethod === 'Carnê' ? carneLabel(r) : (r.paymentMethod || 'Outro'))} · ${escapeHtml(r.installmentLabel)}`;
           const received = r.status === 'Recebido';
           const late = !received && r.dueDate && r.dueDate < today;
           const statusText = received
@@ -5921,8 +5985,10 @@
           phone: f.phone,
           name: f.name,
           description: `${f.description || 'Cobrança'}${isCard ? '' : ` (${f.installmentLabel})`}`,
-          method: isCard ? 'Cartão' : (f.paymentMethod || 'Outro'),
-          methodLabel: isCard ? `Cartão — ${cardLabel(f.cardType, f.cardInstallments, f.cardChannel)}` : (f.paymentMethod || 'Outro'),
+          // Carnê pago entra pela forma real (Pix/Dinheiro) — é o que
+          // bate com extrato e caixa.
+          method: receivedMethodOf(f),
+          methodLabel: isCard ? `Cartão — ${cardLabel(f.cardType, f.cardInstallments, f.cardChannel)}` : (f.paymentMethod === 'Carnê' ? carneLabel(f) : (f.paymentMethod || 'Outro')),
           gross: f.value,
           fee: f.cardFee || 0,
           net: netOf(f),

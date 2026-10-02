@@ -1440,6 +1440,10 @@ const FINANCE_COLUMNS = [
   'Taxa do Cartão',
   'Valor Líquido',
   'Canal Cartão', // Maquininha | Link (2026-09-30)
+  // Carnê (2026-10-02): a parcela é paga depois, em Pix ou Dinheiro — é
+  // essa forma que bate com o extrato/caixa. Vazia nas demais formas
+  // (a própria "Meio de Pagamento" já é como entrou).
+  'Recebido via',
 ];
 
 function getFinanceSheet() {
@@ -1501,6 +1505,7 @@ function createReceivables(payload) {
     inst.received ? (inst.receivedDate || inst.dueDate || todayStr) : '',
     createdAt,
     ...cardColumnsValues(inst.card || card),
+    inst.received ? (inst.receivedVia || '') : '',
   ]);
 
   const startRow = sheet.getLastRow() + 1;
@@ -1518,6 +1523,7 @@ function createReceivables(payload) {
  * (selecione "migrarPixParceladoParaCarne" no editor e clique Executar):
  * troca "Pix" → "Carnê" em toda linha cuja Parcela não seja "1/1"
  * (recebidas ou não — fazem parte do mesmo carnê). Pix 1/1 fica como está.
+ * As já recebidas ganham "Recebido via" = Pix (foi como estavam lançadas).
  * Rodar de novo não faz nada (não sobra Pix parcelado).
  */
 function migrarPixParceladoParaCarne() {
@@ -1526,11 +1532,16 @@ function migrarPixParceladoParaCarne() {
   const headers = data[0];
   const methodCol = headers.indexOf('Meio de Pagamento');
   const labelCol = headers.indexOf('Parcela');
+  const statusCol = headers.indexOf('Status');
+  const viaCol = headers.indexOf('Recebido via');
   let changed = 0;
   for (let i = 1; i < data.length; i++) {
     const label = String(data[i][labelCol]).trim();
     if (String(data[i][methodCol]).trim() === 'Pix' && label && label !== '1/1') {
       sheet.getRange(i + 1, methodCol + 1).setValue('Carnê');
+      if (String(data[i][statusCol]).trim() === 'Recebido' && viaCol >= 0 && !String(data[i][viaCol] || '').trim()) {
+        sheet.getRange(i + 1, viaCol + 1).setValue('Pix');
+      }
       changed++;
     }
   }
@@ -1540,7 +1551,7 @@ function migrarPixParceladoParaCarne() {
 
 /** Marca uma parcela como recebida (ou desfaz, volta pra "A receber"). */
 function markReceivableStatus(payload) {
-  const { id, status } = payload;
+  const { id, status, receivedVia } = payload;
   if (!id || !status) return { ok: false, error: 'Campos obrigatórios: id, status.' };
 
   const sheet = getFinanceSheet();
@@ -1549,13 +1560,20 @@ function markReceivableStatus(payload) {
   const idCol = headers.indexOf('ID');
   const statusCol = headers.indexOf('Status');
   const receivedCol = headers.indexOf('Data de Recebimento');
+  const viaCol = headers.indexOf('Recebido via');
+  const methodCol = headers.indexOf('Meio de Pagamento');
 
   for (let i = 1; i < data.length; i++) {
     if (String(data[i][idCol]) === String(id)) {
+      const isCarne = String(data[i][methodCol]).trim() === 'Carnê';
+      if (status === 'Recebido' && isCarne && !receivedVia) {
+        return { ok: false, error: 'Parcela de carnê: informe se foi paga em Pix ou Dinheiro.' };
+      }
       sheet.getRange(i + 1, statusCol + 1).setValue(status);
       sheet.getRange(i + 1, receivedCol + 1).setValue(
         status === 'Recebido' ? Utilities.formatDate(new Date(), TIME_ZONE, 'yyyy-MM-dd') : ''
       );
+      if (viaCol >= 0) sheet.getRange(i + 1, viaCol + 1).setValue(status === 'Recebido' && isCarne ? receivedVia : '');
       return { ok: true };
     }
   }
