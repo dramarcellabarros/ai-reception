@@ -4295,7 +4295,7 @@
             return `
             <div class="agenda-event ${type ? type.className + '-border' : ''}${completed ? ' agenda-event-completed' : ''}" onclick="openAppointmentSummary(${jsArg(ev.id)})" role="button" tabindex="0">
               <span class="agenda-event-time">${ev.time}</span>
-              <span class="agenda-event-summary">${escapeHtml(agendaDisplayTitle(ev.summary))}${leadRefHtml(leadRefByPhone(parseEventInfo(ev.summary, ev.description).phone))}</span>
+              <span class="agenda-event-summary">${(() => { const ph = parseEventInfo(ev.summary, ev.description).phone; return escapeHtml(leadNameByPhone(ph, agendaDisplayTitle(ev.summary))) + leadRefHtml(leadRefByPhone(ph)); })()}</span>
               ${badge}
               <div class="agenda-event-actions">${action}</div>
             </div>
@@ -5421,8 +5421,8 @@
 
     async function submitNewLead() {
       const settings = loadSettings();
-      const name = document.getElementById('nlName').value.trim();
-      const reference = hasReferenceColumn ? document.getElementById('nlReference').value.trim() : '';
+      const name = formatPersonName(document.getElementById('nlName').value);
+      const reference = hasReferenceColumn ? formatPersonName(document.getElementById('nlReference').value) : '';
       const phoneRaw = document.getElementById('nlPhone').value.trim();
       const source = document.getElementById('nlSource').value;
       const birthDate = document.getElementById('nlBirthDate').value;
@@ -6110,8 +6110,8 @@
     async function saveLeadEdit() {
       if (!currentDetailPhone) return;
       const settings = loadSettings();
-      const name = document.getElementById('ldEditName').value.trim();
-      const reference = document.getElementById('ldEditReference').value.trim();
+      const name = formatPersonName(document.getElementById('ldEditName').value);
+      const reference = formatPersonName(document.getElementById('ldEditReference').value);
       const source = document.getElementById('ldEditSource').value;
       const leadStatus = document.getElementById('ldEditStatus').value;
       const manualOnly = document.getElementById('ldEditManualOnly').checked;
@@ -6272,6 +6272,15 @@
       return ref ? ` <span class="name-ref">· ${escapeHtml(ref)}</span>` : '';
     }
 
+    /** Nome do cadastro pelo telefone do evento — o título do evento guarda
+     *  o nome de quando foi criado ("verbena elizabeth (bia)"); a tela mostra
+     *  o atual. Sem cadastro achado, fica o do título. */
+    function leadNameByPhone(phone, fallback) {
+      const d = phoneDigits(phone);
+      const lead = d ? allData.find(l => phoneDigits(l.phone) === d) : null;
+      return (lead && lead.name && lead.name !== 'N/A') ? lead.name : fallback;
+    }
+
     function leadRefByPhone(phone) {
       const d = phoneDigits(phone);
       const lead = d ? allData.find(l => phoneDigits(l.phone) === d) : null;
@@ -6287,6 +6296,22 @@
     function splitNameReference(name) {
       const m = String(name || '').match(/^(.*\S)\s*\(([^()]+)\)\s*$/);
       return m ? { name: m[1].trim(), reference: m[2].trim() } : null;
+    }
+
+    // --- Nome formatado (pedido do usuário 2026-10-07: "verbena elizabeth
+    // (bia)" → "Verbena Elizabeth (Bia)") ---
+    // Inicial maiúscula em cada palavra; preposições (da, de, do, das, dos,
+    // e) ficam minúsculas no meio do nome. Vale depois de hífen e
+    // apóstrofo ("Ana-Clara", "D'Ávila"). Espelha apps-script/Code.gs#
+    // formatPersonName — mudar lá também.
+    const NAME_PARTICLES = new Set(['da', 'de', 'do', 'das', 'dos', 'e', 'di', 'du', 'del', 'van', 'von']);
+    function formatPersonName(raw) {
+      const words = String(raw || '').trim().replace(/\s+/g, ' ').toLowerCase().split(' ');
+      return words.map((w, i) => {
+        const bare = w.replace(/^\(/, '');
+        if (i > 0 && NAME_PARTICLES.has(bare)) return w;
+        return w.replace(/(^|[-'’(])(\p{L})/gu, (m, sep, c) => sep + c.toUpperCase());
+      }).join(' ');
     }
 
     /** Só links http(s) — um "javascript:" vindo da planilha não vira link clicável. */
@@ -7640,7 +7665,7 @@
     // UX 2026-09-23: um erro de data/hora virava um agendamento errado de
     // verdade, sem possibilidade de revisão).
     function reviewAppointment() {
-      const name = document.getElementById('apName').value.trim();
+      const name = formatPersonName(document.getElementById('apName').value);
       const phoneRaw = document.getElementById('apPhone').value.trim();
       const source = document.getElementById('apSource').value;
       const type = document.getElementById('apType').value;
@@ -7959,7 +7984,7 @@
     async function submitEditAppointment() {
       if (!editContext) return;
       const settings = loadSettings();
-      const name = document.getElementById('editName').value.trim();
+      const name = formatPersonName(document.getElementById('editName').value);
       const source = document.getElementById('editSource').value;
       const appointmentType = document.getElementById('editType').value;
       const procedure = getGatedProcedureValue('editType', 'edit');
@@ -8165,7 +8190,7 @@
       // Nome e origem vêm do título/descrição do evento — que a IA do
       // WhatsApp também grava (2026-10-07): sempre escapados.
       const rows = [
-        ['Paciente', escapeHtml(info.name || '—') + leadRefHtml(leadRefByPhone(info.phone))],
+        ['Paciente', escapeHtml(leadNameByPhone(info.phone, info.name || '—')) + leadRefHtml(leadRefByPhone(info.phone))],
         ['Telefone', wa ? `<a href="${escapeHtml(wa)}" target="_blank" rel="noopener">💬 ${escapeHtml(formatPhone(info.phone))}</a>` : escapeHtml(formatPhone(info.phone))],
         ['Origem', escapeHtml(info.source || '—')],
         ['Tipo', type ? `<span class="type-badge ${type.className}">${type.label}</span>` : '—'],
@@ -8285,7 +8310,7 @@
 
     async function submitNewAppointment() {
       const settings = loadSettings();
-      const name = document.getElementById('apName').value.trim();
+      const name = formatPersonName(document.getElementById('apName').value);
       const phone = document.getElementById('apPhone').value.trim();
       const source = document.getElementById('apSource').value;
       const appointmentType = document.getElementById('apType').value;
