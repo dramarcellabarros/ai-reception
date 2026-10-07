@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>CRM — Dra. Marcella Barros (Com API Real)</title>
+  <title>CRM — Dra. Marcella Barros</title>
   <link rel="icon" type="image/png" href="assets/favicon-32.png">
   <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -2059,6 +2059,8 @@
     }
     .client-row:hover { border-color: var(--cor-dourado-ambar); }
     .client-name { font-weight: 600; color: var(--cor-texto-marca); }
+    /* Referência (complemento do nome, 2026-10-07): ao lado do nome, mais discreta. */
+    .name-ref { font-weight: 400; font-size: 0.85em; color: var(--cor-cinza-cacau); }
     .client-meta { font-size: 12px; color: var(--cor-cinza-cacau); margin-top: 3px; display: flex; flex-wrap: wrap; gap: 4px 10px; }
     .client-side { text-align: right; font-size: 12px; color: var(--cor-cinza-cacau); flex-shrink: 0; }
     .client-side strong { display: block; font-size: 14px; color: var(--cor-texto-marca); font-variant-numeric: tabular-nums; }
@@ -2134,6 +2136,11 @@
        agendamento foi pra dentro do módulo Agenda. -->
   <header>
     <div class="header-left">
+      <!-- Logo com link pro site oficial de volta (pedido do usuário
+           2026-10-07 — tinha saído no "topo enxuto" de 2026-09-30). -->
+      <a href="https://dramarcellabarros.com.br" target="_blank" rel="noopener" title="Abrir o site da Dra. Marcella Barros" aria-label="Abrir o site da Dra. Marcella Barros">
+        <img src="assets/logo-branco.png" alt="Marcella Barros" class="header-logo">
+      </a>
       <h1>CRM — Dra. Marcella Barros</h1>
     </div>
     <div class="header-actions">
@@ -2312,21 +2319,21 @@
       <span class="close-btn" onclick="toggleSettings()">&times;</span>
       <h2>⚙️ Configuração</h2>
       <div class="form-group">
-        <label>URL do Apps Script:</label>
+        <label>Endereço do sistema:</label>
         <input type="text" id="scriptUrl" placeholder="https://script.google.com/macros/s/.../exec" autocomplete="off">
         <small style="color: var(--cor-cinza-cacau); margin-top: 5px; display: block;">
-          É por ela que o CRM lê e grava tudo. Ver apps-script/SETUP.md para gerar essa URL.
+          É por ele que o CRM lê e grava tudo. Informe uma vez em cada aparelho.
         </small>
       </div>
       <div class="form-group">
         <label>Senha de acesso do CRM:</label>
-        <input type="password" id="accessPassword" placeholder="A mesma cadastrada no Apps Script (CRM_SENHA)" autocomplete="current-password">
+        <input type="password" id="accessPassword" placeholder="Senha da clínica" autocomplete="current-password">
         <small style="color: var(--cor-cinza-cacau); margin-top: 5px; display: block;">
           Informe uma vez em cada aparelho.
         </small>
       </div>
       <details style="margin-bottom: 16px;">
-        <summary style="cursor:pointer; color: var(--cor-cinza-cacau); font-size: 13px;">Leitura antiga (planilha/agenda públicas) — só durante a transição</summary>
+        <summary style="cursor:pointer; color: var(--cor-cinza-cacau); font-size: 13px;">Avançado — não precisa preencher</summary>
       <div class="form-group">
         <label>ID da Planilha Google Sheets:</label>
         <input type="text" id="spreadsheetId" placeholder="Colar ID da planilha aqui">
@@ -2695,6 +2702,10 @@
         <label>Nome:</label>
         <input type="text" id="nlName" placeholder="Nome completo" maxlength="80" autocorrect="off" spellcheck="false">
       </div>
+      <div class="form-group" id="nlReferenceGroup" style="display:none;">
+        <label>Referência (opcional):</label>
+        <input type="text" id="nlReference" maxlength="60" placeholder="Quem indicou ou de quem é parente. Ex.: Roberta, esposa do Afonso" autocorrect="off" spellcheck="false">
+      </div>
       <div class="form-group">
         <label>Telefone:</label>
         <input type="tel" id="nlPhone" oninput="maskCellphoneInput(this)">
@@ -2883,6 +2894,11 @@
         <label>Nome:</label>
         <input type="text" id="ldEditName" maxlength="80" autocorrect="off" spellcheck="false">
       </div>
+      <div class="form-group" id="ldReferenceGroup" style="display:none;">
+        <label>Referência (opcional):</label>
+        <input type="text" id="ldEditReference" maxlength="60" placeholder="Quem indicou ou de quem é parente. Ex.: Roberta, esposa do Afonso" autocorrect="off" spellcheck="false">
+        <div id="ldReferenceHint" style="font-size:12px; color:var(--cor-cinza-cacau); margin-top:4px;"></div>
+      </div>
       <div class="form-group">
         <label>Telefone:</label>
         <input type="tel" id="ldEditPhone" oninput="maskCellphoneInput(this)">
@@ -2931,6 +2947,10 @@
   </div>
 
   <script>
+    // Aparelho sem endereço do sistema salvo (⚙️ Config). Uma frase só,
+    // sem "URL do Apps Script"/SETUP.md (pedido do usuário 2026-10-07:
+    // menos informação técnica na tela da equipe).
+    const NOT_CONFIGURED_MSG = '⚙️ Este aparelho ainda não está conectado ao sistema. Abra ⚙️ Config e preencha o endereço e a senha do CRM.';
     let allData = [];
     let allCalendarEvents = [];
     let showAgendaHistory = false;
@@ -3115,7 +3135,7 @@
           <div class="form-group" style="${channels.length > 1 ? '' : 'display:none;'}">
             <label>Canal:</label>
             <select id="${prefix}CardChannel" onchange="onCardChannelChange('${prefix}')">
-              ${channels.map(c => `<option value="${c}">${c === 'Link' ? 'Link de pagamento' : c}</option>`).join('')}
+              ${channels.map(c => `<option value="${escapeHtml(c)}">${c === 'Link' ? 'Link de pagamento' : escapeHtml(c)}</option>`).join('')}
             </select>
           </div>
           <div class="form-group">
@@ -3161,7 +3181,7 @@
       const previous = typeSel.value;
       const types = Array.from(new Set(CARD_FEES.filter(f => feeChannel(f) === channel).map(f => f.type)))
         .sort((a, b) => (a === 'Crédito' ? -1 : b === 'Crédito' ? 1 : 0));
-      typeSel.innerHTML = types.map(t => `<option value="${t}">${t}</option>`).join('');
+      typeSel.innerHTML = types.map(t => `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`).join('');
       if (types.includes(previous)) typeSel.value = previous;
       onCardTypeChange(prefix);
     }
@@ -3425,7 +3445,7 @@
         <div class="form-error" style="display:block;">
           <div style="margin-bottom:10px;">${html}</div>
           <div style="display:flex; gap:8px; flex-wrap:wrap;">
-            ${buttons.map(([label, onclick, cls]) => `<button type="button" class="btn ${cls || ''}" onclick="${onclick}" style="flex:1; min-width:140px;">${label}</button>`).join('')}
+            ${buttons.map(([label, onclick, cls]) => `<button type="button" class="btn ${cls || ''}" onclick="${escapeHtml(onclick)}" style="flex:1; min-width:140px;">${label}</button>`).join('')}
           </div>
         </div>`;
       el.scrollIntoView({ block: 'nearest' });
@@ -3464,10 +3484,12 @@
     // "T00:00:00" sem fuso força o JS a interpretar como hora local, não
     // UTC, senão datas perto da virada de dia podiam mostrar o dia da
     // semana errado.
+    // Fora do formato AAAA-MM-DD devolve o texto escapado — datas vêm da
+    // planilha e (com a IA) do horário escolhido pela paciente (2026-10-07).
     function formatDateBR(isoDate) {
       if (!isoDate) return isoDate;
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(String(isoDate))) return escapeHtml(isoDate);
       const [year, month, day] = isoDate.split('-');
-      if (!year || !month || !day) return isoDate;
       const weekday = WEEKDAY_ABBR_PT[new Date(`${isoDate}T00:00:00`).getDay()];
       return `${weekday} ${day}/${month}/${year}`;
     }
@@ -3567,7 +3589,10 @@
           const res = await scriptFetch(`${s.scriptUrl}?action=sheet&name=${encodeURIComponent(name)}`);
           body = await res.json();
         } catch (err) {
-          if (scriptReadMode === true) throw err;
+          // Sem caminho antigo configurado, falha de rede é falha de rede —
+          // antes caía em "Configuração incompleta" quando a internet
+          // estava fora (2026-10-07).
+          if (scriptReadMode === true || !(s.spreadsheetId && s.apiKey)) throw err;
           body = null; // falha de rede antes de saber a versão: tenta o caminho antigo
         }
         if (body && body.ok) { scriptReadMode = true; return body.values || []; }
@@ -3580,7 +3605,7 @@
         if (!res.ok) throw new Error(`Erro ${res.status}`);
         return (await res.json()).values || [];
       }
-      throw new Error('Configuração incompleta — abra ⚙️ Config.');
+      throw new Error(NOT_CONFIGURED_MSG);
     }
 
     /** Eventos da agenda entre timeMin e timeMax (Date), mesmo formato da Calendar API. */
@@ -3592,7 +3617,7 @@
           const res = await scriptFetch(`${s.scriptUrl}?action=events&timeMin=${encodeURIComponent(timeMin.toISOString())}&timeMax=${encodeURIComponent(timeMax.toISOString())}`);
           body = await res.json();
         } catch (err) {
-          if (scriptReadMode === true) throw err;
+          if (scriptReadMode === true || !(s.apiKey && s.calendarId)) throw err;
           body = null;
         }
         if (body && body.ok) { scriptReadMode = true; return body.items || []; }
@@ -3600,7 +3625,7 @@
         if (body && /Ação desconhecida/.test(body.error || '')) scriptReadMode = false;
         else if (body) throw new Error(body.error || 'Erro ao ler a agenda');
       }
-      if (!(s.apiKey && s.calendarId)) throw new Error('Configuração incompleta — abra ⚙️ Config.');
+      if (!(s.apiKey && s.calendarId)) throw new Error(NOT_CONFIGURED_MSG);
       // Caminho antigo (API Key + agenda pública), com todas as páginas.
       const items = [];
       let pageToken = '';
@@ -3642,7 +3667,7 @@
       const settings = loadSettings();
 
       if (!hasDataConfig(settings)) {
-        showError('⚠️ Configure a URL do Apps Script primeiro. Clique em ⚙️ Config');
+        showError(NOT_CONFIGURED_MSG);
         setStatus(false, 'Config necessária');
         showEmptyState();
         return;
@@ -3661,6 +3686,7 @@
         }
 
         const headers = values[0];
+        hasReferenceColumn = headers.includes('Referência');
         allData = values.slice(1).map(row => ({
           phone: row[headers.indexOf('Telefone')] || '—',
           name: row[headers.indexOf('Nome')] || 'N/A',
@@ -3671,6 +3697,7 @@
           appointmentType: row[headers.indexOf('Tipo de Atendimento')] || '',
           procedure: row[headers.indexOf('Interesse/Procedimento')] || '',
           birthDate: /^\d{4}-\d{2}-\d{2}$/.test(row[headers.indexOf('Data de Nascimento')] || '') ? row[headers.indexOf('Data de Nascimento')] : '',
+          reference: headers.indexOf('Referência') >= 0 ? (row[headers.indexOf('Referência')] || '').trim() : '',
           chosenSlot: tryParseJSON(row[headers.indexOf('Horário Escolhido (JSON)')]),
           confirmedAppointment: tryParseJSON(row[headers.indexOf('Agendamento Confirmado (JSON)')])
         }));
@@ -3682,7 +3709,7 @@
       } catch (err) {
         console.error('Erro ao buscar dados:', err);
         setStatus(false, 'Erro na sincronização');
-        showError(`❌ Erro: ${err.message}`);
+        showError(`❌ ${friendlyError(err)}`);
         showEmptyState();
       }
     }
@@ -3737,7 +3764,7 @@
     function cardMetaHtml(item) {
       if (!item.cardType) return '';
       const fee = item.cardFee !== null ? ` · taxa ${formatCurrencyBRL(item.cardFee)} · líquido ${formatCurrencyBRL(netOf(item))}` : '';
-      return `<span>💳 ${cardLabel(item.cardType, item.cardInstallments, item.cardChannel)}${fee}</span>`;
+      return `<span>💳 ${escapeHtml(cardLabel(item.cardType, item.cardInstallments, item.cardChannel))}${fee}</span>`;
     }
 
     async function fetchFinanceData() {
@@ -3890,7 +3917,7 @@
 
     function showError(message) {
       const container = document.getElementById('errorContainer');
-      container.innerHTML = `<div class="error">${message}</div>`;
+      container.innerHTML = `<div class="error">${escapeHtml(message)}</div>`;
     }
 
     function clearError() {
@@ -4019,7 +4046,7 @@
           const reason = blockReason(ev.summary);
           return `<div class="month-day-detail-row" style="color:var(--cor-cinza-cacau);"><span class="month-day-detail-time">${time}${until}</span><span>🔒 ${reason ? escapeHtml(reason) : 'Horário bloqueado'}</span></div>`;
         }
-        return `<div class="month-day-detail-row" onclick="openAppointmentSummary('${ev.id}')" role="button" tabindex="0" style="cursor:pointer;"><span class="month-day-detail-time">${time}</span><span>${agendaDisplayTitle(ev.summary)}</span></div>`;
+        return `<div class="month-day-detail-row" onclick="openAppointmentSummary(${jsArg(ev.id)})" role="button" tabindex="0" style="cursor:pointer;"><span class="month-day-detail-time">${time}</span><span>${escapeHtml(agendaDisplayTitle(ev.summary))}</span></div>`;
       }).join('');
 
       container.innerHTML = `<div style="font-weight:600;margin-bottom:6px;">${label}</div>${rows}`;
@@ -4031,7 +4058,7 @@
       const agendaStatus = document.getElementById('agendaStatus');
 
       if (!settings || !(settings.scriptUrl || (settings.apiKey && settings.calendarId))) {
-        agendaList.innerHTML = '<div class="agenda-empty">⚙️ Configure a URL do Apps Script em Config para ver os agendamentos aqui.</div>';
+        agendaList.innerHTML = `<div class="agenda-empty">${NOT_CONFIGURED_MSG}</div>`;
         agendaStatus.textContent = '';
         return;
       }
@@ -4059,7 +4086,7 @@
       } catch (err) {
         console.error('Erro ao buscar agenda:', err);
         agendaStatus.textContent = '🔴 Erro ao sincronizar';
-        agendaList.innerHTML = `<div class="agenda-empty">❌ ${escapeHtml(err.message)}</div>`;
+        agendaList.innerHTML = `<div class="agenda-empty">❌ ${errorText(err)}</div>`;
       }
     }
 
@@ -4230,7 +4257,7 @@
               <span class="agenda-event-summary">${reason ? escapeHtml(reason) : 'Horário bloqueado'}</span>
               <span class="type-badge type-bloqueio">🔒 Bloqueio</span>
               <div class="agenda-event-actions">
-                <button class="complete-btn complete-btn-danger complete-btn-compact" onclick="removeBlock('${ev.id}')" title="Liberar horário (remove o bloqueio)" aria-label="Liberar horário">✕</button>
+                <button class="complete-btn complete-btn-danger complete-btn-compact" onclick="removeBlock(${jsArg(ev.id)})" title="Liberar horário (remove o bloqueio)" aria-label="Liberar horário">✕</button>
               </div>
             </div>`;
             }
@@ -4253,22 +4280,22 @@
               ? buildConfirmationWhatsAppLink(ev, group.dateObj, group.isToday)
               : null;
             const confirmBtn = confirmLink
-              ? `<a class="complete-btn" href="${confirmLink}" target="_blank" rel="noopener" onclick="event.stopPropagation();" title="Confirmar presença via WhatsApp" aria-label="Confirmar presença via WhatsApp">💬</a>`
+              ? `<a class="complete-btn" href="${escapeHtml(confirmLink)}" target="_blank" rel="noopener" onclick="event.stopPropagation();" title="Confirmar presença via WhatsApp" aria-label="Confirmar presença via WhatsApp">💬</a>`
               : '';
 
             const action = completed
               ? `<span class="complete-done" title="${statusInfo.label}">${statusInfo.icon}</span>
-                 <button class="complete-btn complete-btn-compact" onclick="event.stopPropagation(); event.preventDefault(); reopenEvent('${ev.id}')" title="Reabrir (desfaz) — ${statusInfo.label}" aria-label="Reabrir">↩️</button>`
+                 <button class="complete-btn complete-btn-compact" onclick="event.stopPropagation(); event.preventDefault(); reopenEvent(${jsArg(ev.id)})" title="Reabrir (desfaz) — ${statusInfo.label}" aria-label="Reabrir">↩️</button>`
               : `
                 ${confirmBtn}
-                <button class="complete-btn" onclick="event.stopPropagation(); event.preventDefault(); openCompleteModal('${ev.id}')" title="Marcar como concluído" aria-label="Marcar como concluído">✅</button>
-                <button class="complete-btn" onclick="event.stopPropagation(); event.preventDefault(); openEditAppointmentModal('${ev.id}')" title="Editar agendamento" aria-label="Editar agendamento">✏️</button>
-                <button class="complete-btn complete-btn-danger" onclick="event.stopPropagation(); event.preventDefault(); openCancelModal('${ev.id}')" title="Desmarcar" aria-label="Desmarcar">✕</button>
+                <button class="complete-btn" onclick="event.stopPropagation(); event.preventDefault(); openCompleteModal(${jsArg(ev.id)})" title="Marcar como concluído" aria-label="Marcar como concluído">✅</button>
+                <button class="complete-btn" onclick="event.stopPropagation(); event.preventDefault(); openEditAppointmentModal(${jsArg(ev.id)})" title="Editar agendamento" aria-label="Editar agendamento">✏️</button>
+                <button class="complete-btn complete-btn-danger" onclick="event.stopPropagation(); event.preventDefault(); openCancelModal(${jsArg(ev.id)})" title="Desmarcar" aria-label="Desmarcar">✕</button>
               `;
             return `
-            <div class="agenda-event ${type ? type.className + '-border' : ''}${completed ? ' agenda-event-completed' : ''}" onclick="openAppointmentSummary('${ev.id}')" role="button" tabindex="0">
+            <div class="agenda-event ${type ? type.className + '-border' : ''}${completed ? ' agenda-event-completed' : ''}" onclick="openAppointmentSummary(${jsArg(ev.id)})" role="button" tabindex="0">
               <span class="agenda-event-time">${ev.time}</span>
-              <span class="agenda-event-summary">${agendaDisplayTitle(ev.summary)}</span>
+              <span class="agenda-event-summary">${escapeHtml(agendaDisplayTitle(ev.summary))}${leadRefHtml(leadRefByPhone(parseEventInfo(ev.summary, ev.description).phone))}</span>
               ${badge}
               <div class="agenda-event-actions">${action}</div>
             </div>
@@ -4305,7 +4332,7 @@
       if (!lead) return;
       currentDetailPhone = phone;
 
-      document.getElementById('ldName').textContent = lead.name;
+      document.getElementById('ldName').innerHTML = escapeHtml(lead.name) + leadRefHtml(lead.reference);
 
       const wa = whatsappLink(lead.phone);
       const typeStyle = detectAppointmentType(lead.appointmentType);
@@ -4316,19 +4343,20 @@
         : lead.leadStatus === 'desmarcado' ? 'Desmarcado'
         : lead.confirmedAppointment ? 'Confirmado' : (lead.leadStatus || 'Ativo');
       const rows = [
-        ['Telefone', wa ? `<a href="${wa}" target="_blank" rel="noopener">💬 ${formatPhone(lead.phone)}</a>` : formatPhone(lead.phone)],
-        ['Origem', lead.source || '—'],
+        ['Telefone', wa ? `<a href="${escapeHtml(wa)}" target="_blank" rel="noopener">💬 ${escapeHtml(formatPhone(lead.phone))}</a>` : escapeHtml(formatPhone(lead.phone))],
+        ['Origem', escapeHtml(lead.source || '—')],
         ...(lead.birthDate ? [['Nascimento', `${formatDateShortBR(lead.birthDate)} (${ageFrom(lead.birthDate)} anos)`]] : []),
         ['Tipo de atendimento', typeStyle ? `<span class="type-badge ${typeStyle.className}">${typeStyle.label}</span>` : '—'],
-        ...(lead.procedure ? [['Procedimento', lead.procedure]] : []),
-        ['Estado da conversa', `${translateConversationState(lead.conversationState)}<br><span style="font-weight:400;font-size:11px;color:var(--cor-cinza-cacau)">etapa interna da IA de atendimento, não é o status do agendamento</span>`],
-        ['Status', statusText],
-        ['Horário escolhido', lead.chosenSlot ? `${formatDateBR(lead.chosenSlot.date)} ${lead.chosenSlot.start}` : '—'],
+        ...(lead.procedure ? [['Procedimento', escapeHtml(lead.procedure)]] : []),
+        // "Estado da conversa" (etapa interna da IA) saiu da ficha — pedido
+        // do usuário 2026-10-07: informação técnica que não ajuda a equipe.
+        ['Status', escapeHtml(statusText)],
+        ['Horário escolhido', lead.chosenSlot ? `${formatDateBR(lead.chosenSlot.date)} ${escapeHtml(lead.chosenSlot.start || '')}` : '—'],
       ];
 
       if (lead.confirmedAppointment) {
-        const link = lead.confirmedAppointment.htmlLink;
-        rows.push(['Agendamento', link ? `<a href="${link}" target="_blank" rel="noopener">📅 Ver na agenda</a>` : 'Confirmado']);
+        const link = safeUrl(lead.confirmedAppointment.htmlLink);
+        rows.push(['Agendamento', link ? `<a href="${escapeHtml(link)}" target="_blank" rel="noopener">📅 Ver na agenda</a>` : 'Confirmado']);
       }
 
       document.getElementById('ldBody').innerHTML = rows.map(([label, value]) => `
@@ -4344,6 +4372,20 @@
 
       // Preenche o formulário de edição com o estado atual do lead.
       document.getElementById('ldEditName').value = lead.name || '';
+      document.getElementById('ldReferenceGroup').style.display = hasReferenceColumn ? 'block' : 'none';
+      document.getElementById('ldEditReference').value = lead.reference || '';
+      const refHint = document.getElementById('ldReferenceHint');
+      refHint.textContent = 'Aparece ao lado do nome nas listas e na Agenda. A busca também encontra por aqui.';
+      refHint.style.color = '';
+      // Cadastro antigo com a referência entre parênteses no nome: já
+      // separa no formulário — só grava se a pessoa salvar.
+      const split = hasReferenceColumn && !lead.reference ? splitNameReference(lead.name) : null;
+      if (split) {
+        document.getElementById('ldEditName').value = split.name;
+        document.getElementById('ldEditReference').value = split.reference;
+        refHint.textContent = `✏️ Separei "(${split.reference})" do nome. Confira e toque em Salvar Alterações.`;
+        refHint.style.color = 'var(--cor-texto-marca)';
+      }
       const phoneInput = document.getElementById('ldEditPhone');
       phoneInput.value = lead.phone && lead.phone !== '—' ? lead.phone : '';
       maskCellphoneInput(phoneInput);
@@ -4365,10 +4407,10 @@
       const hint = document.getElementById('ldEditHint');
       if (!settings || !settings.scriptUrl) {
         saveBtn.disabled = true;
-        hint.textContent = '⚠️ Configure a "URL do Apps Script" em ⚙️ Config para poder salvar edições.';
+        hint.textContent = NOT_CONFIGURED_MSG;
       } else {
         saveBtn.disabled = false;
-        hint.textContent = 'ℹ️ Estado da Conversa e Agendamento não são editáveis por aqui (agendamento se altera pela Agenda).';
+        hint.textContent = 'ℹ️ O agendamento se altera pela Agenda.';
       }
 
       document.getElementById('leadDetailModal').classList.add('open');
@@ -4399,20 +4441,20 @@
       container.innerHTML = items.map(item => `
         <div class="finance-row">
           <div class="finance-row-main">
-            <span>${item.description || 'Cobrança'} — ${item.cardType ? 'Venda no cartão' : `Parcela ${item.installmentLabel}`}</span>
+            <span>${escapeHtml(item.description || 'Cobrança')} — ${item.cardType ? 'Venda no cartão' : `Parcela ${escapeHtml(item.installmentLabel)}`}</span>
             <span class="finance-row-value">${formatCurrencyBRL(item.value)}</span>
           </div>
           <div class="finance-row-meta">
             <span>${item.cardType ? formatDateBR(item.dueDate) : `Vence ${formatDateBR(item.dueDate)}`}</span>
             ${item.cardType ? cardMetaHtml(item) : `<span>${escapeHtml(carneLabel(item))}</span>`}
-            <span class="finance-status-badge ${item.status === 'Recebido' ? 'finance-status-paid' : 'finance-status-pending'}">${item.status}</span>
+            <span class="finance-status-badge ${item.status === 'Recebido' ? 'finance-status-paid' : 'finance-status-pending'}">${escapeHtml(item.status)}</span>
           </div>
           <div style="display:flex; gap:6px;">
-            <button class="complete-btn" onclick="toggleReceivableStatus('${item.id}', '${item.status === 'Recebido' ? 'A receber' : 'Recebido'}')" style="flex:1;">
+            <button class="complete-btn" onclick="toggleReceivableStatus(${jsArg(item.id)}, '${item.status === 'Recebido' ? 'A receber' : 'Recebido'}')" style="flex:1;">
               ${item.status === 'Recebido' ? '↩️ Desfazer' : '✅ Marcar recebido'}
             </button>
-            ${item.status === 'Recebido' ? `<button class="complete-btn" onclick="reissueFinanceReceipt('${item.id}')" title="Recibo" aria-label="Gerar recibo">🧾</button>` : ''}
-            <button class="complete-btn complete-btn-danger" onclick="deleteFinanceEntry('${item.id}', '${phone}')" title="Excluir lançamento" aria-label="Excluir lançamento">🗑️</button>
+            ${item.status === 'Recebido' ? `<button class="complete-btn" onclick="reissueFinanceReceipt(${jsArg(item.id)})" title="Recibo" aria-label="Gerar recibo">🧾</button>` : ''}
+            <button class="complete-btn complete-btn-danger" onclick="deleteFinanceEntry(${jsArg(item.id)}, ${jsArg(phone)})" title="Excluir lançamento" aria-label="Excluir lançamento">🗑️</button>
           </div>
         </div>
       `).join('');
@@ -4439,7 +4481,7 @@
         await fetchFinanceData();
         if (currentDetailPhone === phone) renderLeadFinanceList(phone);
       } catch (err) {
-        alert(`❌ ${err.message}`);
+        alert(`❌ ${friendlyError(err)}`);
       }
     }
 
@@ -4461,7 +4503,7 @@
         await fetchCarteiraData();
         if (currentDetailPhone === phone) renderLeadCarteira(phone);
       } catch (err) {
-        alert(`❌ ${err.message}`);
+        alert(`❌ ${friendlyError(err)}`);
       }
     }
 
@@ -4507,17 +4549,17 @@
       const extratoHtml = entries.map(entry => `
         <div class="finance-row">
           <div class="finance-row-main">
-            <span>${entry.type === 'Débito' ? '➕' : '➖'} ${entry.description || entry.type}</span>
+            <span>${entry.type === 'Débito' ? '➕' : '➖'} ${escapeHtml(entry.description || entry.type)}</span>
             <span class="finance-row-value">${formatCurrencyBRL(entry.value)}</span>
           </div>
           <div class="finance-row-meta">
             <span>${formatDateBR(entry.date)}</span>
-            ${entry.cardType ? cardMetaHtml(entry) : (entry.paymentMethod ? `<span>${entry.paymentMethod}</span>` : '')}
-            <span class="finance-status-badge ${entry.type === 'Débito' ? 'finance-status-pending' : 'finance-status-paid'}">${entry.type}</span>
+            ${entry.cardType ? cardMetaHtml(entry) : (entry.paymentMethod ? `<span>${escapeHtml(entry.paymentMethod)}</span>` : '')}
+            <span class="finance-status-badge ${entry.type === 'Débito' ? 'finance-status-pending' : 'finance-status-paid'}">${escapeHtml(entry.type)}</span>
           </div>
           <div style="display:flex; gap:6px;">
-            ${entry.type === 'Crédito' ? `<button class="complete-btn" style="flex:1;" onclick="reissueCarteiraReceipt('${entry.id}')" title="Recibo" aria-label="Gerar recibo">🧾 Recibo</button>` : ''}
-            <button class="complete-btn complete-btn-danger" style="flex:1;" onclick="deleteCarteiraEntryFromUI('${entry.id}', '${phone}')" title="Excluir lançamento" aria-label="Excluir lançamento">🗑️ Excluir</button>
+            ${entry.type === 'Crédito' ? `<button class="complete-btn" style="flex:1;" onclick="reissueCarteiraReceipt(${jsArg(entry.id)})" title="Recibo" aria-label="Gerar recibo">🧾 Recibo</button>` : ''}
+            <button class="complete-btn complete-btn-danger" style="flex:1;" onclick="deleteCarteiraEntryFromUI(${jsArg(entry.id)}, ${jsArg(phone)})" title="Excluir lançamento" aria-label="Excluir lançamento">🗑️ Excluir</button>
           </div>
         </div>
       `).join('');
@@ -4543,7 +4585,7 @@
       if (!phone) return;
       const settings = loadSettings();
       if (!settings || !settings.scriptUrl) {
-        alert('Configure a "URL do Apps Script" em ⚙️ Config primeiro.');
+        alert(NOT_CONFIGURED_MSG);
         return;
       }
       const lead = allData.find(l => l.phone === phone);
@@ -4609,7 +4651,7 @@
         await fetchCarteiraData();
         openLeadDetail(phone);
       } catch (err) {
-        errorEl.innerHTML = `<div class="form-error">❌ ${err.message}</div>`;
+        errorEl.innerHTML = `<div class="form-error">❌ ${errorText(err)}</div>`;
       } finally {
         btn.disabled = false;
         btn.textContent = '✅ Lançar Débito';
@@ -4621,7 +4663,7 @@
       if (!phone) return;
       const settings = loadSettings();
       if (!settings || !settings.scriptUrl) {
-        alert('Configure a "URL do Apps Script" em ⚙️ Config primeiro.');
+        alert(NOT_CONFIGURED_MSG);
         return;
       }
       const lead = allData.find(l => l.phone === phone);
@@ -4689,7 +4731,7 @@
       if (paymentMethod === 'Cartão') {
         card = readCardFields('cc', value);
         if (card.error) {
-          errorEl.innerHTML = `<div class="form-error">❌ ${card.error}</div>`;
+          errorEl.innerHTML = `<div class="form-error">❌ ${escapeHtml(card.error)}</div>`;
           return;
         }
       }
@@ -4717,7 +4759,7 @@
           || { id: result.id || '', phone, name, value, paymentMethod, date, cardType: card ? card.type : '', cardInstallments: card ? card.installments : '' };
         askToSendReceipt(receiptFromCarteira(entry));
       } catch (err) {
-        errorEl.innerHTML = `<div class="form-error">❌ ${err.message}</div>`;
+        errorEl.innerHTML = `<div class="form-error">❌ ${errorText(err)}</div>`;
       } finally {
         btn.disabled = false;
         btn.textContent = '✅ Registrar Pagamento';
@@ -4754,7 +4796,7 @@
       const container = document.getElementById('ldHistoryList');
       const settings = loadSettings();
       if (!settings || !settings.scriptUrl) {
-        container.innerHTML = '<div class="agenda-empty" style="padding:8px 0;">⚙️ Configure a URL do Apps Script em ⚙️ Config para ver o histórico.</div>';
+        container.innerHTML = `<div class="agenda-empty" style="padding:8px 0;">${NOT_CONFIGURED_MSG}</div>`;
         return;
       }
 
@@ -4787,12 +4829,12 @@
         const datedRows = items.map(item => `
           <div class="finance-row">
             <div class="finance-row-main">
-              <span>${item.procedure || item.type || 'Atendimento'}</span>
+              <span>${escapeHtml(item.procedure || item.type || 'Atendimento')}</span>
               <span class="finance-row-value" style="color:var(--cor-cinza-cacau); font-weight:400;">${formatDateBR(item.date)}</span>
             </div>
             <div class="finance-row-meta">
-              <span>${item.type || '—'}</span>
-              <span>${item.time || ''}</span>
+              <span>${escapeHtml(item.type || '—')}</span>
+              <span>${escapeHtml(item.time || '')}</span>
             </div>
           </div>
         `).join('');
@@ -4800,7 +4842,7 @@
         const extraRows = extraNames.map(name => `
           <div class="finance-row">
             <div class="finance-row-main">
-              <span>${name}</span>
+              <span>${escapeHtml(name)}</span>
             </div>
             <div class="finance-row-meta">
               <span>Lançado no Financeiro/Carteira — sem data de agendamento</span>
@@ -4842,7 +4884,7 @@
     async function toggleReceivableStatus(id, newStatus, receivedVia) {
       const settings = loadSettings();
       if (!settings || !settings.scriptUrl) {
-        alert('Configure a "URL do Apps Script" em ⚙️ Config primeiro.');
+        alert(NOT_CONFIGURED_MSG);
         return;
       }
       const item = allFinance.find(x => x.id === id);
@@ -4867,7 +4909,7 @@
           if (paid) askToSendReceipt(receiptFromFinance(paid));
         }
       } catch (err) {
-        alert(`❌ ${err.message}`);
+        alert(`❌ ${friendlyError(err)}`);
       }
     }
 
@@ -5072,7 +5114,7 @@
         document.getElementById('receiptAltShareBtn').style.display = isTouchDevice() && canShareReceiptFile() ? '' : 'none';
       } catch (err) {
         document.getElementById('receiptHint').textContent = '';
-        document.getElementById('receiptError').innerHTML = `<div class="form-error">❌ Não foi possível gerar o recibo: ${escapeHtml(err.message)}</div>`;
+        document.getElementById('receiptError').innerHTML = `<div class="form-error">❌ Não foi possível gerar o recibo: ${errorText(err)}</div>`;
       }
     }
 
@@ -5337,10 +5379,12 @@
     function openNewLeadModal() {
       const settings = loadSettings();
       if (!settings || !settings.scriptUrl) {
-        alert('Configure a "URL do Apps Script" em ⚙️ Config primeiro.');
+        alert(NOT_CONFIGURED_MSG);
         return;
       }
       document.getElementById('nlName').value = '';
+      document.getElementById('nlReference').value = '';
+      document.getElementById('nlReferenceGroup').style.display = hasReferenceColumn ? 'block' : 'none';
       document.getElementById('nlPhone').value = '';
       document.getElementById('nlSource').value = 'INSTAGRAM';
       document.getElementById('nlBirthDate').value = '';
@@ -5365,7 +5409,7 @@
       showDuplicateNotice('newLeadError',
         `⚠️ Este telefone já está cadastrado para <strong>${escapeHtml(existingName)}</strong>. Adicionar de novo trocaria os dados desse cadastro.`,
         [
-          [`Abrir cadastro de ${escapeHtml(existingName)}`, `openExistingFromNewLead('${existingPhone}')`, ''],
+          [`Abrir cadastro de ${escapeHtml(existingName)}`, `openExistingFromNewLead(${JSON.stringify(String(existingPhone || ''))})`, ''],
           ['Corrigir telefone', "clearFormError('newLeadError'); document.getElementById('nlPhone').focus()", 'secondary'],
         ]);
     }
@@ -5378,6 +5422,7 @@
     async function submitNewLead() {
       const settings = loadSettings();
       const name = document.getElementById('nlName').value.trim();
+      const reference = hasReferenceColumn ? document.getElementById('nlReference').value.trim() : '';
       const phoneRaw = document.getElementById('nlPhone').value.trim();
       const source = document.getElementById('nlSource').value;
       const birthDate = document.getElementById('nlBirthDate').value;
@@ -5419,9 +5464,9 @@
         if (homonyms.length) {
           nlHomonymPending = homonymKey;
           showDuplicateNotice('newLeadError',
-            `⚠️ Já existe <strong>${escapeHtml(homonyms[0].name)}</strong> com outro telefone (${homonyms.map(h => formatPhone(h.phone)).join(', ')}). É a mesma pessoa?`,
+            `⚠️ Já existe <strong>${escapeHtml(homonyms[0].name)}</strong> com outro telefone (${escapeHtml(homonyms.map(h => formatPhone(h.phone)).join(', '))}). É a mesma pessoa?`,
             [
-              ['Sim, abrir cadastro existente', `openExistingFromNewLead('${homonyms[0].phone}')`, ''],
+              ['Sim, abrir cadastro existente', `openExistingFromNewLead(${JSON.stringify(String(homonyms[0].phone))})`, ''],
               ['Não, é outra pessoa — adicionar', `nlHomonymOk = nlHomonymPending; submitNewLead()`, 'secondary'],
             ]);
           return;
@@ -5436,7 +5481,7 @@
         const response = await scriptFetch(settings.scriptUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-          body: JSON.stringify({ action: 'createLead', phone, name, source, appointmentType, procedure, birthDate })
+          body: JSON.stringify({ action: 'createLead', phone, name, source, appointmentType, procedure, birthDate, ...(reference ? { reference } : {}) })
         });
         const result = await response.json();
         if (result.code === 'PHONE_TAKEN') {
@@ -5450,7 +5495,7 @@
         await fetchSheetsData();
         openLeadDetail(result.phone || phone);
       } catch (err) {
-        document.getElementById('newLeadError').innerHTML = `<div class="form-error">❌ ${err.message}</div>`;
+        document.getElementById('newLeadError').innerHTML = `<div class="form-error">❌ ${errorText(err)}</div>`;
       } finally {
         btn.disabled = false;
         btn.textContent = '💾 Adicionar Cliente';
@@ -5509,7 +5554,7 @@
           ...(item.cardType ? [] : [['Parcela', item.installmentLabel || '—']]),
           ['Valor', formatCurrencyBRL(item.value)],
           [item.cardType ? 'Data da venda' : 'Vencimento', formatDateBR(item.dueDate)],
-          ['Meio de pagamento', item.cardType ? `Cartão — ${cardLabel(item.cardType, item.cardInstallments, item.cardChannel)}` : escapeHtml(carneLabel(item))],
+          ['Meio de pagamento', item.cardType ? `Cartão — ${cardLabel(item.cardType, item.cardInstallments, item.cardChannel)}` : carneLabel(item)],
           ...cardSummaryRows(item),
           ['Status', item.status === 'Recebido'
             ? `✅ Recebido${item.receivedDate ? ' em ' + formatDateBR(item.receivedDate) : ''}`
@@ -5517,8 +5562,9 @@
         ];
       }
 
+      // Todos os valores aqui são texto puro — escapados de uma vez.
       document.getElementById('transactionSummaryBody').innerHTML = rows.map(([label, value]) => `
-        <div class="ld-row"><span class="ld-label">${label}</span><span class="ld-value">${value}</span></div>
+        <div class="ld-row"><span class="ld-label">${label}</span><span class="ld-value">${escapeHtml(value)}</span></div>
       `).join('');
 
       document.getElementById('transactionSummaryModal').classList.add('open');
@@ -5558,7 +5604,7 @@
       if (!targetPhone) return;
       const settings = loadSettings();
       if (!settings || !settings.scriptUrl) {
-        alert('Configure a "URL do Apps Script" em ⚙️ Config primeiro.');
+        alert(NOT_CONFIGURED_MSG);
         return;
       }
       receivableTargetPhone = targetPhone;
@@ -6024,8 +6070,8 @@
             await post({ action: 'addCarteiraDebito', phone: ctx.phone, name: ctx.name, description: ctx.description, value: ctx.carteiraValue, date: ctx.saleDate });
           } catch (err) {
             throw new Error(ctx.financeDone
-              ? `A parte do Financeiro foi lançada, mas o débito na Carteira falhou (${err.message}). Toque em Confirmar de novo para lançar só a Carteira.`
-              : err.message);
+              ? `A parte do Financeiro foi lançada, mas o débito na Carteira falhou (${friendlyError(err)}). Toque em Confirmar de novo para lançar só a Carteira.`
+              : friendlyError(err));
           }
           ctx.carteiraDone = true;
         }
@@ -6046,7 +6092,7 @@
         // baixa (próximo agendamento) só segue depois de responder.
         askToSendReceipt(saleReceipt, wasFromComplete ? proceedAfterReceivableStep : null);
       } catch (err) {
-        document.getElementById('receivableError').innerHTML = `<div class="form-error">❌ ${err.message}</div>`;
+        document.getElementById('receivableError').innerHTML = `<div class="form-error">❌ ${errorText(err)}</div>`;
       } finally {
         btn.disabled = false;
         btn.textContent = '✅ Confirmar e Lançar';
@@ -6065,6 +6111,7 @@
       if (!currentDetailPhone) return;
       const settings = loadSettings();
       const name = document.getElementById('ldEditName').value.trim();
+      const reference = document.getElementById('ldEditReference').value.trim();
       const source = document.getElementById('ldEditSource').value;
       const leadStatus = document.getElementById('ldEditStatus').value;
       const manualOnly = document.getElementById('ldEditManualOnly').checked;
@@ -6113,6 +6160,7 @@
             manualOnlyNote: manualOnly ? manualOnlyReason : '',
             birthDate,
             procedure,
+            ...(hasReferenceColumn ? { reference } : {}),
             ...(phoneChanged ? { newPhone } : {}),
           }),
         });
@@ -6123,7 +6171,7 @@
         showToast(`✅ ${name} atualizado(a) com sucesso`);
         refreshData();
       } catch (err) {
-        document.getElementById('ldEditError').innerHTML = `<div class="form-error">❌ ${err.message}</div>`;
+        document.getElementById('ldEditError').innerHTML = `<div class="form-error">❌ ${errorText(err)}</div>`;
       } finally {
         btn.disabled = false;
         btn.textContent = '💾 Salvar Alterações';
@@ -6206,8 +6254,83 @@
       return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     }
 
+    // Valor de fora (telefone, ID de evento) como argumento dentro de
+    // onclick="...": vira string JS entre aspas e escapada pro atributo.
+    // Antes era '${phone}' cru — um telefone editado à mão na planilha
+    // com aspas fechava a string e rodava o resto como código (2026-10-07,
+    // preparação pra IA do WhatsApp gravar dados digitados pela paciente).
+    // --- Referência (pedido do usuário 2026-10-07) ---
+    // Complemento do nome: quem indicou ou de quem é parente ("Roberta",
+    // "esposa do Afonso"). Antes ia entre parênteses dentro do Nome. Fica
+    // na coluna "Referência" da aba Leads — que só existe depois de
+    // publicar o Apps Script novo; até lá o campo não aparece (o script
+    // antigo ignoraria o valor sem avisar).
+    let hasReferenceColumn = false;
+
+    /** " · Roberta" discreto, depois do nome (HTML já escapado). */
+    function leadRefHtml(ref) {
+      return ref ? ` <span class="name-ref">· ${escapeHtml(ref)}</span>` : '';
+    }
+
+    function leadRefByPhone(phone) {
+      const d = phoneDigits(phone);
+      const lead = d ? allData.find(l => phoneDigits(l.phone) === d) : null;
+      return lead ? lead.reference : '';
+    }
+
+    /** Nome + referência, em minúsculas, pras buscas ("afonso" acha a Camila). */
+    function leadSearchText(l) {
+      return `${l.name || ''} ${l.reference || ''}`.toLowerCase();
+    }
+
+    /** "Camila Oliveira (afonso)" → { name: "Camila Oliveira", reference: "afonso" }. */
+    function splitNameReference(name) {
+      const m = String(name || '').match(/^(.*\S)\s*\(([^()]+)\)\s*$/);
+      return m ? { name: m[1].trim(), reference: m[2].trim() } : null;
+    }
+
+    /** Só links http(s) — um "javascript:" vindo da planilha não vira link clicável. */
+    function safeUrl(u) {
+      return /^https?:\/\//i.test(String(u || '')) ? String(u) : '';
+    }
+
+    function jsArg(s) {
+      return escapeHtml(JSON.stringify(String(s == null ? '' : s)));
+    }
+
+    // Mensagem de erro em linguagem de quem usa o CRM (pedido do usuário
+    // 2026-10-07: "muita informação técnica no CRM"). As mensagens de
+    // negócio do Apps Script ("Esse horário já está ocupado...") já são
+    // claras e passam direto; o que é falha de rede, de configuração ou
+    // erro interno vira uma frase simples. O detalhe técnico continua no
+    // console (F12) pra quem for investigar.
+    const SUPPORT_HINT = 'Se continuar, avise quem cuida do sistema.';
+    function friendlyError(err) {
+      const raw = String((err && err.message) || err || '').trim();
+      if (raw) console.warn('Erro técnico original:', raw);
+      const rules = [
+        [/failed to fetch|networkerror|load failed|network request failed/i, 'Sem conexão com o sistema. Confira a internet e tente de novo.'],
+        [/unexpected token|json|<!doctype|<html/i, `O sistema respondeu de um jeito inesperado. Tente de novo em alguns instantes. ${SUPPORT_HINT}`],
+        [/too many times|quota|rate limit|timed? ?out|tempo esgotado|obtain lock|lock timeout/i, 'O sistema está sobrecarregado agora. Tente de novo daqui a pouco.'],
+        [/senha de acesso/i, 'Senha do CRM inválida ou não informada. Abra ⚙️ Config e informe a senha.'],
+        [/calendar_id|agenda não encontrada/i, `Não foi possível acessar a agenda. ${SUPPORT_HINT}`],
+        [/ação desconhecida/i, `Esta função ainda não está ativa no sistema. ${SUPPORT_HINT}`],
+        [/campos? obrigatórios?/i, 'Faltou preencher alguma informação. Confira o formulário e tente de novo.'],
+        [/aba .*(não encontrada|não liberada)|unable to parse range|intervalo de datas/i, `Não foi possível ler os dados da planilha. ${SUPPORT_HINT}`],
+        [/^erro \d{3}$|^erro desconhecido$|exception|typeerror|referenceerror|syntaxerror|cannot read|is not defined|\bundefined\b|\bnull\b/i, `Algo deu errado no sistema. Tente de novo. ${SUPPORT_HINT}`],
+      ];
+      for (const [re, msg] of rules) if (re.test(raw)) return msg;
+      return raw || `Algo deu errado. Tente de novo. ${SUPPORT_HINT}`;
+    }
+
+    /** friendlyError já escapado, pronto pra innerHTML. */
+    function errorText(err) {
+      return escapeHtml(friendlyError(err));
+    }
+
     function formatDateShortBR(iso) {
       if (!iso) return '—';
+      if (!/^\d{4}-\d{2}-\d{2}/.test(String(iso))) return escapeHtml(iso);
       const [y, m, d] = iso.slice(0, 10).split('-');
       return `${d}/${m}/${y}`;
     }
@@ -6240,7 +6363,7 @@
     }
 
     function chipsHtml(options, active, onclickFn) {
-      return options.map(([key, label]) => `<button class="chip ${key === active ? 'active' : ''}" onclick="${onclickFn}('${key}')">${label}</button>`).join('');
+      return options.map(([key, label]) => `<button class="chip ${key === active ? 'active' : ''}" onclick="${onclickFn}(${jsArg(key)})">${escapeHtml(label)}</button>`).join('');
     }
 
     // Barras horizontais de série única (valor por categoria). Rótulo e
@@ -6249,7 +6372,7 @@
       if (!items.length) return '<div class="chart-empty">Nada no período.</div>';
       const max = Math.max(...items.map(i => i.value)) || 1;
       return items.map(i => `
-        <div class="hbar-row" title="${escapeHtml(i.label)}: ${escapeHtml(formatValue(i))}"${i.onclick ? ` onclick="${i.onclick}" role="button" tabindex="0" style="cursor:pointer;"` : ''}>
+        <div class="hbar-row" title="${escapeHtml(i.label)}: ${escapeHtml(formatValue(i))}"${i.onclick ? ` onclick="${escapeHtml(i.onclick)}" role="button" tabindex="0" style="cursor:pointer;"` : ''}>
           <span class="hbar-label">${escapeHtml(i.label)}</span>
           <div class="hbar-track"><div class="hbar-fill" style="width:${Math.max(1, i.value / max * 100)}%"></div></div>
           <span class="hbar-value">${formatValue(i)}</span>
@@ -6305,13 +6428,13 @@
       const digits = query.replace(/\D/g, '');
       const list = allData
         .filter(l => l.phone && l.phone !== '—')
-        .filter(l => !query || l.name.toLowerCase().includes(query) || (digits && l.phone.replace(/\D/g, '').includes(digits)))
+        .filter(l => !query || leadSearchText(l).includes(query) || (digits && l.phone.replace(/\D/g, '').includes(digits)))
         .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' }));
       document.getElementById('clientPickerList').innerHTML = list.length
         ? list.map(l => `
-          <div class="client-row" onclick="pickClient('${l.phone}')" role="button" tabindex="0" style="padding:10px 12px;">
-            <div class="client-name">${escapeHtml(l.name)}</div>
-            <div class="client-side">${formatPhoneShort(l.phone)}</div>
+          <div class="client-row" onclick="pickClient(${jsArg(l.phone)})" role="button" tabindex="0" style="padding:10px 12px;">
+            <div class="client-name">${escapeHtml(l.name)}${leadRefHtml(l.reference)}</div>
+            <div class="client-side">${escapeHtml(formatPhoneShort(l.phone))}</div>
           </div>`).join('')
         : '<div class="agenda-empty">Nenhum cliente encontrado.</div>';
     }
@@ -6452,7 +6575,7 @@
             ? `Recebido${r.receivedDate ? ' ' + formatDateShortBR(r.receivedDate).slice(0, 5) : ''}`
             : (late ? `Atrasado — venceu ${formatDateShortBR(r.dueDate).slice(0, 5)}` : `A receber — vence ${formatDateShortBR(r.dueDate).slice(0, 5)}`);
           items.push({ sort: r.dueDate || '', html: `
-            <div class="finance-row" onclick="closeSaleDetail(); openFinanceTransactionSummary('${r.id}', 'financeiro')" role="button" tabindex="0" style="cursor:pointer;">
+            <div class="finance-row" onclick="closeSaleDetail(); openFinanceTransactionSummary(${jsArg(r.id)}, 'financeiro')" role="button" tabindex="0" style="cursor:pointer;">
               <div class="finance-row-main"><span>${methodText}</span><span class="finance-row-value">${formatCurrencyBRL(r.value)}</span></div>
               <div class="finance-row-meta">
                 ${isCard && r.cardFee !== null ? `<span>taxa ${formatCurrencyBRL(r.cardFee)} · líquido ${formatCurrencyBRL(netOf(r))}</span>` : ''}
@@ -6556,7 +6679,7 @@
         if (clientesFilter === 'semcompra' && c.bought !== 0) return false;
         if (clientesFunnel !== 'todos' && !matchesStatusFilter(c.lead, clientesFunnel)) return false;
         if (!query) return true;
-        return c.lead.name.toLowerCase().includes(query)
+        return leadSearchText(c.lead).includes(query)
           || (queryDigits && c.lead.phone.replace(/\D/g, '').includes(queryDigits))
           || (c.lead.procedure || '').toLowerCase().includes(query);
       });
@@ -6577,18 +6700,18 @@
         // Selo de situação só quando diz algo (não "Ativo", o padrão) —
         // com o horário quando há agendamento confirmado.
         const statusClass = getStatusClass(l);
-        const statusBadge = statusClass === 'ready' ? '' : `<span class="status-badge status-${statusClass}" style="font-size:11px; padding:1px 8px;">${getLeadStatusLabel(l)}${statusClass === 'confirmed' && l.chosenSlot ? ` ${formatDateShortBR(l.chosenSlot.date).slice(0, 5)} ${l.chosenSlot.start}` : ''}</span>`;
+        const statusBadge = statusClass === 'ready' ? '' : `<span class="status-badge status-${statusClass}" style="font-size:11px; padding:1px 8px;">${escapeHtml(getLeadStatusLabel(l))}${statusClass === 'confirmed' && l.chosenSlot ? ` ${formatDateShortBR(l.chosenSlot.date).slice(0, 5)} ${escapeHtml(l.chosenSlot.start)}` : ''}</span>`;
         const meta = [
           statusBadge,
-          formatPhoneShort(l.phone),
+          escapeHtml(formatPhoneShort(l.phone)),
           l.procedure ? escapeHtml(l.procedure) : '',
           l.birthDate ? `nasc. ${formatDateShortBR(l.birthDate)} (${ageFrom(l.birthDate)} anos)` : '',
           c.lastSale ? `última compra ${formatDateShortBR(c.lastSale)}` : '',
         ].filter(Boolean).map(m => `<span>${m}</span>`).join('');
         return `
-          <div class="client-row" onclick="openLeadDetail('${l.phone}')" role="button" tabindex="0">
+          <div class="client-row" onclick="openLeadDetail(${jsArg(l.phone)})" role="button" tabindex="0">
             <div style="min-width:0;">
-              <div class="client-name">${escapeHtml(l.name)} ${c.bdayThisMonth ? `<span class="bday-badge">🎂 ${l.birthDate.slice(8, 10)}/${l.birthDate.slice(5, 7)}</span>` : ''}</div>
+              <div class="client-name">${escapeHtml(l.name)}${leadRefHtml(l.reference)} ${c.bdayThisMonth ? `<span class="bday-badge">🎂 ${l.birthDate.slice(8, 10)}/${l.birthDate.slice(5, 7)}</span>` : ''}</div>
               <div class="client-meta">${meta}</div>
             </div>
             <div class="client-side">
@@ -6726,7 +6849,7 @@
         <div class="data-table-wrap"><table class="data-table">
           <thead><tr><th>Forma</th><th class="num">Recebido</th><th class="num hide-mobile">Taxa</th><th class="num">Líquido</th></tr></thead>
           <tbody>${rows.map(m => `
-            <tr class="clickable" onclick="openRecebidoByMethod('${m.method}')">
+            <tr class="clickable" onclick="openRecebidoByMethod(${jsArg(m.method)})">
               <td>${PAYMENT_METHOD_ICONS[m.method] || '📄'} ${escapeHtml(m.method)}<div class="muted">${m.count} recebimento(s) ›</div></td>
               <td class="num">${formatCurrencyBRL(m.gross)}</td>
               <td class="num hide-mobile muted">${m.fee ? `− ${formatCurrencyBRL(m.fee)}` : '—'}</td>
@@ -6852,7 +6975,7 @@
       });
       const methodItems = Object.entries(byMethod)
         // Carteira ganha ícone próprio aqui: 💳 já é o Cartão nesta lista.
-        .map(([m, v]) => ({ label: `${m === 'Carteira' ? '📒' : (PAYMENT_METHOD_ICONS[m] || '📄')} ${m}`, value: v.value, count: v.count, onclick: received ? `setVendasMethod('${m}')` : '' }))
+        .map(([m, v]) => ({ label: `${m === 'Carteira' ? '📒' : (PAYMENT_METHOD_ICONS[m] || '📄')} ${m}`, value: v.value, count: v.count, onclick: received ? `setVendasMethod(${JSON.stringify(String(m))})` : '' }))
         .sort((a, b) => b.value - a.value);
       document.getElementById('vendasByMethod').innerHTML = hbarsHtml(methodItems, i => `${formatCurrencyBRL(i.value)} · ${gross ? Math.round(i.value / gross * 100) : 0}%`);
 
@@ -6874,7 +6997,7 @@
         <div class="data-table-wrap"><table class="data-table">
           <thead><tr><th class="hide-mobile">Data</th><th>Cliente</th><th class="hide-mobile">Procedimento</th><th class="hide-mobile">Pagamento</th><th class="num">Bruto</th><th class="num hide-mobile">Taxa</th><th class="num">Líquido</th></tr></thead>
           <tbody>${sales.map(s => `
-            <tr class="clickable" onclick="${s.source === 'venda' ? `openSaleDetail('${s.id}')` : `openFinanceTransactionSummary('${s.id}', '${s.source}')`}">
+            <tr class="clickable" onclick="${s.source === 'venda' ? `openSaleDetail(${jsArg(s.id)})` : `openFinanceTransactionSummary(${jsArg(s.id)}, ${jsArg(s.source)})`}">
               <td class="hide-mobile">${formatDateShortBR(s.date).slice(0, 5)}</td>
               <td>${escapeHtml(s.name)}<span class="mobile-only muted">${formatDateShortBR(s.date).slice(0, 5)} · ${escapeHtml(s.methodLabel)}</span></td>
               <td class="hide-mobile muted">${escapeHtml(s.description || '—')}</td>
@@ -6977,10 +7100,10 @@
             return `
             <tr>
               <td>${formatDateShortBR(f.dueDate)}${late ? `<div style="color:#B3462F; font-size:11.5px; font-weight:600;">há ${late} dia${late > 1 ? 's' : ''}</div>` : (f.dueDate === today ? '<div style="font-size:11.5px; font-weight:600; color:var(--cor-texto-marca);">hoje</div>' : '')}</td>
-              <td><a href="#" onclick="openLeadDetail('${f.phone}'); return false;" style="color:var(--cor-texto-marca); font-weight:600;">${escapeHtml(f.name)}</a><div class="muted">${escapeHtml(f.paymentMethod || '—')} · ${escapeHtml(f.installmentLabel)}</div></td>
+              <td><a href="#" onclick="openLeadDetail(${jsArg(f.phone)}); return false;" style="color:var(--cor-texto-marca); font-weight:600;">${escapeHtml(f.name)}</a><div class="muted">${escapeHtml(f.paymentMethod || '—')} · ${escapeHtml(f.installmentLabel)}</div></td>
               <td class="hide-mobile muted">${escapeHtml(f.description || '—')}</td>
               <td class="num">${formatCurrencyBRL(f.value)}</td>
-              <td style="text-align:right;"><button class="complete-btn" style="white-space:nowrap; padding:6px 10px; width:auto;" onclick="toggleReceivableStatus('${f.id}', 'Recebido')" title="Marcar como recebido" aria-label="Marcar como recebido">✅<span class="btn-label"> Recebido</span></button></td>
+              <td style="text-align:right;"><button class="complete-btn" style="white-space:nowrap; padding:6px 10px; width:auto;" onclick="toggleReceivableStatus(${jsArg(f.id)}, 'Recebido')" title="Marcar como recebido" aria-label="Marcar como recebido">✅<span class="btn-label"> Recebido</span></button></td>
             </tr>`;
           }).join('')}</tbody>
           <tfoot><tr><td colspan="2">Total</td><td class="hide-mobile"></td><td class="num">${formatCurrencyBRL(sum(items))}</td><td></td></tr></tfoot>
@@ -7002,7 +7125,7 @@
 
       document.getElementById('receberCarteira').innerHTML = carteiraBalances.length
         ? carteiraBalances.map(b => `
-          <div class="client-row" onclick="openLeadDetail('${b.phone}')" role="button" tabindex="0">
+          <div class="client-row" onclick="openLeadDetail(${jsArg(b.phone)})" role="button" tabindex="0">
             <div class="client-name">${escapeHtml(b.name)}</div>
             <div class="client-side"><strong class="owed">${formatCurrencyBRL(b.balance)}</strong></div>
           </div>`).join('')
@@ -7086,7 +7209,7 @@
     function openNewAppointmentModal(prefill) {
       const settings = loadSettings();
       if (!settings || !settings.scriptUrl) {
-        alert('Configure a "URL do Apps Script" em ⚙️ Config primeiro (ver apps-script/SETUP.md para gerar essa URL).');
+        alert(NOT_CONFIGURED_MSG);
         toggleSettings();
         return;
       }
@@ -7133,7 +7256,7 @@
 
       const digits = q.replace(/\D/g, '');
       const matches = allData.filter(l => {
-        const nameMatch = l.name && l.name.toLowerCase().includes(q);
+        const nameMatch = leadSearchText(l).includes(q);
         const phoneMatch = digits && l.phone && l.phone.replace(/\D/g, '').includes(digits);
         return nameMatch || phoneMatch;
       }).slice(0, 8);
@@ -7145,9 +7268,9 @@
       }
 
       results.innerHTML = matches.map(l => `
-        <div class="client-search-item" onclick="selectExistingClient('${l.phone}')">
-          <span class="client-search-name">${l.name || '(sem nome)'}</span>
-          <span class="client-search-phone">${formatPhoneShort(l.phone)}</span>
+        <div class="client-search-item" onclick="selectExistingClient(${jsArg(l.phone)})">
+          <span class="client-search-name">${escapeHtml(l.name || '(sem nome)')}${leadRefHtml(l.reference)}</span>
+          <span class="client-search-phone">${escapeHtml(formatPhoneShort(l.phone))}</span>
         </div>
       `).join('');
       results.style.display = 'block';
@@ -7186,8 +7309,8 @@
     function procedureChecklistHtml(namespace) {
       const items = PROCEDURE_OPTIONS.map((p, i) => `
         <label class="procedure-check-item">
-          <input type="checkbox" id="${namespace}Proc_${i}" value="${p}" onchange="onProcedureCheckChange('${namespace}')">
-          <span>${p}</span>
+          <input type="checkbox" id="${namespace}Proc_${i}" value="${escapeHtml(p)}" onchange="onProcedureCheckChange('${namespace}')">
+          <span>${escapeHtml(p)}</span>
         </label>
       `).join('');
       return `
@@ -7309,7 +7432,7 @@
       } else {
         const rows = selected.map((name, i) => `
           <div class="calculator-row">
-            <span>${name}</span>
+            <span>${escapeHtml(name)}</span>
             <input type="number" min="0" step="0.01" placeholder="0,00" class="calculator-input" data-namespace="${namespace}" oninput="updateCalculatorTotal('${namespace}')">
           </div>
         `).join('');
@@ -7503,12 +7626,12 @@
       try {
         await apPicker.load(settings.scriptUrl, date);
       } catch (err) {
-        showAppointmentError(`❌ ${err.message}`);
+        showAppointmentError(`❌ ${friendlyError(err)}`);
       }
     }
 
     function showAppointmentError(message) {
-      document.getElementById('appointmentError').innerHTML = `<div class="form-error">${message}</div>`;
+      document.getElementById('appointmentError').innerHTML = `<div class="form-error">${escapeHtml(message)}</div>`;
     }
 
     // Etapa de revisão antes de gravar de verdade — antes disso, um clique
@@ -7557,7 +7680,7 @@
           showDuplicateNotice('appointmentError',
             `⚠️ Já existe <strong>${escapeHtml(homonyms[0].name)}</strong> com outro telefone. É a mesma pessoa?`,
             [
-              ...homonyms.slice(0, 3).map(h => [`Sim, usar ${formatPhone(h.phone)}`, `useExistingForAppointment('${h.phone}')`, '']),
+              ...homonyms.slice(0, 3).map(h => [`Sim, usar ${escapeHtml(formatPhone(h.phone))}`, `useExistingForAppointment(${JSON.stringify(String(h.phone))})`, '']),
               ['Não, é outra pessoa', 'apHomonymOk = apHomonymPending; reviewAppointment()', 'secondary'],
             ]);
           return;
@@ -7583,10 +7706,11 @@
         ['Horário', `${start} às ${end}${durationLabel}`],
       ];
 
+      // Valores todos em texto puro — escapados aqui de uma vez.
       document.getElementById('apConfirmBody').innerHTML = rows.map(([label, value]) => `
         <div class="ld-row">
           <span class="ld-label">${label}</span>
-          <span class="ld-value">${value}</span>
+          <span class="ld-value">${escapeHtml(value)}</span>
         </div>
       `).join('');
 
@@ -7607,7 +7731,7 @@
       showDuplicateNotice('appointmentError',
         `⚠️ Este telefone já está cadastrado para <strong>${escapeHtml(existingName)}</strong>. Agendar com outro nome trocaria o nome desse cadastro.`,
         [
-          [`Usar cadastro de ${escapeHtml(existingName)}`, `useExistingForAppointment('${existingPhone}')`, ''],
+          [`Usar cadastro de ${escapeHtml(existingName)}`, `useExistingForAppointment(${JSON.stringify(String(existingPhone || ''))})`, ''],
           ['Corrigir telefone', "clearFormError('appointmentError'); document.getElementById('apPhone').focus()", 'secondary'],
         ]);
     }
@@ -7630,7 +7754,7 @@
     function openCompleteModal(eventId) {
       const settings = loadSettings();
       if (!settings || !settings.scriptUrl) {
-        alert('Configure a "URL do Apps Script" em ⚙️ Config primeiro (ver apps-script/SETUP.md para gerar essa URL).');
+        alert(NOT_CONFIGURED_MSG);
         toggleSettings();
         return;
       }
@@ -7646,7 +7770,7 @@
       completeContext = { eventId, ...info, procedure: (lead && lead.procedure) || '' };
 
       document.getElementById('cmBody').innerHTML = `
-        <div class="ld-row"><span class="ld-label">Paciente</span><span class="ld-value">${info.name || '—'}</span></div>
+        <div class="ld-row"><span class="ld-label">Paciente</span><span class="ld-value">${escapeHtml(info.name || '—')}</span></div>
         <div class="ld-row"><span class="ld-label">Tipo</span><span class="ld-value">${type ? type.label : '—'}</span></div>
       `;
 
@@ -7724,7 +7848,7 @@
         // seguem pro próximo agendamento do encadeamento depois, se houver.
         openReceivableModal(phone, { fromComplete: true, description: procedure });
       } catch (err) {
-        q.innerHTML = `<div class="form-error">❌ ${err.message}</div>`;
+        q.innerHTML = `<div class="form-error">❌ ${errorText(err)}</div>`;
       }
     }
 
@@ -7765,7 +7889,7 @@
     function openEditAppointmentModal(eventId) {
       const settings = loadSettings();
       if (!settings || !settings.scriptUrl) {
-        alert('Configure a "URL do Apps Script" em ⚙️ Config primeiro (ver apps-script/SETUP.md para gerar essa URL).');
+        alert(NOT_CONFIGURED_MSG);
         toggleSettings();
         return;
       }
@@ -7828,7 +7952,7 @@
       try {
         await editPicker.load(settings.scriptUrl, date, editContext.eventId);
       } catch (err) {
-        document.getElementById('editAppointmentError').innerHTML = `<div class="form-error">❌ ${err.message}</div>`;
+        document.getElementById('editAppointmentError').innerHTML = `<div class="form-error">❌ ${errorText(err)}</div>`;
       }
     }
 
@@ -7870,7 +7994,7 @@
         showToast(`✅ Agendamento de ${name} atualizado`);
         refreshData();
       } catch (err) {
-        document.getElementById('editAppointmentError').innerHTML = `<div class="form-error">❌ ${err.message}</div>`;
+        document.getElementById('editAppointmentError').innerHTML = `<div class="form-error">❌ ${errorText(err)}</div>`;
       } finally {
         btn.disabled = false;
         btn.textContent = '💾 Salvar Agendamento';
@@ -7896,7 +8020,7 @@
     function openBlockModal() {
       const settings = loadSettings();
       if (!settings || !settings.scriptUrl) {
-        alert('Configure a "URL do Apps Script" em ⚙️ Config primeiro (ver apps-script/SETUP.md para gerar essa URL).');
+        alert(NOT_CONFIGURED_MSG);
         toggleSettings();
         return;
       }
@@ -7965,7 +8089,7 @@
         showToast(result.count > 1 ? `🔒 Agenda bloqueada em ${result.count} dias` : '🔒 Horário bloqueado');
         refreshData();
       } catch (err) {
-        errorBox.innerHTML = `<div class="form-error">❌ ${escapeHtml(err.message).replace(/\n/g, '<br>')}</div>`;
+        errorBox.innerHTML = `<div class="form-error">❌ ${errorText(err).replace(/\n/g, '<br>')}</div>`;
       } finally {
         btn.disabled = false;
         btn.textContent = '🔒 Bloquear';
@@ -7984,7 +8108,7 @@
 
       const settings = loadSettings();
       if (!settings || !settings.scriptUrl) {
-        alert('Configure a "URL do Apps Script" em ⚙️ Config primeiro.');
+        alert(NOT_CONFIGURED_MSG);
         return;
       }
       try {
@@ -7998,7 +8122,7 @@
         showToast('🔓 Horário liberado');
         refreshData();
       } catch (err) {
-        showToast(`❌ Não foi possível liberar: ${err.message}`);
+        showToast(`❌ Não foi possível liberar: ${friendlyError(err)}`);
       }
     }
 
@@ -8038,12 +8162,14 @@
 
       const wa = whatsappLink(info.phone);
 
+      // Nome e origem vêm do título/descrição do evento — que a IA do
+      // WhatsApp também grava (2026-10-07): sempre escapados.
       const rows = [
-        ['Paciente', info.name || '—'],
-        ['Telefone', wa ? `<a href="${wa}" target="_blank" rel="noopener">💬 ${formatPhone(info.phone)}</a>` : formatPhone(info.phone)],
-        ['Origem', info.source || '—'],
+        ['Paciente', escapeHtml(info.name || '—') + leadRefHtml(leadRefByPhone(info.phone))],
+        ['Telefone', wa ? `<a href="${escapeHtml(wa)}" target="_blank" rel="noopener">💬 ${escapeHtml(formatPhone(info.phone))}</a>` : escapeHtml(formatPhone(info.phone))],
+        ['Origem', escapeHtml(info.source || '—')],
         ['Tipo', type ? `<span class="type-badge ${type.className}">${type.label}</span>` : '—'],
-        ...((lead && lead.procedure) ? [['Procedimento', lead.procedure]] : []),
+        ...((lead && lead.procedure) ? [['Procedimento', escapeHtml(lead.procedure)]] : []),
         ['Data', dateLabel],
         ['Horário', timeLabel],
         ['Status', statusInfo ? `${statusInfo.icon} ${statusInfo.label}` : '🔶 Agendado'],
@@ -8055,14 +8181,14 @@
 
       const actions = [];
       if (!completed) {
-        actions.push(`<button class="btn" style="flex:1; min-width:120px;" onclick="closeAppointmentSummary(); openCompleteModal('${eventId}')">✅ Concluir</button>`);
-        actions.push(`<button class="btn secondary" style="flex:1; min-width:120px;" onclick="closeAppointmentSummary(); openEditAppointmentModal('${eventId}')">✏️ Editar</button>`);
-        actions.push(`<button class="btn secondary" style="flex:1; min-width:120px;" onclick="closeAppointmentSummary(); openCancelModal('${eventId}')">✕ Desmarcar</button>`);
+        actions.push(`<button class="btn" style="flex:1; min-width:120px;" onclick="closeAppointmentSummary(); openCompleteModal(${jsArg(eventId)})">✅ Concluir</button>`);
+        actions.push(`<button class="btn secondary" style="flex:1; min-width:120px;" onclick="closeAppointmentSummary(); openEditAppointmentModal(${jsArg(eventId)})">✏️ Editar</button>`);
+        actions.push(`<button class="btn secondary" style="flex:1; min-width:120px;" onclick="closeAppointmentSummary(); openCancelModal(${jsArg(eventId)})">✕ Desmarcar</button>`);
       } else {
-        actions.push(`<button class="btn secondary" style="flex:1; min-width:120px;" onclick="closeAppointmentSummary(); reopenEvent('${eventId}')">↩️ Reabrir</button>`);
+        actions.push(`<button class="btn secondary" style="flex:1; min-width:120px;" onclick="closeAppointmentSummary(); reopenEvent(${jsArg(eventId)})">↩️ Reabrir</button>`);
       }
-      if (ev.htmlLink) {
-        actions.push(`<a class="btn secondary" href="${ev.htmlLink}" target="_blank" rel="noopener" style="flex:1; min-width:120px; text-decoration:none; display:inline-flex; align-items:center; justify-content:center; text-align:center;">📅 Google Calendar</a>`);
+      if (safeUrl(ev.htmlLink)) {
+        actions.push(`<a class="btn secondary" href="${escapeHtml(safeUrl(ev.htmlLink))}" target="_blank" rel="noopener" style="flex:1; min-width:120px; text-decoration:none; display:inline-flex; align-items:center; justify-content:center; text-align:center;">📅 Abrir no Google Agenda</a>`);
       }
       document.getElementById('asActions').innerHTML = actions.join('');
 
@@ -8076,7 +8202,7 @@
     function openCancelModal(eventId) {
       const settings = loadSettings();
       if (!settings || !settings.scriptUrl) {
-        alert('Configure a "URL do Apps Script" em ⚙️ Config primeiro (ver apps-script/SETUP.md para gerar essa URL).');
+        alert(NOT_CONFIGURED_MSG);
         toggleSettings();
         return;
       }
@@ -8091,7 +8217,7 @@
       cancelContext = { eventId };
 
       document.getElementById('cancelInfo').innerHTML = `
-        <div class="ld-row"><span class="ld-label">Paciente</span><span class="ld-value">${info.name || '—'}</span></div>
+        <div class="ld-row"><span class="ld-label">Paciente</span><span class="ld-value">${escapeHtml(info.name || '—')}</span></div>
         <div class="ld-row"><span class="ld-label">Tipo</span><span class="ld-value">${type ? type.label : '—'}</span></div>
       `;
       document.getElementById('cancelError').innerHTML = '';
@@ -8123,7 +8249,7 @@
         showToast('❌ Atendimento desmarcado — foi pro histórico');
         refreshData();
       } catch (err) {
-        document.getElementById('cancelError').innerHTML = `<div class="form-error">❌ ${err.message}</div>`;
+        document.getElementById('cancelError').innerHTML = `<div class="form-error">❌ ${errorText(err)}</div>`;
       } finally {
         btn.disabled = false;
         btn.textContent = '✕ Confirmar Desmarcação';
@@ -8138,7 +8264,7 @@
     async function reopenEvent(eventId) {
       const settings = loadSettings();
       if (!settings || !settings.scriptUrl) {
-        alert('Configure a "URL do Apps Script" em ⚙️ Config primeiro.');
+        alert(NOT_CONFIGURED_MSG);
         return;
       }
       try {
@@ -8153,7 +8279,7 @@
         showToast('↩️ Atendimento reaberto — voltou pra Agenda ativa');
         refreshData();
       } catch (err) {
-        showToast(`❌ Não foi possível reabrir: ${err.message}`);
+        showToast(`❌ Não foi possível reabrir: ${friendlyError(err)}`);
       }
     }
 
@@ -8214,7 +8340,7 @@
           title: '💰 Cobrar sinal ou valor do agendamento?',
         });
       } catch (err) {
-        showAppointmentError(`❌ ${err.message}`);
+        showAppointmentError(`❌ ${friendlyError(err)}`);
       } finally {
         btn.disabled = false;
         btn.textContent = '💾 Criar Agendamento';
