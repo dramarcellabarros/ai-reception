@@ -6438,7 +6438,7 @@
         <div class="conv-messages" id="convMessages"><div class="loading">⏳ Carregando...</div></div>
         <div class="conv-composer">
           <div class="conv-composer-row">
-            <textarea id="convText" rows="2" maxlength="4096" placeholder="Responder pelo número da IA..." onkeydown="if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') sendConvReply()" disabled></textarea>
+            <textarea id="convText" rows="2" maxlength="4072" placeholder="Responder pelo número da IA..." onkeydown="if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') sendConvReply()" disabled></textarea>
             <button type="button" class="btn-primary-soft" id="convSendBtn" onclick="sendConvReply()" disabled>Enviar</button>
           </div>
           <div class="conv-hint" id="convHint"></div>
@@ -6540,7 +6540,7 @@
       const h = Math.floor(left / 3600000);
       const min = Math.floor((left % 3600000) / 60000);
       hint.className = 'conv-hint';
-      hint.textContent = `Sai pelo número da IA. Prazo para responder: ${h}h${String(min).padStart(2, '0')}. Ctrl+Enter envia.` +
+      hint.textContent = `Sai pelo número da IA, com "Equipe Dra. Marcella:" no início. Prazo para responder: ${h}h${String(min).padStart(2, '0')}. Ctrl+Enter envia.` +
         (convIsManual(c) ? '' : ' Ao enviar, a IA fica pausada para esta paciente.');
     }
 
