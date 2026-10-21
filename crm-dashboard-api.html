@@ -1787,9 +1787,23 @@
        no celular, um de cada vez (.conv-layout.chat-open mostra o chat). */
     .conv-layout { display: grid; grid-template-columns: minmax(240px, 340px) 1fr; gap: 16px; align-items: start; }
     .conv-list { background: var(--cor-branco-perola); border: 1px solid var(--cor-creme-avela); border-radius: 10px; max-height: 72vh; overflow-y: auto; }
-    .conv-item { display: block; width: 100%; text-align: left; border: none; border-bottom: 1px solid var(--cor-areia-suave); background: none; font: inherit; color: inherit; padding: 10px 12px; cursor: pointer; }
+    /* Linha da lista: arrastar para a esquerda revela "Ocultar"/"Mostrar" (celular);
+       no computador, botão na própria linha. touch-action: pan-y deixa a rolagem
+       vertical com o navegador e o arrasto horizontal com a página. */
+    .conv-row { position: relative; overflow: hidden; border-bottom: 1px solid var(--cor-areia-suave); touch-action: pan-y; }
+    .conv-row-bg { position: absolute; inset: 0; display: flex; align-items: center; justify-content: flex-end; padding-right: 18px; background: var(--cor-cinza-cacau); color: #fff; font-size: 13px; font-weight: 700; }
+    .conv-item { position: relative; display: block; width: 100%; text-align: left; border: none; background: var(--cor-branco-perola); font: inherit; color: inherit; padding: 10px 44px 10px 12px; cursor: pointer; transition: transform 0.18s; }
+    .conv-row.swiping .conv-item { transition: none; }
     .conv-item:hover { background: var(--cor-areia-suave); }
     .conv-item.active { background: var(--cor-rosa-sereno); }
+    .conv-row-action { position: absolute; top: 50%; right: 8px; transform: translateY(-50%); border: 1px solid var(--cor-creme-avela); background: var(--cor-branco-perola); color: var(--cor-cinza-cacau); font: inherit; font-size: 11px; padding: 3px 7px; border-radius: 10px; cursor: pointer; opacity: 0; }
+    .conv-row:hover .conv-row-action, .conv-row-action:focus { opacity: 1; }
+    .conv-swipe-tip { font-size: 11.5px; color: var(--cor-cinza-cacau); padding: 8px 12px; display: none; }
+    @media (hover: none) {
+      .conv-row-action { display: none; }
+      .conv-item { padding-right: 12px; }
+      .conv-swipe-tip { display: block; }
+    }
     .conv-item-top { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
     .conv-item-name { font-weight: 700; color: var(--cor-texto-marca); font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .conv-item-time { font-size: 11.5px; color: var(--cor-cinza-cacau); white-space: nowrap; }
@@ -2325,6 +2339,7 @@
       <h2>💬 Conversas da IA</h2>
       <span style="font-size:12px; color:var(--cor-cinza-cacau);" id="convUpdatedAt"></span>
     </div>
+    <div class="chip-row" id="convTabs"></div>
     <div class="conv-layout" id="convLayout">
       <div class="conv-list" id="convList"><div class="loading">⏳ Carregando conversas...</div></div>
       <div class="conv-chat" id="convChat">
@@ -6343,6 +6358,12 @@
     let convListBusy = false;
     let convChatBusy = false;
     let convSending = false;
+    let convTab = 'ativas';
+    // Ocultar/mostrar recém-pedido: vale até o Apps Script devolver o mesmo
+    // estado (senão a atualização automática desfaria o clique por alguns segundos).
+    const convHiddenPending = new Map();
+    let convSwipe = null;
+    let convSwipedAt = 0;
 
     async function convGet(params) {
       const s = loadSettings() || {};
@@ -6391,6 +6412,11 @@
       try {
         const body = await convGet({ action: 'conversations' });
         convList = body.conversations || [];
+        convList.forEach(c => {
+          if (!convHiddenPending.has(c.digits)) return;
+          if (Boolean(c.hidden) === convHiddenPending.get(c.digits)) convHiddenPending.delete(c.digits);
+          else c.hidden = convHiddenPending.get(c.digits);
+        });
         convListLoaded = true;
         renderConvList();
         document.getElementById('convUpdatedAt').textContent = `Atualizado às ${new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`;
@@ -6403,29 +6429,119 @@
     }
 
     function renderConvList() {
+      if (convSwipe) return; // no meio de um arrasto: a próxima atualização desenha
       const el = document.getElementById('convList');
-      if (!convList.length) {
-        el.innerHTML = '<div class="empty-state" style="padding:30px 16px;">Nenhuma conversa ainda.</div>';
+      const hiddenCount = convList.filter(c => c.hidden).length;
+      document.getElementById('convTabs').innerHTML = [['ativas', `Ativas (${convList.length - hiddenCount})`], ['ocultas', `Ocultas (${hiddenCount})`]]
+        .map(([key, label]) => `<button type="button" class="chip${convTab === key ? ' active' : ''}" onclick="setConvTab('${key}')">${label}</button>`).join('');
+      const shown = convList.filter(c => Boolean(c.hidden) === (convTab === 'ocultas'));
+      if (!shown.length) {
+        el.innerHTML = `<div class="empty-state" style="padding:30px 16px;">${convTab === 'ocultas' ? 'Nenhuma conversa oculta.' : (convList.length ? 'Todas as conversas estão ocultas.' : 'Nenhuma conversa ainda.')}</div>`;
         return;
       }
-      el.innerHTML = convList.map(c => {
-        const who = CONV_WHO[c.lastWho] ? CONV_WHO[c.lastWho].label : (c.lastWho || '');
-        const tags = [
-          c.lastWho === 'Paciente' ? '<span class="conv-tag waiting">Paciente aguardando</span>' : '',
-          convIsManual(c) ? '<span class="conv-tag manual">IA pausada</span>' : '',
-        ].join('');
-        return `<button type="button" class="conv-item${c.digits === convCurrentDigits ? ' active' : ''}" onclick="openConversation(${jsArg(c.digits)})">
-          <div class="conv-item-top">
-            <span class="conv-item-name">${escapeHtml(c.name || formatPhoneShort('+' + c.digits))}</span>
-            <span class="conv-item-time">${convTimeLabel(c.lastAt)}</span>
-          </div>
-          <div class="conv-item-preview">${escapeHtml(who)}: ${escapeHtml(c.lastText || '')}</div>
-          ${tags ? `<div class="conv-tags">${tags}</div>` : ''}
-        </button>`;
-      }).join('');
+      const actionLabel = convTab === 'ocultas' ? 'Mostrar' : 'Ocultar';
+      el.innerHTML = (convTab === 'ocultas'
+        ? '<div class="conv-swipe-tip" style="display:block;">Voltam para Ativas sozinhas quando a paciente escrever de novo.</div>'
+        : '<div class="conv-swipe-tip">Arraste uma conversa para a esquerda para ocultar.</div>') +
+        shown.map(c => {
+          const who = CONV_WHO[c.lastWho] ? CONV_WHO[c.lastWho].label : (c.lastWho || '');
+          const tags = [
+            c.lastWho === 'Paciente' ? '<span class="conv-tag waiting">Paciente aguardando</span>' : '',
+            convIsManual(c) ? '<span class="conv-tag manual">IA pausada</span>' : '',
+          ].join('');
+          return `<div class="conv-row" data-digits="${escapeHtml(c.digits)}">
+            <div class="conv-row-bg">${actionLabel}</div>
+            <button type="button" class="conv-item${c.digits === convCurrentDigits ? ' active' : ''}" onclick="openConversation(${jsArg(c.digits)})">
+              <div class="conv-item-top">
+                <span class="conv-item-name">${escapeHtml(c.name || formatPhoneShort('+' + c.digits))}</span>
+                <span class="conv-item-time">${convTimeLabel(c.lastAt)}</span>
+              </div>
+              <div class="conv-item-preview">${escapeHtml(who)}: ${escapeHtml(c.lastText || '')}</div>
+              ${tags ? `<div class="conv-tags">${tags}</div>` : ''}
+            </button>
+            <button type="button" class="conv-row-action" onclick="toggleConvHidden(${jsArg(c.digits)})" title="${actionLabel} esta conversa">${actionLabel}</button>
+          </div>`;
+        }).join('');
     }
 
+    function setConvTab(tab) {
+      convTab = tab === 'ocultas' ? 'ocultas' : 'ativas';
+      renderConvList();
+    }
+
+    /** Ocultar/mostrar: muda na hora na tela e grava na planilha (aba "Conversas Ocultas"). */
+    async function toggleConvHidden(digits) {
+      const c = convList.find(x => x.digits === digits);
+      if (!c) return;
+      const hidden = !c.hidden;
+      c.hidden = hidden;
+      convHiddenPending.set(digits, hidden);
+      renderConvList();
+      try {
+        const settings = loadSettings() || {};
+        const response = await scriptFetch(settings.scriptUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({ action: hidden ? 'hideConversation' : 'unhideConversation', phone: '+' + digits }),
+        });
+        const result = await response.json();
+        if (!result.ok) throw new Error(result.error || 'Erro desconhecido');
+        showToast(hidden ? '🙈 Conversa ocultada' : '✅ Conversa de volta em Ativas');
+      } catch (err) {
+        convHiddenPending.delete(digits);
+        c.hidden = !hidden;
+        renderConvList();
+        showToast(`❌ ${friendlyError(err)}`);
+      }
+    }
+
+    // Arrastar para a esquerda (toque). Passou de 80px = ocultar/mostrar;
+    // menos que isso volta para o lugar. O clique que encerra o arrasto
+    // não abre a conversa.
+    function convTouchStart(e) {
+      const row = e.target.closest('.conv-row');
+      if (!row || e.touches.length !== 1) return;
+      convSwipe = { row, item: row.querySelector('.conv-item'), x: e.touches[0].clientX, y: e.touches[0].clientY, dx: 0, horizontal: null };
+    }
+
+    function convTouchMove(e) {
+      if (!convSwipe) return;
+      const dx = e.touches[0].clientX - convSwipe.x;
+      const dy = e.touches[0].clientY - convSwipe.y;
+      if (convSwipe.horizontal === null && (Math.abs(dx) > 8 || Math.abs(dy) > 8)) {
+        convSwipe.horizontal = Math.abs(dx) > Math.abs(dy);
+        if (convSwipe.horizontal) convSwipe.row.classList.add('swiping');
+      }
+      if (!convSwipe.horizontal) return;
+      convSwipe.dx = Math.min(0, dx);
+      convSwipe.item.style.transform = `translateX(${convSwipe.dx}px)`;
+    }
+
+    function convTouchEnd() {
+      if (!convSwipe) return;
+      const { row, item, dx, horizontal } = convSwipe;
+      convSwipe = null;
+      row.classList.remove('swiping');
+      if (!horizontal) return;
+      convSwipedAt = Date.now();
+      if (dx < -80) {
+        item.style.transform = 'translateX(-100%)';
+        setTimeout(() => toggleConvHidden(row.dataset.digits), 160);
+      } else {
+        item.style.transform = '';
+      }
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      const list = document.getElementById('convList');
+      list.addEventListener('touchstart', convTouchStart, { passive: true });
+      list.addEventListener('touchmove', convTouchMove, { passive: true });
+      list.addEventListener('touchend', convTouchEnd);
+      list.addEventListener('touchcancel', convTouchEnd);
+    });
+
     function openConversation(digits) {
+      if (Date.now() - convSwipedAt < 400) return; // fim de um arrasto, não um toque
       convCurrentDigits = String(digits || '');
       convCurrent = null;
       convRenderedKey = '';
