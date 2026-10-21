@@ -1783,6 +1783,50 @@
 
     .module-view[hidden] { display: none !important; }
 
+    /* Conversas da IA do WhatsApp (2026-10-21): lista + chat lado a lado;
+       no celular, um de cada vez (.conv-layout.chat-open mostra o chat). */
+    .conv-layout { display: grid; grid-template-columns: minmax(240px, 340px) 1fr; gap: 16px; align-items: start; }
+    .conv-list { background: var(--cor-branco-perola); border: 1px solid var(--cor-creme-avela); border-radius: 10px; max-height: 72vh; overflow-y: auto; }
+    .conv-item { display: block; width: 100%; text-align: left; border: none; border-bottom: 1px solid var(--cor-areia-suave); background: none; font: inherit; color: inherit; padding: 10px 12px; cursor: pointer; }
+    .conv-item:hover { background: var(--cor-areia-suave); }
+    .conv-item.active { background: var(--cor-rosa-sereno); }
+    .conv-item-top { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+    .conv-item-name { font-weight: 700; color: var(--cor-texto-marca); font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .conv-item-time { font-size: 11.5px; color: var(--cor-cinza-cacau); white-space: nowrap; }
+    .conv-item-preview { font-size: 12.5px; color: var(--cor-cinza-cacau); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 2px; }
+    .conv-tags { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px; }
+    .conv-tag { font-size: 10.5px; font-weight: 700; padding: 1px 7px; border-radius: 9px; background: var(--cor-areia-suave); color: var(--cor-cinza-cacau); }
+    .conv-tag.waiting { background: var(--cor-dourado-ambar); color: #fff; }
+    .conv-tag.manual { background: var(--cor-creme-avela); color: var(--cor-texto-marca); }
+    .conv-chat { background: var(--cor-branco-perola); border: 1px solid var(--cor-creme-avela); border-radius: 10px; display: flex; flex-direction: column; height: 72vh; min-width: 0; }
+    .conv-chat-header { padding: 10px 14px; border-bottom: 1px solid var(--cor-creme-avela); display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .conv-chat-title { flex: 1; min-width: 0; }
+    .conv-chat-title strong { color: var(--cor-texto-marca); font-size: 15px; }
+    .conv-chat-title small { display: block; color: var(--cor-cinza-cacau); font-size: 12px; }
+    .conv-back { display: none; border: none; background: none; font: inherit; font-size: 20px; color: var(--cor-texto-marca); cursor: pointer; padding: 0 6px 0 0; }
+    .conv-status { font-size: 12px; padding: 4px 10px; border-radius: 12px; background: #e3eedc; color: #3d5a2f; font-weight: 700; }
+    .conv-status.paused { background: var(--cor-creme-avela); color: var(--cor-texto-marca); }
+    .conv-messages { flex: 1; overflow-y: auto; padding: 14px; background: var(--cor-areia-suave); display: flex; flex-direction: column; gap: 8px; }
+    .conv-msg { max-width: 78%; padding: 8px 11px; border-radius: 10px; font-size: 13.5px; line-height: 1.4; white-space: pre-wrap; overflow-wrap: anywhere; box-shadow: 0 1px 2px rgba(0,0,0,0.06); }
+    .conv-msg .conv-msg-meta { display: block; font-size: 10.5px; color: var(--cor-cinza-cacau); margin-top: 3px; white-space: nowrap; }
+    .conv-msg.from-patient { align-self: flex-start; background: #fff; }
+    .conv-msg.from-ia { align-self: flex-end; background: var(--cor-rosa-sereno); }
+    .conv-msg.from-team { align-self: flex-end; background: #e3eedc; }
+    .conv-msg.from-system { align-self: center; background: var(--cor-creme-avela); font-size: 12.5px; max-width: 90%; }
+    .conv-composer { border-top: 1px solid var(--cor-creme-avela); padding: 10px; }
+    .conv-composer-row { display: flex; gap: 8px; align-items: flex-end; }
+    .conv-composer textarea { flex: 1; resize: vertical; min-height: 44px; max-height: 160px; font: inherit; font-size: 14px; padding: 8px 10px; border: 1px solid var(--cor-creme-avela); border-radius: 8px; }
+    .conv-hint { font-size: 12px; color: var(--cor-cinza-cacau); margin-top: 6px; }
+    .conv-hint.blocked { color: #721c24; }
+    @media (max-width: 768px) {
+      .conv-layout { grid-template-columns: 1fr; }
+      .conv-layout .conv-chat { display: none; height: 78vh; }
+      .conv-layout.chat-open .conv-chat { display: flex; }
+      .conv-layout.chat-open .conv-list { display: none; }
+      .conv-back { display: inline-block; }
+      .conv-msg { max-width: 88%; }
+    }
+
     /* Tela de abertura (pedido do usuário 2026-09-30: "quando fechar e
        abrir... uma piscada na tela com logo dela e nome da ferramenta").
        Só na abertura da página — o botão de atualizar não recarrega a
@@ -2158,6 +2202,7 @@
       <button class="module-nav-btn" data-module="clientes" onclick="switchModule('clientes')">👥 Clientes</button>
       <button class="module-nav-btn" data-module="vendas" onclick="switchModule('vendas')">💰 Financeiro</button>
       <button class="module-nav-btn" data-module="receber" onclick="switchModule('receber')">🧾 A Receber</button>
+      <button class="module-nav-btn" data-module="conversas" onclick="switchModule('conversas')">💬 Conversas</button>
       <button class="module-nav-btn" data-module="simulador" onclick="switchModule('simulador')">🧮 Simulador</button>
       <button class="module-nav-btn" onclick="toggleSettings()" title="Configurações">⚙️ Config</button>
     </nav>
@@ -2271,6 +2316,20 @@
       </div>
       <div id="simResult"></div>
       <p style="color: var(--cor-cinza-cacau); font-size: 12px; margin-top: 12px;">ℹ️ Taxas da aba "Taxas Cartão" da planilha. O valor real pode variar alguns centavos (arredondamento da operadora).</p>
+    </div>
+  </div>
+
+  <!-- ===== Módulo Conversas (IA do WhatsApp, 2026-10-21) ===== -->
+  <div class="container module-view" id="view-conversas" hidden>
+    <div class="module-title">
+      <h2>💬 Conversas da IA</h2>
+      <span style="font-size:12px; color:var(--cor-cinza-cacau);" id="convUpdatedAt"></span>
+    </div>
+    <div class="conv-layout" id="convLayout">
+      <div class="conv-list" id="convList"><div class="loading">⏳ Carregando conversas...</div></div>
+      <div class="conv-chat" id="convChat">
+        <div class="empty-state" style="margin:auto;">Escolha uma conversa na lista.</div>
+      </div>
     </div>
   </div>
 
@@ -6203,13 +6262,14 @@
     // allFinance, allCarteira) — nenhuma chamada nova à planilha.
     // ================================================================
 
-    const MODULES = ['agenda', 'clientes', 'vendas', 'receber', 'simulador'];
+    const MODULES = ['agenda', 'clientes', 'vendas', 'receber', 'simulador', 'conversas'];
     let currentModule = 'agenda';
 
     function switchModule(name) {
       if (!MODULES.includes(name)) name = 'agenda';
       const changed = currentModule !== name;
       currentModule = name;
+      if (changed || name === 'conversas') setConversasActive(name === 'conversas');
       MODULES.forEach(m => { document.getElementById(`view-${m}`).hidden = m !== name; });
       document.querySelectorAll('.module-nav-btn').forEach(b => b.classList.toggle('active', b.dataset.module === name));
       // Módulo escolhido fica sempre visível na barra (no celular ela rola).
@@ -6248,6 +6308,303 @@
       else if (currentModule === 'vendas') renderVendas();
       else if (currentModule === 'receber') renderReceber();
       else if (currentModule === 'simulador') renderSimulador();
+    }
+
+    // ================================================================
+    // CONVERSAS DA IA DO WHATSAPP (2026-10-21). O número da IA não tem
+    // aplicativo e a Meta não tem caixa de entrada para a Cloud API: a
+    // equipe acompanha aqui e responde pelo número da IA.
+    // - Leitura: Apps Script (action=conversations / conversation), que lê
+    //   a aba "Conversas" e devolve também o endereço do servidor da IA.
+    // - Envio: servidor da IA (POST /crm/send, senha do CRM), que manda pela
+    //   Meta, grava "Equipe" na aba Conversas e pausa a IA (Atendimento manual).
+    // - Janela de 24h da Meta: fora dela o envio fica bloqueado aqui e no servidor.
+    // Atualiza sozinha só com o módulo aberto e a aba do navegador visível.
+    // ================================================================
+    const CONV_LIST_POLL_MS = 15000;
+    const CONV_CHAT_POLL_MS = 5000;
+    const CONV_WINDOW_MS = 24 * 3600 * 1000;
+    const CONV_PAUSE_NOTE = 'Pausada pela equipe na tela de conversas';
+    const CONV_WHO = {
+      'Paciente': { cls: 'from-patient', label: 'Paciente' },
+      'IA': { cls: 'from-ia', label: '🤖 IA' },
+      'Equipe': { cls: 'from-team', label: '👩 Equipe' },
+      'Sistema': { cls: 'from-system', label: 'Aviso automático' },
+    };
+    let convList = [];
+    let convListLoaded = false;
+    let convServerUrl = '';
+    let convClockSkew = 0;      // relógio do Apps Script − relógio deste aparelho
+    let convCurrent = null;     // conversa aberta (resposta do Apps Script)
+    let convCurrentDigits = '';
+    let convRenderedKey = '';
+    let convListTimer = null;
+    let convChatTimer = null;
+    let convListBusy = false;
+    let convChatBusy = false;
+    let convSending = false;
+
+    async function convGet(params) {
+      const s = loadSettings() || {};
+      if (!s.scriptUrl) throw new Error('Configuração incompleta: abra ⚙️ Config.');
+      const res = await scriptFetch(`${s.scriptUrl}?${new URLSearchParams(params).toString()}`);
+      const body = await res.json();
+      if (!body.ok) throw new Error(body.error || 'Erro desconhecido');
+      if (body.serverUrl) convServerUrl = safeUrl(body.serverUrl).replace(/\/+$/, '');
+      if (body.nowMs) convClockSkew = body.nowMs - Date.now();
+      return body;
+    }
+
+    function setConversasActive(active) {
+      clearInterval(convListTimer);
+      clearInterval(convChatTimer);
+      convListTimer = convChatTimer = null;
+      if (!active) return;
+      loadConvList();
+      if (convCurrentDigits) loadConvChat();
+      convListTimer = setInterval(() => { if (!document.hidden) loadConvList(); }, CONV_LIST_POLL_MS);
+      convChatTimer = setInterval(() => { if (!document.hidden && convCurrentDigits) loadConvChat(); }, CONV_CHAT_POLL_MS);
+    }
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden || currentModule !== 'conversas') return;
+      loadConvList();
+      if (convCurrentDigits) loadConvChat();
+    });
+
+    /** "21/10/2026 11:33:05" → "11:33" (hoje) ou "20/10 18:02". */
+    function convTimeLabel(at) {
+      const m = String(at || '').match(/^(\d{2})\/(\d{2})\/(\d{4}) (\d{2}):(\d{2})/);
+      if (!m) return escapeHtml(at || '');
+      const today = new Date();
+      const isToday = +m[1] === today.getDate() && +m[2] === today.getMonth() + 1 && +m[3] === today.getFullYear();
+      return isToday ? `${m[4]}:${m[5]}` : `${m[1]}/${m[2]} ${m[4]}:${m[5]}`;
+    }
+
+    function convIsManual(c) {
+      return Boolean(c && c.manualOnlyNote && String(c.manualOnlyNote).trim());
+    }
+
+    async function loadConvList() {
+      if (convListBusy) return;
+      convListBusy = true;
+      try {
+        const body = await convGet({ action: 'conversations' });
+        convList = body.conversations || [];
+        convListLoaded = true;
+        renderConvList();
+        document.getElementById('convUpdatedAt').textContent = `Atualizado às ${new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`;
+      } catch (err) {
+        if (!convListLoaded) document.getElementById('convList').innerHTML = `<div class="form-error" style="margin:12px;">❌ ${errorText(err)}</div>`;
+        else document.getElementById('convUpdatedAt').textContent = '⚠️ Sem atualizar agora; tentando de novo.';
+      } finally {
+        convListBusy = false;
+      }
+    }
+
+    function renderConvList() {
+      const el = document.getElementById('convList');
+      if (!convList.length) {
+        el.innerHTML = '<div class="empty-state" style="padding:30px 16px;">Nenhuma conversa ainda.</div>';
+        return;
+      }
+      el.innerHTML = convList.map(c => {
+        const who = CONV_WHO[c.lastWho] ? CONV_WHO[c.lastWho].label : (c.lastWho || '');
+        const tags = [
+          c.lastWho === 'Paciente' ? '<span class="conv-tag waiting">Paciente aguardando</span>' : '',
+          convIsManual(c) ? '<span class="conv-tag manual">IA pausada</span>' : '',
+        ].join('');
+        return `<button type="button" class="conv-item${c.digits === convCurrentDigits ? ' active' : ''}" onclick="openConversation(${jsArg(c.digits)})">
+          <div class="conv-item-top">
+            <span class="conv-item-name">${escapeHtml(c.name || formatPhoneShort('+' + c.digits))}</span>
+            <span class="conv-item-time">${convTimeLabel(c.lastAt)}</span>
+          </div>
+          <div class="conv-item-preview">${escapeHtml(who)}: ${escapeHtml(c.lastText || '')}</div>
+          ${tags ? `<div class="conv-tags">${tags}</div>` : ''}
+        </button>`;
+      }).join('');
+    }
+
+    function openConversation(digits) {
+      convCurrentDigits = String(digits || '');
+      convCurrent = null;
+      convRenderedKey = '';
+      const fromList = convList.find(c => c.digits === convCurrentDigits);
+      document.getElementById('convChat').innerHTML = `
+        <div class="conv-chat-header" id="convChatHeader">
+          <button type="button" class="conv-back" onclick="closeConversationMobile()" aria-label="Voltar à lista">‹</button>
+          <div class="conv-chat-title"><strong>${escapeHtml((fromList && fromList.name) || formatPhoneShort('+' + convCurrentDigits))}</strong></div>
+        </div>
+        <div class="conv-messages" id="convMessages"><div class="loading">⏳ Carregando...</div></div>
+        <div class="conv-composer">
+          <div class="conv-composer-row">
+            <textarea id="convText" rows="2" maxlength="4096" placeholder="Responder pelo número da IA..." onkeydown="if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') sendConvReply()" disabled></textarea>
+            <button type="button" class="btn-primary-soft" id="convSendBtn" onclick="sendConvReply()" disabled>Enviar</button>
+          </div>
+          <div class="conv-hint" id="convHint"></div>
+        </div>`;
+      document.getElementById('convLayout').classList.add('chat-open');
+      renderConvList();
+      loadConvChat();
+    }
+
+    function closeConversationMobile() {
+      document.getElementById('convLayout').classList.remove('chat-open');
+    }
+
+    async function loadConvChat() {
+      if (convChatBusy || !convCurrentDigits) return;
+      convChatBusy = true;
+      const digits = convCurrentDigits;
+      try {
+        const body = await convGet({ action: 'conversation', phone: digits });
+        if (digits !== convCurrentDigits) return; // trocou de conversa no meio
+        convCurrent = body;
+        renderConvHeader();
+        renderConvMessages();
+        renderConvHint();
+      } catch (err) {
+        if (digits === convCurrentDigits && !convCurrent) {
+          document.getElementById('convMessages').innerHTML = `<div class="form-error">❌ ${errorText(err)}</div>`;
+        }
+      } finally {
+        convChatBusy = false;
+      }
+    }
+
+    function renderConvHeader() {
+      const c = convCurrent;
+      const manual = convIsManual(c);
+      const pauseBtn = c.leadPhone
+        ? `<button type="button" class="chip" onclick="toggleConvPause()">${manual ? '▶️ Devolver à IA' : '⏸️ Pausar IA'}</button>`
+        : '<button type="button" class="chip" disabled title="Contato sem cadastro em Clientes">⏸️ Pausar IA</button>';
+      const wa = safeUrl(whatsappLink('+' + c.digits));
+      document.getElementById('convChatHeader').innerHTML = `
+        <button type="button" class="conv-back" onclick="closeConversationMobile()" aria-label="Voltar à lista">‹</button>
+        <div class="conv-chat-title">
+          <strong>${escapeHtml(c.name || formatPhoneShort('+' + c.digits))}</strong>
+          <small>${escapeHtml(formatPhone('+' + c.digits))}${wa ? ` · <a href="${escapeHtml(wa)}" target="_blank" rel="noopener">abrir no WhatsApp da clínica</a>` : ''}</small>
+        </div>
+        <span class="conv-status${manual ? ' paused' : ''}" title="${escapeHtml(manual ? c.manualOnlyNote : 'A IA responde esta paciente sozinha')}">${manual ? 'IA pausada' : 'IA respondendo'}</span>
+        ${pauseBtn}`;
+    }
+
+    function renderConvMessages() {
+      const c = convCurrent;
+      const msgs = c.messages || [];
+      const last = msgs[msgs.length - 1];
+      const key = `${c.total}|${last ? last.at + last.who + String(last.text || '').length : ''}|${c.name}`;
+      if (key === convRenderedKey) return; // nada novo: não mexe na rolagem
+      const box = document.getElementById('convMessages');
+      const firstRender = !convRenderedKey;
+      convRenderedKey = key;
+      const nearBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
+      const older = c.total > msgs.length ? `<div class="conv-hint" style="text-align:center;">Mostrando as últimas ${msgs.length} de ${c.total} mensagens.</div>` : '';
+      box.innerHTML = older + (msgs.length ? msgs.map(m => {
+        const w = CONV_WHO[m.who] || { cls: 'from-system', label: m.who || '' };
+        const label = m.who === 'Paciente' ? (c.name || 'Paciente') : w.label;
+        return `<div class="conv-msg ${w.cls}">${escapeHtml(m.text || '')}<span class="conv-msg-meta">${escapeHtml(label)} · ${convTimeLabel(m.at)}</span></div>`;
+      }).join('') : '<div class="empty-state" style="margin:auto;">Sem mensagens.</div>');
+      if (firstRender || nearBottom) box.scrollTop = box.scrollHeight;
+    }
+
+    /** Milissegundos que ainda restam da janela de 24h (≤ 0 = fechada). */
+    function convWindowLeftMs(c) {
+      if (!c || !c.lastPatientMs) return 0;
+      return c.lastPatientMs + CONV_WINDOW_MS - (Date.now() + convClockSkew);
+    }
+
+    function renderConvHint(errorMsg) {
+      const c = convCurrent;
+      const hint = document.getElementById('convHint');
+      const text = document.getElementById('convText');
+      const btn = document.getElementById('convSendBtn');
+      if (!hint || !c) return;
+      const left = convWindowLeftMs(c);
+      let blocked = '';
+      if (!convServerUrl) blocked = 'Envio indisponível: servidor da IA não configurado. Avise quem cuida do sistema.';
+      else if (!c.lastPatientMs) blocked = 'Esta paciente ainda não escreveu para o número da IA, então não dá para responder por aqui.';
+      else if (left <= 0) blocked = 'A última mensagem da paciente foi há mais de 24 horas. O WhatsApp só permite responder dentro desse prazo: fale com ela pelo WhatsApp da clínica (link acima).';
+      text.disabled = Boolean(blocked) || convSending;
+      btn.disabled = Boolean(blocked) || convSending;
+      if (errorMsg) {
+        hint.className = 'conv-hint blocked';
+        hint.textContent = `❌ ${errorMsg}`;
+        return;
+      }
+      if (blocked) {
+        hint.className = 'conv-hint blocked';
+        hint.textContent = blocked;
+        return;
+      }
+      const h = Math.floor(left / 3600000);
+      const min = Math.floor((left % 3600000) / 60000);
+      hint.className = 'conv-hint';
+      hint.textContent = `Sai pelo número da IA. Prazo para responder: ${h}h${String(min).padStart(2, '0')}. Ctrl+Enter envia.` +
+        (convIsManual(c) ? '' : ' Ao enviar, a IA fica pausada para esta paciente.');
+    }
+
+    async function sendConvReply() {
+      const textEl = document.getElementById('convText');
+      const text = textEl.value.trim();
+      if (!text || convSending || !convCurrent) return;
+      if (convWindowLeftMs(convCurrent) <= 0) return renderConvHint();
+      const digits = convCurrentDigits;
+      const btn = document.getElementById('convSendBtn');
+      convSending = true;
+      btn.textContent = '⏳ Enviando...';
+      renderConvHint();
+      let errorMsg = '';
+      try {
+        const settings = loadSettings() || {};
+        const res = await fetch(`${convServerUrl}/crm/send`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({ token: settings.accessPassword || '', phone: digits, text }),
+        });
+        const body = await res.json();
+        if (!body.ok) {
+          // WINDOW/INVALID/AUTH já vêm em linguagem de quem usa o CRM.
+          errorMsg = body.code ? body.error : friendlyError(new Error(body.error || `erro ${res.status}`));
+          return;
+        }
+        if (digits === convCurrentDigits) textEl.value = '';
+        showToast(body.warning ? `⚠️ ${body.warning}` : '✅ Mensagem enviada');
+        if (convCurrent && !convIsManual(convCurrent)) convCurrent.manualOnlyNote = 'Equipe respondeu pelo CRM';
+        loadConvChat();
+        loadConvList();
+      } catch (err) {
+        errorMsg = friendlyError(err);
+      } finally {
+        convSending = false;
+        btn.textContent = 'Enviar';
+        if (digits === convCurrentDigits) renderConvHint(errorMsg);
+      }
+    }
+
+    async function toggleConvPause() {
+      const c = convCurrent;
+      if (!c || !c.leadPhone) return;
+      const manual = convIsManual(c);
+      if (manual && !confirm('Devolver o atendimento à IA? Ela volta a responder esta paciente sozinha.')) return;
+      const settings = loadSettings() || {};
+      try {
+        const response = await scriptFetch(settings.scriptUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({ action: 'updateLead', phone: c.leadPhone, manualOnlyNote: manual ? '' : CONV_PAUSE_NOTE }),
+        });
+        const result = await response.json();
+        if (!result.ok) throw new Error(result.error || 'Erro desconhecido');
+        c.manualOnlyNote = manual ? '' : CONV_PAUSE_NOTE;
+        renderConvHeader();
+        renderConvHint();
+        showToast(manual ? '✅ A IA voltou a responder esta paciente' : '⏸️ IA pausada para esta paciente');
+        loadConvList();
+        refreshData();
+      } catch (err) {
+        showToast(`❌ ${friendlyError(err)}`);
+      }
     }
 
     function escapeHtml(s) {
