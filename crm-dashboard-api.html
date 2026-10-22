@@ -8757,7 +8757,9 @@ Confirme com ela pelo WhatsApp da clínica.`);
         // Lançamento no Financeiro: mesmo modal do "Cobrar sinal" do CRM.
         openReceivableModal(result.phone || info.phone, {
           fromComplete: true,
-          description: 'Avaliação',
+          // "ref …" liga o lançamento a este agendamento: se for desmarcado,
+          // o Apps Script estorna só este sinal (Code.gs#depositRef).
+          description: `Avaliação (sinal) ref ${String(eventId).split('@')[0].slice(0, 8)}`,
           title: '💰 Lançar o sinal no Financeiro',
         });
       } catch (err) {
@@ -8816,8 +8818,13 @@ Confirme com ela pelo WhatsApp da clínica.`);
         if (!result.ok) throw new Error(result.error || 'Erro desconhecido');
 
         closeCancelModal();
-        showToast('❌ Atendimento desmarcado — foi pro histórico');
+        if (result.depositPendingReversal) {
+          alert('Atendimento desmarcado. Havia sinal recebido, mas o lançamento não foi encontrado no Financeiro: estorne manualmente.');
+        } else {
+          showToast(result.depositReversed > 0 ? '❌ Desmarcado e sinal estornado no Financeiro' : '❌ Atendimento desmarcado — foi pro histórico');
+        }
         refreshData();
+        if (result.depositReversed > 0) fetchFinanceData();
       } catch (err) {
         document.getElementById('cancelError').innerHTML = `<div class="form-error">❌ ${errorText(err)}</div>`;
       } finally {
