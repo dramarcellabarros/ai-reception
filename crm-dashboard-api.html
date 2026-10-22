@@ -779,6 +779,19 @@
       white-space: nowrap;
     }
 
+    /* Sinal pendente (2026-10-22): avaliação marcada pela IA ainda sem o
+       sinal conferido pela equipe. */
+    .deposit-badge {
+      display: inline-block;
+      font-size: 10.5px;
+      font-weight: 700;
+      padding: 3px 8px;
+      border-radius: 20px;
+      white-space: nowrap;
+      background: #fff3cd;
+      color: #7a5a00;
+    }
+
     .type-avaliacao {
       background: var(--cor-creme-avela);
       color: var(--cor-texto-marca);
@@ -4338,7 +4351,9 @@
             const type = detectAppointmentType(ev.summary);
             const completed = isAppointmentCompleted(ev.summary);
             const statusInfo = getHistoryStatusLabel(ev.summary);
-            const badge = type ? `<span class="type-badge ${type.className}">${type.label}</span>` : '';
+            const depositPending = !completed && depositStatus(ev.description) === 'pending';
+            const badge = (type ? `<span class="type-badge ${type.className}">${type.label}</span>` : '')
+              + (depositPending ? ' <span class="deposit-badge" title="Avaliação marcada pela IA, aguardando o sinal">⏳ Sinal</span>' : '');
             // Passa só o eventId (alfanumérico, seguro em onclick) — summary
             // e description são lidos de allCalendarEvents dentro de cada
             // função. Antes disso, JSON.stringify(ev.description) dentro do
@@ -4362,6 +4377,7 @@
                  <button class="complete-btn complete-btn-compact" onclick="event.stopPropagation(); event.preventDefault(); reopenEvent(${jsArg(ev.id)})" title="Reabrir (desfaz) — ${statusInfo.label}" aria-label="Reabrir">↩️</button>`
               : `
                 ${confirmBtn}
+                ${depositPending ? `<button class="complete-btn" onclick="event.stopPropagation(); event.preventDefault(); markDepositReceived(${jsArg(ev.id)})" title="Sinal recebido (a IA confirma com a paciente)" aria-label="Sinal recebido">💰</button>` : ''}
                 <button class="complete-btn" onclick="event.stopPropagation(); event.preventDefault(); openCompleteModal(${jsArg(ev.id)})" title="Marcar como concluído" aria-label="Marcar como concluído">✅</button>
                 <button class="complete-btn" onclick="event.stopPropagation(); event.preventDefault(); openEditAppointmentModal(${jsArg(ev.id)})" title="Editar agendamento" aria-label="Editar agendamento">✏️</button>
                 <button class="complete-btn complete-btn-danger" onclick="event.stopPropagation(); event.preventDefault(); openCancelModal(${jsArg(ev.id)})" title="Desmarcar" aria-label="Desmarcar">✕</button>
@@ -8671,6 +8687,7 @@
         ['Data', dateLabel],
         ['Horário', timeLabel],
         ['Status', statusInfo ? `${statusInfo.icon} ${statusInfo.label}` : '🔶 Agendado'],
+        ...(depositStatus(description) ? [['Sinal', depositStatus(description) === 'pending' ? '⏳ Aguardando (R$ 50,00)' : `✅ Recebido em ${escapeHtml(depositStatus(description).receivedOn)}`]] : []),
       ];
 
       document.getElementById('asBody').innerHTML = rows.map(([label, value]) => `
@@ -8679,6 +8696,9 @@
 
       const actions = [];
       if (!completed) {
+        if (depositStatus(description) === 'pending') {
+          actions.push(`<button class="btn" style="flex:1; min-width:120px;" onclick="closeAppointmentSummary(); markDepositReceived(${jsArg(eventId)})">💰 Sinal recebido</button>`);
+        }
         actions.push(`<button class="btn" style="flex:1; min-width:120px;" onclick="closeAppointmentSummary(); openCompleteModal(${jsArg(eventId)})">✅ Concluir</button>`);
         actions.push(`<button class="btn secondary" style="flex:1; min-width:120px;" onclick="closeAppointmentSummary(); openEditAppointmentModal(${jsArg(eventId)})">✏️ Editar</button>`);
         actions.push(`<button class="btn secondary" style="flex:1; min-width:120px;" onclick="closeAppointmentSummary(); openCancelModal(${jsArg(eventId)})">✕ Desmarcar</button>`);
@@ -8691,6 +8711,58 @@
       document.getElementById('asActions').innerHTML = actions.join('');
 
       document.getElementById('appointmentSummaryModal').classList.add('open');
+    }
+
+    // Sinal da avaliação marcada pela IA (2026-10-22). O servidor da IA grava
+    // "Sinal: aguardando (R$ 50,00)." na descrição; o Apps Script troca por
+    // "Sinal: recebido em dd/MM (R$ 50,00).". Sem marcador = não se aplica.
+    function depositStatus(description) {
+      const d = String(description || '');
+      if (/Sinal: aguardando/.test(d)) return 'pending';
+      const m = d.match(/Sinal: recebido em (\d{2}\/\d{2})/);
+      return m ? { receivedOn: m[1] } : null;
+    }
+
+    async function markDepositReceived(eventId) {
+      const ev = allCalendarEvents.find(e => e.id === eventId);
+      if (!ev) return;
+      const info = parseEventInfo(ev.summary, ev.description || '');
+      const name = leadNameByPhone(info.phone, info.name || 'a paciente');
+      if (!confirm(`Confirmar que o sinal de R$ 50,00 de ${name} foi recebido?
+
+A IA vai avisar a paciente pelo WhatsApp que a avaliação está confirmada.`)) return;
+
+      const settings = loadSettings();
+      if (!settings || !settings.scriptUrl) {
+        alert(NOT_CONFIGURED_MSG);
+        return;
+      }
+      try {
+        const response = await scriptFetch(settings.scriptUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({ action: 'markDepositReceived', eventId })
+        });
+        const result = await response.json();
+        if (!result.ok) throw new Error(result.error || 'Erro desconhecido');
+        if (result.patientNotified) {
+          showToast('💰 Sinal recebido. A IA confirmou a avaliação com a paciente.');
+        } else {
+          alert(`Sinal registrado, mas a paciente NÃO foi avisada pelo número da IA:
+${result.noticeError}
+
+Confirme com ela pelo WhatsApp da clínica.`);
+        }
+        refreshData();
+        // Lançamento no Financeiro: mesmo modal do "Cobrar sinal" do CRM.
+        openReceivableModal(result.phone || info.phone, {
+          fromComplete: true,
+          description: 'Avaliação',
+          title: '💰 Lançar o sinal no Financeiro',
+        });
+      } catch (err) {
+        showToast(`❌ Não foi possível registrar o sinal: ${friendlyError(err)}`);
+      }
     }
 
     function closeAppointmentSummary() {
