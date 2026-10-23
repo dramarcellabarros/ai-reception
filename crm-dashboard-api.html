@@ -2159,6 +2159,22 @@
     .client-side .owed { color: #B3462F; }
     .bday-badge { background: var(--cor-rosa-sereno); color: var(--cor-texto-marca); border-radius: 10px; padding: 0 7px; font-weight: 700; }
 
+    /* Contas a Pagar (2026-10-23) */
+    .ap-tabs { grid-template-columns: repeat(2, 1fr); }
+    .ap-hint { font-size: 12px; color: var(--cor-cinza-cacau); margin: -4px 0 12px; }
+    .ld-value .ap-hint, .finance-row .ap-hint, .ap-cat-row .ap-hint { margin: 0; }
+    .ap-form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .ap-form-row .form-group { min-width: 0; }
+    .ap-month-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
+    .ap-month-bar strong { color: var(--cor-texto-marca); font-size: 15px; }
+    .ap-month-head { display: flex; justify-content: space-between; font-size: 12px; font-weight: 700; color: var(--cor-cinza-cacau); text-transform: uppercase; letter-spacing: 0.3px; margin: 12px 0 6px; font-variant-numeric: tabular-nums; }
+    .ap-month-head:first-child { margin-top: 0; }
+    .ap-total { color: var(--cor-texto-marca); border-top: 1px solid var(--cor-creme-avela); padding-top: 8px; }
+    .ap-late { color: #B3462F; font-weight: 600; }
+    .ap-label { font-weight: 400; font-size: 12px; color: var(--cor-cinza-cacau); }
+    .ap-cat-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--cor-creme-avela); font-size: 14px; }
+    @media (max-width: 400px) { .ap-form-row { grid-template-columns: 1fr; gap: 0; } }
+
     .sim-input-row { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 14px; }
     .sim-input-row .form-group { margin-bottom: 0; flex: 1; min-width: 160px; }
 
@@ -2250,6 +2266,7 @@
       <button class="module-nav-btn" data-module="clientes" onclick="switchModule('clientes')">👥 Clientes</button>
       <button class="module-nav-btn" data-module="vendas" onclick="switchModule('vendas')">💰 Financeiro</button>
       <button class="module-nav-btn" data-module="receber" onclick="switchModule('receber')">🧾 A Receber</button>
+      <button class="module-nav-btn" data-module="pagar" onclick="switchModule('pagar')">📤 A Pagar</button>
       <button class="module-nav-btn" data-module="conversas" onclick="switchModule('conversas')">💬 Conversas</button>
       <button class="module-nav-btn" data-module="simulador" onclick="switchModule('simulador')">🧮 Simulador</button>
       <button class="module-nav-btn" onclick="toggleSettings()" title="Configurações">⚙️ Config</button>
@@ -2348,6 +2365,55 @@
     <div class="module-card" id="receberCarteiraCard">
       <h3>💳 Saldo em aberto na Carteira</h3>
       <div id="receberCarteira"></div>
+    </div>
+  </div>
+
+  <!-- ===== Módulo Contas a Pagar (2026-10-23) ===== -->
+  <div class="container module-view" id="view-pagar" hidden>
+    <div class="module-title">
+      <h2>📤 Contas a Pagar</h2>
+      <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        <button class="agenda-toggle-btn" onclick="openExpenseCategoriesModal()">🏷️ Categorias</button>
+        <button class="btn-primary-soft" onclick="openPayableModal()">➕ Lançar despesa</button>
+      </div>
+    </div>
+    <div class="chip-row fin-tabs ap-tabs" id="pagarModeChips"></div>
+
+    <div id="pagarContasPane">
+      <div class="kpi-grid" id="pagarKpis"></div>
+      <div class="controls" style="margin-bottom:10px;">
+        <div class="search-box search-clear-wrap">
+          <input type="text" id="pagarSearch" placeholder="Filtrar por descrição ou fornecedor..." autocomplete="off" autocorrect="off" spellcheck="false" oninput="renderPagar(); toggleSearchClearBtn('pagarSearch', 'pagarSearchClearBtn')">
+          <button type="button" class="search-clear-btn" id="pagarSearchClearBtn" onclick="clearSearchField('pagarSearch', 'pagarSearchClearBtn'); renderPagar()" title="Limpar busca" aria-label="Limpar busca">✕</button>
+        </div>
+      </div>
+      <div class="chip-row" id="pagarFilters"></div>
+      <div class="chip-row" style="align-items:center;">
+        <label for="pagarCategory" style="font-size:12.5px; color:var(--cor-cinza-cacau);">Categoria:</label>
+        <select id="pagarCategory" onchange="renderPagar()" style="width:auto; padding:5px 8px; font-size:13px;"></select>
+      </div>
+      <div class="module-card">
+        <h3 id="pagarListTitle">Contas a pagar</h3>
+        <div id="pagarList"></div>
+      </div>
+    </div>
+
+    <div id="pagarResumoPane" hidden>
+      <div class="ap-month-bar">
+        <button class="agenda-view-btn" onclick="shiftPagarMonth(-1)" aria-label="Mês anterior">‹</button>
+        <strong id="pagarMonthLabel"></strong>
+        <button class="agenda-view-btn" onclick="shiftPagarMonth(1)" aria-label="Próximo mês">›</button>
+      </div>
+      <div class="kpi-grid" id="pagarResumoKpis"></div>
+      <div class="module-card">
+        <h3>Previsto para o mês</h3>
+        <div id="pagarResumoPrevisto"></div>
+      </div>
+      <div class="module-card">
+        <h3>Saídas pagas por categoria</h3>
+        <div id="pagarResumoCategorias"></div>
+      </div>
+      <p style="color: var(--cor-cinza-cacau); font-size: 12px; margin: -6px 0 16px;">ℹ️ Entradas = o que entrou na conta no mês (Financeiro → Recebido, líquido das taxas do cartão). Saídas = contas pagas no mês, pela data do pagamento e pelo valor realmente pago.</p>
     </div>
   </div>
 
@@ -2908,6 +2974,235 @@
           <button class="btn" id="recSubmitBtn" onclick="submitReceivable()" style="flex:1;">✅ Confirmar e Lançar</button>
         </div>
       </div>
+    </div>
+  </div>
+
+  <!-- Contas a Pagar (2026-10-23): lançar despesa — avulsa, parcelada
+       (compra em N vezes) ou recorrente (N meses com valor previsto).
+       Mesmo "Revisar e Confirmar" das parcelas do Contas a Receber. -->
+  <div class="modal" id="payableModal">
+    <div class="modal-content">
+      <span class="close-btn" onclick="closePayableModal()">&times;</span>
+      <h2>📤 Lançar despesa</h2>
+      <div id="payableError"></div>
+
+      <div id="payableFormStep">
+        <div class="chip-row fin-tabs ap-tabs" id="pfTypeChips"></div>
+        <p class="ap-hint" id="pfTypeHint"></p>
+        <div class="form-group">
+          <label for="pfDescription">Descrição *</label>
+          <input type="text" id="pfDescription" maxlength="150" placeholder="Ex.: Conta de energia, Compra Rennova">
+        </div>
+        <div class="ap-form-row">
+          <div class="form-group">
+            <label for="pfCategory">Categoria *</label>
+            <select id="pfCategory" onchange="onPayableCategoryChange()"></select>
+          </div>
+          <div class="form-group">
+            <label for="pfMethod">Forma de pagamento</label>
+            <select id="pfMethod"></select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="pfSupplier">Fornecedor</label>
+          <input type="text" id="pfSupplier" maxlength="100" placeholder="Opcional" list="pfSupplierList" autocomplete="off">
+          <datalist id="pfSupplierList"></datalist>
+        </div>
+
+        <!-- Avulsa -->
+        <div id="pfAvulsa">
+          <div class="ap-form-row">
+            <div class="form-group">
+              <label for="pfValue">Valor (R$) *</label>
+              <input type="text" id="pfValue" inputmode="decimal" placeholder="0,00" autocomplete="off">
+            </div>
+            <div class="form-group">
+              <label for="pfDueDate">Vencimento *</label>
+              <input type="date" id="pfDueDate">
+            </div>
+          </div>
+          <label class="installment-edit-check" style="margin:-4px 0 12px;">
+            <input type="checkbox" id="pfPaidNow" style="width:auto;"> Já está paga (dá baixa na revisão)
+          </label>
+        </div>
+
+        <!-- Parcelada -->
+        <div id="pfParcelada" hidden>
+          <div class="ap-form-row">
+            <div class="form-group">
+              <label for="pfTotal">Valor total da compra (R$) *</label>
+              <input type="text" id="pfTotal" inputmode="decimal" placeholder="0,00" autocomplete="off">
+            </div>
+            <div class="form-group">
+              <label for="pfCount">Nº de parcelas *</label>
+              <input type="number" id="pfCount" inputmode="numeric" min="1" max="60" step="1" value="2">
+            </div>
+          </div>
+          <div class="ap-form-row">
+            <div class="form-group">
+              <label for="pfPurchaseDate">Data da compra *</label>
+              <input type="date" id="pfPurchaseDate" onchange="onPayablePurchaseDateChange()">
+            </div>
+            <div class="form-group">
+              <label for="pfFirstDue">1º vencimento *</label>
+              <input type="date" id="pfFirstDue">
+            </div>
+          </div>
+        </div>
+
+        <!-- Recorrente -->
+        <div id="pfRecorrente" hidden>
+          <div class="ap-form-row">
+            <div class="form-group">
+              <label for="pfMonthly">Valor previsto por mês (R$) *</label>
+              <input type="text" id="pfMonthly" inputmode="decimal" placeholder="Ex.: 500,00" autocomplete="off">
+            </div>
+            <div class="form-group">
+              <label for="pfMonths">Nº de meses *</label>
+              <input type="number" id="pfMonths" inputmode="numeric" min="1" max="60" step="1" value="12">
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="pfRecFirstDue">1º vencimento *</label>
+            <input type="date" id="pfRecFirstDue">
+          </div>
+        </div>
+
+        <!-- Itens da compra (Produtos/Insumos): base de estoque e lote. -->
+        <div id="pfProductsBlock" hidden>
+          <label style="display:block; font-weight:600; margin:4px 0 8px;">Produtos desta compra <span style="font-weight:400; color:var(--cor-cinza-cacau); font-size:12px;">(opcional — entra na aba Entradas de Produtos)</span></label>
+          <div id="pfProducts"></div>
+          <button type="button" class="agenda-toggle-btn" onclick="addPayableProduct()" style="margin:2px 0 12px;">➕ Adicionar produto</button>
+        </div>
+
+        <div class="form-group">
+          <label for="pfNote">Observação</label>
+          <input type="text" id="pfNote" maxlength="300" placeholder="Opcional">
+        </div>
+        <button class="btn" onclick="reviewPayable()" style="width:100%;">Revisar →</button>
+      </div>
+
+      <div id="payableConfirmStep" style="display:none;">
+        <div id="payableConfirmBody"></div>
+        <div style="display:flex; gap:10px; margin-top:20px;">
+          <button class="btn secondary" onclick="backToPayableForm()">← Voltar</button>
+          <button class="btn" id="pfSubmitBtn" onclick="submitPayable()" style="flex:1;">✅ Confirmar e Lançar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Baixa: valor realmente pago (pode ser diferente do previsto) + data. -->
+  <div class="modal" id="payPayableModal" style="z-index: 1100;">
+    <div class="modal-content">
+      <span class="close-btn" onclick="closePayPayableModal()">&times;</span>
+      <h2>✅ Dar baixa</h2>
+      <div id="ppError"></div>
+      <div id="ppInfo" style="margin-bottom:14px;"></div>
+      <div class="ap-form-row">
+        <div class="form-group">
+          <label for="ppValue">Valor pago (R$) *</label>
+          <input type="text" id="ppValue" inputmode="decimal" autocomplete="off" oninput="updatePayDiff()">
+          <div id="ppDiff" class="ap-hint" style="margin-top:4px;"></div>
+        </div>
+        <div class="form-group">
+          <label for="ppDate">Data do pagamento *</label>
+          <input type="date" id="ppDate">
+        </div>
+      </div>
+      <div class="form-group">
+        <label for="ppMethod">Forma de pagamento</label>
+        <select id="ppMethod"></select>
+      </div>
+      <div style="display:flex; gap:10px;">
+        <button class="btn secondary" onclick="closePayPayableModal()">Cancelar</button>
+        <button class="btn" id="ppSubmitBtn" onclick="submitPayPayable()" style="flex:1;">✅ Confirmar pagamento</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Editar uma conta (só esta). -->
+  <div class="modal" id="editPayableModal" style="z-index: 1100;">
+    <div class="modal-content">
+      <span class="close-btn" onclick="closeEditPayableModal()">&times;</span>
+      <h2>✏️ Editar conta</h2>
+      <div id="epError"></div>
+      <div id="epInfo" class="ap-hint" style="margin-bottom:12px;"></div>
+      <div class="form-group">
+        <label for="epDescription">Descrição *</label>
+        <input type="text" id="epDescription" maxlength="150">
+      </div>
+      <div class="ap-form-row">
+        <div class="form-group">
+          <label for="epCategory">Categoria *</label>
+          <select id="epCategory"></select>
+        </div>
+        <div class="form-group">
+          <label for="epMethod">Forma de pagamento</label>
+          <select id="epMethod"></select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label for="epSupplier">Fornecedor</label>
+        <input type="text" id="epSupplier" maxlength="100" list="pfSupplierList" autocomplete="off">
+      </div>
+      <div class="ap-form-row">
+        <div class="form-group">
+          <label for="epEstimated">Valor previsto (R$) *</label>
+          <input type="text" id="epEstimated" inputmode="decimal" autocomplete="off">
+        </div>
+        <div class="form-group">
+          <label for="epDueDate">Vencimento *</label>
+          <input type="date" id="epDueDate">
+        </div>
+      </div>
+      <div class="ap-form-row" id="epPaidRow">
+        <div class="form-group">
+          <label for="epPaidValue">Valor pago (R$) *</label>
+          <input type="text" id="epPaidValue" inputmode="decimal" autocomplete="off">
+        </div>
+        <div class="form-group">
+          <label for="epPaidDate">Data do pagamento *</label>
+          <input type="date" id="epPaidDate">
+        </div>
+      </div>
+      <div class="form-group">
+        <label for="epNote">Observação</label>
+        <input type="text" id="epNote" maxlength="300">
+      </div>
+      <div style="display:flex; gap:10px;">
+        <button class="btn secondary" onclick="closeEditPayableModal()">Cancelar</button>
+        <button class="btn" id="epSubmitBtn" onclick="submitEditPayable()" style="flex:1;">💾 Salvar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Excluir: só esta ou esta + as seguintes em aberto do mesmo lançamento. -->
+  <div class="modal" id="deletePayableModal" style="z-index: 1100;">
+    <div class="modal-content">
+      <span class="close-btn" onclick="closeDeletePayableModal()">&times;</span>
+      <h2>🗑️ Excluir conta</h2>
+      <div id="dpInfo" style="margin-bottom:14px;"></div>
+      <div style="display:flex; flex-direction:column; gap:8px;">
+        <button class="btn danger" id="dpOneBtn" onclick="submitDeletePayable('one')">Excluir só esta</button>
+        <button class="btn danger" id="dpFollowingBtn" onclick="submitDeletePayable('following')"></button>
+        <button class="btn secondary" onclick="closeDeletePayableModal()">Cancelar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Categorias de despesa: lista que a equipe edita. -->
+  <div class="modal" id="expenseCategoriesModal" style="z-index: 1150;">
+    <div class="modal-content">
+      <span class="close-btn" onclick="closeExpenseCategoriesModal()">&times;</span>
+      <h2>🏷️ Categorias de despesa</h2>
+      <div id="ecError"></div>
+      <div style="display:flex; gap:8px; margin-bottom:14px;">
+        <input type="text" id="ecNewName" maxlength="60" placeholder="Nova categoria" onkeydown="if (event.key === 'Enter') addExpenseCategoryFromUI()">
+        <button class="btn" onclick="addExpenseCategoryFromUI()" style="width:auto; white-space:nowrap;">➕ Adicionar</button>
+      </div>
+      <div id="ecList"></div>
+      <p class="ap-hint" style="margin-top:10px;">Renomear leva o nome novo às contas já lançadas. Excluir só tira da lista: as contas já lançadas continuam com a categoria antiga.</p>
     </div>
   </div>
 
@@ -4064,6 +4359,7 @@
       fetchCalendarEvents();
       fetchFinanceData();
       fetchCarteiraData();
+      if (payablesLoaded) fetchPayablesData();
       loadProcedureList();
       loadCardFees();
     }
@@ -6342,7 +6638,7 @@
     // allFinance, allCarteira) — nenhuma chamada nova à planilha.
     // ================================================================
 
-    const MODULES = ['agenda', 'clientes', 'vendas', 'receber', 'simulador', 'conversas'];
+    const MODULES = ['agenda', 'clientes', 'vendas', 'receber', 'pagar', 'simulador', 'conversas'];
     let currentModule = 'agenda';
 
     function switchModule(name) {
@@ -6387,6 +6683,7 @@
       if (currentModule === 'clientes') renderClientes();
       else if (currentModule === 'vendas') renderVendas();
       else if (currentModule === 'receber') renderReceber();
+      else if (currentModule === 'pagar') renderPagar();
       else if (currentModule === 'simulador') renderSimulador();
     }
 
@@ -7693,6 +7990,822 @@
             <div class="client-side"><strong class="owed">${formatCurrencyBRL(b.balance)}</strong></div>
           </div>`).join('')
         : '<div class="chart-empty">Nenhum saldo em aberto na Carteira. 🎉</div>';
+    }
+
+    // ---------- Contas a Pagar (pedido do usuário 2026-10-23) ----------
+    // Despesas da clínica (abas "Contas a Pagar", "Categorias de Despesa"
+    // e "Entradas de Produtos", ver Code.gs). Cada linha é uma conta (um
+    // vencimento); um lançamento parcelado/recorrente é um grupo de linhas
+    // com o mesmo "Lançamento". Previsto × pago ficam separados: a conta
+    // de energia lançada a ~R$ 500 recebe na baixa o valor real (473,86).
+    let allPayables = [];
+    let expenseCategories = [];
+    let stockEntryCountByGroup = {};
+    let payablesLoadError = '';
+    // Carrega só ao abrir o módulo (não pesa a abertura do CRM); depois, também no Atualizar.
+    let payablesLoaded = false;
+    let payablesLoading = false;
+    let pagarMode = 'contas';
+    let pagarFilter = 'abertas';
+    let pagarMonth = '';
+
+    const DEFAULT_EXPENSE_CATEGORIES = ['Produtos', 'Insumos', 'Aluguel', 'Internet', 'Energia', 'Água', 'Telefone', 'Contabilidade', 'Marketing', 'Impostos', 'Outros'];
+    const PAYABLE_METHODS = ['Pix', 'Boleto', 'Cartão de crédito', 'Débito automático', 'Transferência', 'Dinheiro', 'Outro'];
+    const PAYABLE_TYPE_INFO = {
+      Avulsa: { label: 'Avulsa', method: 'Pix', hint: 'Uma conta só (ex.: manutenção, compra à vista).' },
+      Parcelada: { label: 'Parcelada', method: 'Cartão de crédito', hint: 'Compra em N vezes: vira uma conta por mês. Os vencimentos podem ser ajustados na revisão.' },
+      Recorrente: { label: 'Recorrente', method: 'Boleto', hint: 'Conta de todo mês (energia, aluguel, internet) com valor previsto. Na baixa, informe o valor realmente pago.' },
+    };
+    // Categorias que abrem o bloco de produtos (lote/validade) no lançamento.
+    const PRODUCT_EXPENSE_CATEGORIES = ['produtos', 'insumos'];
+
+    /** "1.234,56" / "473,86" / "473.86" / "R$ 500" → número (NaN se vazio/inválido). */
+    function parseMoneyInput(raw) {
+      let s = String(raw == null ? '' : raw).replace(/R\$/i, '').replace(/\s/g, '');
+      if (!s) return NaN;
+      if (s.includes(',')) s = s.replace(/\./g, '').replace(',', '.');
+      else if (/^\d{1,3}(\.\d{3})+$/.test(s)) s = s.replace(/\./g, '');
+      const n = Number(s);
+      return isFinite(n) ? Math.round(n * 100) / 100 : NaN;
+    }
+
+    function formatMoneyInput(n) {
+      return isFinite(n) && n !== null ? Number(n).toFixed(2).replace('.', ',') : '';
+    }
+
+    /** Mesmo dia do mês, n meses depois, travado no último dia (31/01 → 28/02). */
+    function addMonthsClamped(iso, n) {
+      const f = new Date(`${iso}T00:00:00`);
+      const d = new Date(f.getFullYear(), f.getMonth() + n, 1);
+      const last = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+      d.setDate(Math.min(f.getDate(), last));
+      return localDateStr(d);
+    }
+
+    /** "2026-10" → "Outubro/2026". */
+    function monthLabelPT(ym) {
+      return `${MONTH_LABELS_PT[+ym.slice(5, 7) - 1]}/${ym.slice(0, 4)}`;
+    }
+
+    function payableValue(p) {
+      return p.status === 'Pago' && p.paid !== null ? p.paid : p.estimated;
+    }
+
+    function expenseCategoryOptions() {
+      const used = allPayables.map(p => p.category).filter(Boolean);
+      return Array.from(new Set([...expenseCategories, ...used]));
+    }
+
+    async function fetchPayablesData() {
+      if (!hasDataConfig(loadSettings())) { allPayables = []; return; }
+      payablesLoading = true;
+      try {
+        const [values, cats, stock] = await Promise.all([
+          readSheetValues('Contas a Pagar'),
+          readSheetValues('Categorias de Despesa').catch(() => []),
+          readSheetValues('Entradas de Produtos').catch(() => []),
+        ]);
+        payablesLoadError = '';
+        const headers = values[0] || [];
+        const col = (row, h) => { const i = headers.indexOf(h); return i === -1 ? '' : (row[i] || ''); };
+        allPayables = values.slice(1).map(row => {
+          const paidRaw = col(row, 'Valor Pago');
+          return {
+            id: col(row, 'ID'),
+            group: col(row, 'Lançamento'),
+            type: col(row, 'Tipo') || 'Avulsa',
+            description: col(row, 'Descrição'),
+            supplier: col(row, 'Fornecedor'),
+            category: col(row, 'Categoria'),
+            label: col(row, 'Parcela'),
+            competence: col(row, 'Competência'),
+            dueDate: col(row, 'Vencimento'),
+            estimated: parseMoneyInput(col(row, 'Valor Previsto')) || 0,
+            paid: paidRaw === '' ? null : (parseMoneyInput(paidRaw) || 0),
+            status: col(row, 'Status') === 'Pago' ? 'Pago' : 'A pagar',
+            paidDate: col(row, 'Data de Pagamento'),
+            method: col(row, 'Forma de Pagamento'),
+            note: col(row, 'Observação'),
+          };
+        }).filter(p => p.id);
+        const catNames = (cats || []).slice(1).map(r => String(r[0] || '').trim()).filter(Boolean);
+        expenseCategories = catNames.length ? catNames : DEFAULT_EXPENSE_CATEGORIES.slice();
+        stockEntryCountByGroup = {};
+        const sh = (stock && stock[0]) || [];
+        const gc = sh.indexOf('Lançamento');
+        if (gc >= 0) stock.slice(1).forEach(r => { if (r[gc]) stockEntryCountByGroup[r[gc]] = (stockEntryCountByGroup[r[gc]] || 0) + 1; });
+      } catch (err) {
+        console.error('Erro ao buscar contas a pagar:', err);
+        allPayables = [];
+        if (!expenseCategories.length) expenseCategories = DEFAULT_EXPENSE_CATEGORIES.slice();
+        payablesLoadError = /não liberada|ação desconhecida/i.test(String(err && err.message))
+          ? 'O Contas a Pagar ainda não está ativo no sistema: falta publicar o Apps Script novo (Nova versão).'
+          : friendlyError(err);
+      }
+      payablesLoading = false;
+      payablesLoaded = true;
+      if (currentModule === 'pagar') renderPagar();
+    }
+
+    async function payablesPost(body) {
+      const settings = loadSettings();
+      if (!settings || !settings.scriptUrl) throw new Error(NOT_CONFIGURED_MSG);
+      const response = await scriptFetch(settings.scriptUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(body),
+      });
+      const result = await response.json();
+      if (!result.ok) throw new Error(result.error || 'Erro desconhecido');
+      return result;
+    }
+
+    function setPagarMode(m) { pagarMode = m; renderPagar(); }
+    function setPagarFilter(f) { pagarFilter = (f === pagarFilter && f !== 'abertas') ? 'abertas' : f; renderPagar(); }
+    function shiftPagarMonth(n) { pagarMonth = addMonthsClamped(`${pagarMonth}-01`, n).slice(0, 7); renderPagar(); }
+
+    function renderPagar() {
+      const today = localDateStr(new Date());
+      if (!pagarMonth) pagarMonth = today.slice(0, 7);
+      document.getElementById('pagarModeChips').innerHTML = chipsHtml([['contas', '📋 Contas'], ['resumo', '📊 Resumo do mês']], pagarMode, 'setPagarMode');
+      document.getElementById('pagarContasPane').hidden = pagarMode !== 'contas';
+      document.getElementById('pagarResumoPane').hidden = pagarMode !== 'resumo';
+      if (pagarMode === 'resumo') { renderPagarResumo(); return; }
+
+      const sum = (arr) => arr.reduce((s, p) => s + payableValue(p), 0);
+      const open = allPayables.filter(p => p.status !== 'Pago');
+      const paid = allPayables.filter(p => p.status === 'Pago');
+      const overdue = open.filter(p => p.dueDate && p.dueDate < today);
+      const upcoming = open.filter(p => !p.dueDate || p.dueDate >= today);
+      const next7 = open.filter(p => p.dueDate && p.dueDate >= today && p.dueDate <= addDays(today, 7));
+      const paidMonth = paid.filter(p => (p.paidDate || '').slice(0, 7) === today.slice(0, 7));
+
+      const cardFilter = (key) => ({ onclick: `setPagarFilter('${key}')`, active: pagarFilter === key });
+      document.getElementById('pagarKpis').innerHTML = [
+        kpiHtml('Em aberto', formatCurrencyBRL(sum(open)), `${open.length} conta(s)`, 'kpi-hero', cardFilter('abertas')),
+        kpiHtml('Vencidas', formatCurrencyBRL(sum(overdue)), `${overdue.length} conta(s)`, overdue.length ? 'kpi-alert' : '', cardFilter('vencidas')),
+        kpiHtml('Próximos 7 dias', formatCurrencyBRL(sum(next7)), `${next7.length} conta(s)`, '', cardFilter('7dias')),
+        kpiHtml('Pago este mês', formatCurrencyBRL(sum(paidMonth)), `${paidMonth.length} conta(s)`, 'kpi-good', cardFilter('pagas')),
+      ].join('');
+
+      document.getElementById('pagarFilters').innerHTML = chipsHtml([
+        ['abertas', `Em aberto (${open.length})`],
+        ['vencidas', `⚠️ Vencidas (${overdue.length})`],
+        ['avencer', `A vencer (${upcoming.length})`],
+        ['pagas', `✅ Pagas (${paid.length})`],
+        ['todas', `Todas (${allPayables.length})`],
+      ], pagarFilter === '7dias' ? '' : pagarFilter, 'setPagarFilter');
+
+      const catSelect = document.getElementById('pagarCategory');
+      const currentCat = catSelect.value || 'todas';
+      const cats = expenseCategoryOptions();
+      catSelect.innerHTML = `<option value="todas">Todas</option>${cats.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('')}`;
+      catSelect.value = cats.includes(currentCat) ? currentCat : 'todas';
+
+      const lists = { abertas: open, vencidas: overdue, avencer: upcoming, '7dias': next7, pagas: paid, todas: allPayables };
+      const query = document.getElementById('pagarSearch').value.trim().toLowerCase();
+      const cat = catSelect.value;
+      const showPaid = pagarFilter === 'pagas';
+      const items = (lists[pagarFilter] || open)
+        .filter(p => cat === 'todas' || p.category === cat)
+        .filter(p => !query || `${p.description} ${p.supplier} ${p.note}`.toLowerCase().includes(query))
+        .slice()
+        .sort((a, b) => (showPaid ? (b.paidDate || '').localeCompare(a.paidDate || '') : (a.dueDate || '').localeCompare(b.dueDate || '')));
+
+      const titles = { abertas: 'Contas em aberto', vencidas: 'Contas vencidas', avencer: 'Contas a vencer', '7dias': 'Vencem nos próximos 7 dias', pagas: 'Contas pagas', todas: 'Todas as contas' };
+      document.getElementById('pagarListTitle').textContent = `${titles[pagarFilter] || titles.abertas} (${items.length})`;
+
+      const listEl = document.getElementById('pagarList');
+      if (!payablesLoaded) {
+        listEl.innerHTML = '<div class="loading">⏳ Carregando contas...</div>';
+        if (!payablesLoading) fetchPayablesData();
+        return;
+      }
+      if (payablesLoadError) {
+        listEl.innerHTML = `<div class="agenda-empty">⚠️ ${escapeHtml(payablesLoadError)}</div>`;
+        return;
+      }
+      if (!items.length) {
+        listEl.innerHTML = `<div class="agenda-empty">${pagarFilter === 'vencidas' ? 'Nenhuma conta vencida. 🎉' : (allPayables.length ? 'Nada por aqui.' : 'Nenhuma despesa lançada ainda. Toque em ➕ Lançar despesa.')}</div>`;
+        return;
+      }
+      // Agrupado por mês (do vencimento; nas pagas, do pagamento), com o total de cada mês.
+      const monthOf = (p) => ((showPaid ? p.paidDate : p.dueDate) || '').slice(0, 7);
+      let html = '';
+      let lastMonth = null;
+      items.forEach(p => {
+        const m = monthOf(p);
+        if (m !== lastMonth) {
+          const inMonth = items.filter(x => monthOf(x) === m);
+          html += `<div class="ap-month-head"><span>${m ? monthLabelPT(m) : 'Sem data'}</span><span>${formatCurrencyBRL(sum(inMonth))}</span></div>`;
+          lastMonth = m;
+        }
+        html += payableRowHtml(p, today);
+      });
+      html += `<div class="ap-month-head ap-total"><span>Total</span><span>${formatCurrencyBRL(sum(items))}</span></div>`;
+      listEl.innerHTML = html;
+    }
+
+    function payableRowHtml(p, today) {
+      const isPaid = p.status === 'Pago';
+      const late = !isPaid && p.dueDate && p.dueDate < today ? daysBetween(p.dueDate, today) : 0;
+      const products = stockEntryCountByGroup[p.group] || 0;
+      const diff = isPaid && p.paid !== null ? Math.round((p.paid - p.estimated) * 100) / 100 : 0;
+      const meta = [
+        isPaid
+          ? `<span class="finance-status-badge finance-status-paid">Pago ${formatDateShortBR(p.paidDate)}</span>`
+          : `<span>Vence ${formatDateShortBR(p.dueDate)}</span>${late ? `<span class="ap-late">há ${late} dia${late > 1 ? 's' : ''}</span>` : (p.dueDate === today ? '<span class="ap-late" style="color:var(--cor-texto-marca);">hoje</span>' : '')}`,
+        `<span>🏷️ ${escapeHtml(p.category || '—')}</span>`,
+        p.supplier ? `<span>${escapeHtml(p.supplier)}</span>` : '',
+        p.method ? `<span>${escapeHtml(p.method)}</span>` : '',
+        isPaid && Math.abs(diff) >= 0.01 ? `<span>previsto ${formatCurrencyBRL(p.estimated)} (${diff > 0 ? '+' : '−'}${formatCurrencyBRL(Math.abs(diff))})</span>` : '',
+        !isPaid && p.type === 'Recorrente' ? '<span>valor previsto</span>' : '',
+        products ? `<span>📦 ${products} produto${products > 1 ? 's' : ''}</span>` : '',
+        p.note ? `<span>📝 ${escapeHtml(p.note)}</span>` : '',
+      ].filter(Boolean).join('');
+      return `
+        <div class="finance-row">
+          <div class="finance-row-main">
+            <span>${escapeHtml(p.description || 'Despesa')}${p.type !== 'Avulsa' && p.label ? ` <span class="ap-label">${escapeHtml(p.label)}</span>` : ''}</span>
+            <span class="finance-row-value">${formatCurrencyBRL(payableValue(p))}</span>
+          </div>
+          <div class="finance-row-meta">${meta}</div>
+          <div style="display:flex; gap:6px;">
+            ${isPaid
+              ? `<button class="complete-btn" style="flex:1;" onclick="unpayPayableFromUI(${jsArg(p.id)})">↩️ Desfazer baixa</button>`
+              : `<button class="complete-btn" style="flex:1;" onclick="openPayPayableModal(${jsArg(p.id)})">✅ Dar baixa</button>`}
+            <button class="complete-btn" onclick="openEditPayableModal(${jsArg(p.id)})" title="Editar" aria-label="Editar conta">✏️</button>
+            <button class="complete-btn complete-btn-danger" onclick="openDeletePayableModal(${jsArg(p.id)})" title="Excluir" aria-label="Excluir conta">🗑️</button>
+          </div>
+        </div>`;
+    }
+
+    // Resumo do mês: caixa (o que entrou × o que saiu) e o previsto até o fim do mês.
+    function renderPagarResumo() {
+      const m = pagarMonth;
+      document.getElementById('pagarMonthLabel').textContent = monthLabelPT(m);
+      if (!payablesLoaded && !payablesLoading) fetchPayablesData();
+      const inMonth = (d) => (d || '').slice(0, 7) === m;
+      const receipts = buildReceipts().filter(r => inMonth(r.date));
+      const entradas = receipts.reduce((s, r) => s + r.net, 0);
+      const paid = allPayables.filter(p => p.status === 'Pago' && inMonth(p.paidDate));
+      const saidas = paid.reduce((s, p) => s + payableValue(p), 0);
+      const saldo = entradas - saidas;
+      const toReceive = allFinance.filter(f => f.status !== 'Recebido' && inMonth(f.dueDate));
+      const toPay = allPayables.filter(p => p.status !== 'Pago' && inMonth(p.dueDate));
+      const toReceiveSum = toReceive.reduce((s, f) => s + f.value, 0);
+      const toPaySum = toPay.reduce((s, p) => s + p.estimated, 0);
+      const competence = allPayables.filter(p => p.competence === m).reduce((s, p) => s + payableValue(p), 0);
+      const paidEstimated = paid.reduce((s, p) => s + p.estimated, 0);
+
+      document.getElementById('pagarResumoKpis').innerHTML = [
+        kpiHtml('Entradas', formatCurrencyBRL(entradas), `${receipts.length} recebimento(s) · líquido`, 'kpi-good'),
+        kpiHtml('Saídas', `− ${formatCurrencyBRL(saidas)}`, `${paid.length} conta(s) paga(s)`),
+        kpiHtml('Saldo do mês', `${saldo < 0 ? '− ' : ''}${formatCurrencyBRL(Math.abs(saldo))}`, 'entradas − saídas', saldo < 0 ? 'kpi-alert' : 'kpi-hero'),
+      ].join('');
+
+      const row = (label, value, strong) => `<div class="ld-row"><span class="ld-label">${label}</span><span class="ld-value">${strong ? `<strong>${value}</strong>` : value}</span></div>`;
+      const forecast = saldo + toReceiveSum - toPaySum;
+      const estDiff = Math.round((saidas - paidEstimated) * 100) / 100;
+      document.getElementById('pagarResumoPrevisto').innerHTML = [
+        row('A receber ainda no mês', `${formatCurrencyBRL(toReceiveSum)} · ${toReceive.length} parcela(s)`),
+        row('A pagar ainda no mês', `− ${formatCurrencyBRL(toPaySum)} · ${toPay.length} conta(s)`),
+        row('Saldo previsto do mês', `${forecast < 0 ? '− ' : ''}${formatCurrencyBRL(Math.abs(forecast))}`, true),
+        paid.length ? row('Contas pagas: previsto × pago', `${formatCurrencyBRL(paidEstimated)} → ${formatCurrencyBRL(saidas)}${Math.abs(estDiff) >= 0.01 ? ` (${estDiff > 0 ? '+' : '−'}${formatCurrencyBRL(Math.abs(estDiff))})` : ''}`) : '',
+        row(`Despesas de competência ${m.slice(5, 7)}/${m.slice(0, 4)}`, `${formatCurrencyBRL(competence)} <span class="ap-hint">(pagas + a pagar)</span>`),
+      ].join('');
+
+      const byCat = {};
+      paid.forEach(p => { const c = p.category || 'Sem categoria'; byCat[c] = (byCat[c] || 0) + payableValue(p); });
+      const catItems = Object.entries(byCat).map(([label, value]) => ({ label, value })).sort((a, b) => b.value - a.value);
+      document.getElementById('pagarResumoCategorias').innerHTML = payablesLoadError
+        ? `<div class="chart-empty">⚠️ ${escapeHtml(payablesLoadError)}</div>`
+        : (catItems.length ? hbarsHtml(catItems, i => `${formatCurrencyBRL(i.value)} · ${saidas ? Math.round(i.value / saidas * 100) : 0}%`) : '<div class="chart-empty">Nenhuma conta paga neste mês.</div>');
+    }
+
+    // --- Lançar despesa ---
+    let payableType = 'Avulsa';
+    let payableProducts = [];
+    let payableContext = null;
+
+    function fillSelect(id, options, selected, placeholder) {
+      const el = document.getElementById(id);
+      el.innerHTML = (placeholder ? `<option value="">${escapeHtml(placeholder)}</option>` : '')
+        + options.map(o => `<option value="${escapeHtml(o)}">${escapeHtml(o)}</option>`).join('');
+      el.value = options.includes(selected) ? selected : (placeholder ? '' : options[0]);
+    }
+
+    function fillSupplierList() {
+      const suppliers = Array.from(new Set(allPayables.map(p => p.supplier).filter(Boolean))).sort();
+      document.getElementById('pfSupplierList').innerHTML = suppliers.map(s => `<option value="${escapeHtml(s)}"></option>`).join('');
+    }
+
+    function openPayableModal() {
+      const settings = loadSettings();
+      if (!settings || !settings.scriptUrl) { alert(NOT_CONFIGURED_MSG); return; }
+      const today = localDateStr(new Date());
+      payableProducts = [];
+      payableContext = null;
+      ['pfDescription', 'pfSupplier', 'pfValue', 'pfTotal', 'pfMonthly', 'pfNote', 'pfRecFirstDue'].forEach(id => { document.getElementById(id).value = ''; });
+      document.getElementById('pfCount').value = 2;
+      document.getElementById('pfMonths').value = 12;
+      document.getElementById('pfDueDate').value = today;
+      document.getElementById('pfPurchaseDate').value = today;
+      document.getElementById('pfPurchaseDate').max = today;
+      document.getElementById('pfFirstDue').value = addMonthsClamped(today, 1);
+      document.getElementById('pfPaidNow').checked = false;
+      fillSelect('pfCategory', expenseCategoryOptions(), '', 'Escolha…');
+      fillSupplierList();
+      document.getElementById('payableError').innerHTML = '';
+      document.getElementById('payableFormStep').style.display = 'block';
+      document.getElementById('payableConfirmStep').style.display = 'none';
+      setPayableType('Avulsa');
+      document.getElementById('payableModal').classList.add('open');
+    }
+
+    function closePayableModal() {
+      document.getElementById('payableModal').classList.remove('open');
+      payableContext = null;
+    }
+
+    function setPayableType(t) {
+      payableType = t;
+      document.getElementById('pfTypeChips').style.gridTemplateColumns = 'repeat(3, 1fr)';
+      document.getElementById('pfTypeChips').innerHTML = chipsHtml(Object.keys(PAYABLE_TYPE_INFO).map(k => [k, PAYABLE_TYPE_INFO[k].label]), t, 'setPayableType');
+      document.getElementById('pfTypeHint').textContent = PAYABLE_TYPE_INFO[t].hint;
+      document.getElementById('pfAvulsa').hidden = t !== 'Avulsa';
+      document.getElementById('pfParcelada').hidden = t !== 'Parcelada';
+      document.getElementById('pfRecorrente').hidden = t !== 'Recorrente';
+      fillSelect('pfMethod', PAYABLE_METHODS, PAYABLE_TYPE_INFO[t].method);
+      onPayableCategoryChange();
+    }
+
+    function onPayableCategoryChange() {
+      const cat = document.getElementById('pfCategory').value.toLowerCase();
+      const show = payableType !== 'Recorrente' && (PRODUCT_EXPENSE_CATEGORIES.includes(cat) || payableProducts.length > 0);
+      document.getElementById('pfProductsBlock').hidden = !show;
+      if (show && !payableProducts.length) addPayableProduct();
+    }
+
+    function onPayablePurchaseDateChange() {
+      const d = document.getElementById('pfPurchaseDate').value;
+      if (d) document.getElementById('pfFirstDue').value = addMonthsClamped(d, 1);
+    }
+
+    function addPayableProduct() {
+      payableProducts.push({ product: '', lot: '', expiry: '', quantity: '', unit: '' });
+      renderPayableProducts();
+    }
+
+    function removePayableProduct(i) {
+      payableProducts.splice(i, 1);
+      renderPayableProducts();
+    }
+
+    function updatePayableProduct(i, field, value) {
+      payableProducts[i][field] = value;
+    }
+
+    function renderPayableProducts() {
+      document.getElementById('pfProducts').innerHTML = payableProducts.map((p, i) => `
+        <div class="pay-part">
+          <div class="pay-part-head"><span>Produto ${i + 1}</span><button type="button" class="pay-part-remove" onclick="removePayableProduct(${i})">remover</button></div>
+          <div class="pay-part-grid">
+            <label style="grid-column: 1 / -1;">Produto<input type="text" maxlength="100" value="${escapeHtml(p.product)}" placeholder="Ex.: Rennova Lift Plus 1 ml" oninput="updatePayableProduct(${i}, 'product', this.value)"></label>
+            <label>Lote<input type="text" maxlength="40" value="${escapeHtml(p.lot)}" autocapitalize="characters" oninput="updatePayableProduct(${i}, 'lot', this.value)"></label>
+            <label>Validade<input type="text" maxlength="10" inputmode="numeric" placeholder="DD/MM/AAAA" value="${escapeHtml(p.expiry)}" oninput="maskExpiryInput(this); updatePayableProduct(${i}, 'expiry', this.value)" onblur="finishExpiryInput(this); updatePayableProduct(${i}, 'expiry', this.value)"></label>
+            <label>Quantidade<input type="text" maxlength="10" inputmode="decimal" value="${escapeHtml(p.quantity)}" placeholder="Ex.: 10" oninput="updatePayableProduct(${i}, 'quantity', this.value)"></label>
+            <label>Unidade<input type="text" maxlength="15" value="${escapeHtml(p.unit)}" placeholder="seringa, frasco, cx" oninput="updatePayableProduct(${i}, 'unit', this.value)"></label>
+          </div>
+        </div>`).join('');
+    }
+
+    function reviewPayable() {
+      const errorEl = document.getElementById('payableError');
+      const fail = (msg) => { errorEl.innerHTML = `<div class="form-error">⚠️ ${escapeHtml(msg)}</div>`; errorEl.scrollIntoView({ block: 'nearest' }); };
+      errorEl.innerHTML = '';
+      const today = localDateStr(new Date());
+      const description = document.getElementById('pfDescription').value.trim();
+      const category = document.getElementById('pfCategory').value;
+      if (!description) return fail('Informe a descrição.');
+      if (!category) return fail('Escolha a categoria.');
+
+      let installments = [];
+      let purchaseDate = '';
+      if (payableType === 'Avulsa') {
+        const value = parseMoneyInput(document.getElementById('pfValue').value);
+        const due = document.getElementById('pfDueDate').value;
+        if (!(value > 0)) return fail('Informe o valor.');
+        if (!due) return fail('Informe o vencimento.');
+        const paidNow = document.getElementById('pfPaidNow').checked;
+        purchaseDate = due > today ? today : due;
+        installments = [{ label: '1/1', dueDate: due, value, competence: due.slice(0, 7), paid: paidNow, paidValue: value, paidDate: due > today ? today : due }];
+      } else if (payableType === 'Parcelada') {
+        const total = parseMoneyInput(document.getElementById('pfTotal').value);
+        const count = parseInt(document.getElementById('pfCount').value, 10);
+        purchaseDate = document.getElementById('pfPurchaseDate').value;
+        const firstDue = document.getElementById('pfFirstDue').value;
+        if (!(total > 0)) return fail('Informe o valor total da compra.');
+        if (!(count >= 1 && count <= 60)) return fail('Nº de parcelas: de 1 a 60.');
+        if (!purchaseDate || purchaseDate > today) return fail('Informe a data da compra (não pode ser no futuro).');
+        if (!firstDue) return fail('Informe o 1º vencimento.');
+        installments = splitInstallments(total, count, firstDue).map((inst, i) => ({
+          label: `${i + 1}/${count}`, dueDate: inst.dueDate, value: inst.value, competence: purchaseDate.slice(0, 7), paid: false,
+        }));
+      } else {
+        const monthly = parseMoneyInput(document.getElementById('pfMonthly').value);
+        const months = parseInt(document.getElementById('pfMonths').value, 10);
+        const firstDue = document.getElementById('pfRecFirstDue').value;
+        if (!(monthly > 0)) return fail('Informe o valor previsto por mês.');
+        if (!(months >= 1 && months <= 60)) return fail('Nº de meses: de 1 a 60.');
+        if (!firstDue) return fail('Informe o 1º vencimento.');
+        for (let i = 0; i < months; i++) {
+          const due = addMonthsClamped(firstDue, i);
+          installments.push({ label: `${i + 1}/${months}`, dueDate: due, value: monthly, competence: due.slice(0, 7), paid: false });
+        }
+      }
+
+      const products = [];
+      if (!document.getElementById('pfProductsBlock').hidden) {
+        for (let i = 0; i < payableProducts.length; i++) {
+          const p = payableProducts[i];
+          const filled = [p.product, p.lot, p.expiry, p.quantity, p.unit].some(v => String(v || '').trim());
+          if (!filled) continue;
+          if (!p.product.trim()) return fail(`Produto ${i + 1}: informe o nome do produto (ou remova a linha).`);
+          const expiry = expiryFromBR(p.expiry);
+          if (expiry && !isValidExpiry(expiry)) return fail(`Produto ${i + 1}: validade inválida (use DD/MM/AAAA ou MM/AAAA).`);
+          if (p.quantity && !(parseMoneyInput(p.quantity) > 0)) return fail(`Produto ${i + 1}: quantidade inválida.`);
+          products.push({ product: p.product.trim(), lot: p.lot.trim().toUpperCase(), expiry, quantity: p.quantity.trim(), unit: p.unit.trim() });
+        }
+      }
+
+      payableContext = {
+        type: payableType,
+        description,
+        category,
+        supplier: document.getElementById('pfSupplier').value.trim(),
+        paymentMethod: document.getElementById('pfMethod').value,
+        note: document.getElementById('pfNote').value.trim(),
+        purchaseDate,
+        installments,
+        products,
+        target: payableType === 'Parcelada' ? parseMoneyInput(document.getElementById('pfTotal').value) : null,
+      };
+      renderPayableReview();
+      document.getElementById('payableFormStep').style.display = 'none';
+      document.getElementById('payableConfirmStep').style.display = 'block';
+    }
+
+    function renderPayableReview() {
+      const ctx = payableContext;
+      const today = localDateStr(new Date());
+      const row = (label, value) => `<div class="ld-row"><span class="ld-label">${label}</span><span class="ld-value">${value}</span></div>`;
+      const n = ctx.installments.length;
+      document.getElementById('payableConfirmBody').innerHTML = `
+        ${row('Tipo', escapeHtml(PAYABLE_TYPE_INFO[ctx.type].label))}
+        ${row('Descrição', escapeHtml(ctx.description))}
+        ${row('Categoria', escapeHtml(ctx.category))}
+        ${ctx.supplier ? row('Fornecedor', escapeHtml(ctx.supplier)) : ''}
+        ${row('Forma de pagamento', escapeHtml(ctx.paymentMethod))}
+        ${ctx.type === 'Parcelada' ? row('Data da compra', formatDateBR(ctx.purchaseDate)) : ''}
+        ${ctx.note ? row('Observação', escapeHtml(ctx.note)) : ''}
+        <div class="review-part-title">${n === 1 ? 'Conta' : `${n} contas${ctx.type === 'Recorrente' ? ' (valor previsto — na baixa você informa o valor pago)' : ''}`}</div>
+        ${ctx.installments.map((inst, i) => `
+          <div class="installment-edit">
+            <div class="installment-edit-title">${n > 1 ? `${ctx.type === 'Recorrente' ? 'Mês' : 'Parcela'} ${escapeHtml(inst.label)}` : 'Valor e vencimento'}</div>
+            <div class="installment-edit-fields">
+              <label>${ctx.type === 'Recorrente' ? 'Previsto (R$)' : 'Valor (R$)'}<input type="text" inputmode="decimal" value="${formatMoneyInput(inst.value)}" onchange="updatePayableInstallment(${i}, 'value', this.value, this)"></label>
+              <label>Vencimento<input type="date" value="${inst.dueDate}" onchange="updatePayableInstallment(${i}, 'dueDate', this.value, this)"></label>
+            </div>
+            ${ctx.type === 'Avulsa' ? `
+            <label class="installment-edit-check">
+              <input type="checkbox" style="width:auto;" ${inst.paid ? 'checked' : ''} onchange="updatePayableInstallment(${i}, 'paid', this.checked, this)"> Já paga
+              <span id="pfPaidWrap" style="display:${inst.paid ? 'inline-flex' : 'none'}; align-items:center; gap:6px; flex-wrap:wrap;">em
+                <input type="date" value="${inst.paidDate}" max="${today}" onchange="updatePayableInstallment(${i}, 'paidDate', this.value, this)" style="width:auto; padding:4px 6px; font-size:12.5px;">
+                valor pago <input type="text" inputmode="decimal" value="${formatMoneyInput(inst.paidValue)}" onchange="updatePayableInstallment(${i}, 'paidValue', this.value, this)" style="width:90px; padding:4px 6px; font-size:12.5px;">
+              </span>
+            </label>` : ''}
+          </div>`).join('')}
+        <div id="pfSumCheck" style="font-size:13px; margin-top:4px;"></div>
+        ${ctx.products.length ? `<div class="review-part-title">📦 Produtos (${ctx.products.length})</div>${ctx.products.map(p => row(escapeHtml(p.product), escapeHtml([p.lot && `lote ${p.lot}`, p.expiry && `val. ${formatExpiryBR(p.expiry)}`, p.quantity && `${p.quantity} ${p.unit}`.trim()].filter(Boolean).join(' · ') || '—'))).join('')}` : ''}
+      `;
+      updatePayableSumCheck();
+    }
+
+    function updatePayableInstallment(i, field, raw, el) {
+      const inst = payableContext.installments[i];
+      if (field === 'value' || field === 'paidValue') {
+        const v = parseMoneyInput(raw);
+        inst[field] = v > 0 ? v : 0;
+        if (el) el.value = v > 0 ? formatMoneyInput(v) : '';
+      } else if (field === 'paid') {
+        inst.paid = raw;
+        document.getElementById('pfPaidWrap').style.display = raw ? 'inline-flex' : 'none';
+      } else {
+        inst[field] = raw;
+        if (field === 'dueDate' && raw && payableContext.type !== 'Parcelada') inst.competence = raw.slice(0, 7);
+      }
+      updatePayableSumCheck();
+    }
+
+    function updatePayableSumCheck() {
+      const el = document.getElementById('pfSumCheck');
+      if (!el || !payableContext) return;
+      const sum = payableContext.installments.reduce((s, x) => s + x.value, 0);
+      const target = payableContext.target;
+      if (target === null) {
+        el.innerHTML = payableContext.installments.length > 1 ? `<span style="font-weight:600;">Total previsto: ${formatCurrencyBRL(sum)}</span>` : '';
+        return;
+      }
+      const diff = Math.round((sum - target) * 100) / 100;
+      el.innerHTML = Math.abs(diff) < 0.01
+        ? `<span style="color:#4A7A3B; font-weight:600;">✓ Soma das parcelas: ${formatCurrencyBRL(sum)}</span>`
+        : `<span style="color:#B3462F; font-weight:600;">⚠️ Soma das parcelas: ${formatCurrencyBRL(sum)} — ${diff > 0 ? 'passa' : 'falta'} ${formatCurrencyBRL(Math.abs(diff))} do total de ${formatCurrencyBRL(target)}</span>`;
+    }
+
+    function backToPayableForm() {
+      document.getElementById('payableConfirmStep').style.display = 'none';
+      document.getElementById('payableFormStep').style.display = 'block';
+    }
+
+    async function submitPayable() {
+      const ctx = payableContext;
+      if (!ctx) return;
+      const errorEl = document.getElementById('payableError');
+      errorEl.innerHTML = '';
+      const today = localDateStr(new Date());
+      const bad = ctx.installments.findIndex(x => !(x.value > 0) || !x.dueDate || (x.paid && (!(x.paidValue > 0) || !x.paidDate || x.paidDate > today)));
+      if (bad >= 0) {
+        errorEl.innerHTML = `<div class="form-error">⚠️ ${ctx.installments.length > 1 ? `Conta ${bad + 1}: ` : ''}confira valor, vencimento${ctx.installments[bad].paid ? ' e pagamento (não pode ser no futuro)' : ''}.</div>`;
+        return;
+      }
+      const btn = document.getElementById('pfSubmitBtn');
+      btn.disabled = true;
+      btn.textContent = '⏳ Lançando...';
+      try {
+        const result = await payablesPost({ action: 'createPayables', ...ctx, target: undefined });
+        closePayableModal();
+        showToast(`✅ ${result.count} conta${result.count > 1 ? 's lançadas' : ' lançada'}${result.products ? ` · ${result.products} produto(s) registrado(s)` : ''}`);
+        await fetchPayablesData();
+      } catch (err) {
+        errorEl.innerHTML = `<div class="form-error">❌ ${errorText(err)}</div>`;
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '✅ Confirmar e Lançar';
+      }
+    }
+
+    // --- Baixa ---
+    let payPendingId = null;
+
+    function payableInfoHtml(p) {
+      const row = (label, value) => `<div class="ld-row"><span class="ld-label">${label}</span><span class="ld-value">${value}</span></div>`;
+      return row('Conta', `${escapeHtml(p.description)}${p.type !== 'Avulsa' && p.label ? ` · ${escapeHtml(p.label)}` : ''}`)
+        + row('Categoria', escapeHtml(p.category || '—'))
+        + row('Vencimento', formatDateBR(p.dueDate))
+        + row(p.type === 'Recorrente' ? 'Valor previsto' : 'Valor', formatCurrencyBRL(p.estimated));
+    }
+
+    function openPayPayableModal(id) {
+      const p = allPayables.find(x => x.id === id);
+      if (!p) return;
+      payPendingId = id;
+      const today = localDateStr(new Date());
+      document.getElementById('ppError').innerHTML = '';
+      document.getElementById('ppInfo').innerHTML = payableInfoHtml(p);
+      // Recorrente: valor do mês é estimado — campo vazio obriga a digitar o valor real.
+      document.getElementById('ppValue').value = p.type === 'Recorrente' ? '' : formatMoneyInput(p.estimated);
+      document.getElementById('ppValue').placeholder = formatMoneyInput(p.estimated);
+      document.getElementById('ppDate').value = today;
+      document.getElementById('ppDate').max = today;
+      fillSelect('ppMethod', Array.from(new Set([...(p.method ? [p.method] : []), ...PAYABLE_METHODS])), p.method || 'Pix');
+      updatePayDiff();
+      document.getElementById('payPayableModal').classList.add('open');
+      if (p.type === 'Recorrente') setTimeout(() => document.getElementById('ppValue').focus(), 50);
+    }
+
+    function closePayPayableModal() {
+      document.getElementById('payPayableModal').classList.remove('open');
+      payPendingId = null;
+    }
+
+    function updatePayDiff() {
+      const p = allPayables.find(x => x.id === payPendingId);
+      const v = parseMoneyInput(document.getElementById('ppValue').value);
+      const el = document.getElementById('ppDiff');
+      if (!p || !(v > 0)) { el.textContent = ''; return; }
+      const diff = Math.round((v - p.estimated) * 100) / 100;
+      el.textContent = Math.abs(diff) < 0.01 ? 'Igual ao previsto.' : `${formatCurrencyBRL(Math.abs(diff))} ${diff > 0 ? 'acima' : 'abaixo'} do previsto.`;
+    }
+
+    async function submitPayPayable() {
+      const id = payPendingId;
+      const errorEl = document.getElementById('ppError');
+      const paidValue = parseMoneyInput(document.getElementById('ppValue').value);
+      const paidDate = document.getElementById('ppDate').value;
+      errorEl.innerHTML = '';
+      if (!(paidValue > 0)) { errorEl.innerHTML = '<div class="form-error">⚠️ Informe o valor pago.</div>'; return; }
+      if (!paidDate || paidDate > localDateStr(new Date())) { errorEl.innerHTML = '<div class="form-error">⚠️ Informe a data do pagamento (não pode ser no futuro).</div>'; return; }
+      const btn = document.getElementById('ppSubmitBtn');
+      btn.disabled = true;
+      try {
+        await payablesPost({ action: 'payPayable', id, paidValue, paidDate, paymentMethod: document.getElementById('ppMethod').value });
+        closePayPayableModal();
+        showToast(`✅ Baixa feita: ${formatCurrencyBRL(paidValue)} em ${formatDateBR(paidDate)}`);
+        await fetchPayablesData();
+      } catch (err) {
+        errorEl.innerHTML = `<div class="form-error">❌ ${errorText(err)}</div>`;
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    async function unpayPayableFromUI(id) {
+      const p = allPayables.find(x => x.id === id);
+      if (!p || !confirm(`Desfazer a baixa de "${p.description}"? A conta volta para "a pagar" e o valor pago (${formatCurrencyBRL(p.paid)}) é apagado.`)) return;
+      try {
+        await payablesPost({ action: 'unpayPayable', id });
+        showToast('↩️ Baixa desfeita');
+        await fetchPayablesData();
+      } catch (err) {
+        alert(`❌ ${friendlyError(err)}`);
+      }
+    }
+
+    // --- Editar ---
+    let editPayableId = null;
+
+    function openEditPayableModal(id) {
+      const p = allPayables.find(x => x.id === id);
+      if (!p) return;
+      editPayableId = id;
+      const isPaid = p.status === 'Pago';
+      document.getElementById('epError').innerHTML = '';
+      document.getElementById('epInfo').textContent = `${PAYABLE_TYPE_INFO[p.type] ? PAYABLE_TYPE_INFO[p.type].label : p.type}${p.type !== 'Avulsa' && p.label ? ` · ${p.label}` : ''} — muda só esta conta.`;
+      document.getElementById('epDescription').value = p.description;
+      fillSelect('epCategory', expenseCategoryOptions(), p.category);
+      fillSelect('epMethod', Array.from(new Set([...(p.method ? [p.method] : []), ...PAYABLE_METHODS])), p.method || 'Pix');
+      document.getElementById('epSupplier').value = p.supplier;
+      document.getElementById('epEstimated').value = formatMoneyInput(p.estimated);
+      document.getElementById('epDueDate').value = p.dueDate;
+      document.getElementById('epNote').value = p.note;
+      document.getElementById('epPaidRow').style.display = isPaid ? '' : 'none';
+      document.getElementById('epPaidValue').value = isPaid ? formatMoneyInput(p.paid) : '';
+      document.getElementById('epPaidDate').value = isPaid ? p.paidDate : '';
+      document.getElementById('epPaidDate').max = localDateStr(new Date());
+      fillSupplierList();
+      document.getElementById('editPayableModal').classList.add('open');
+    }
+
+    function closeEditPayableModal() {
+      document.getElementById('editPayableModal').classList.remove('open');
+      editPayableId = null;
+    }
+
+    async function submitEditPayable() {
+      const p = allPayables.find(x => x.id === editPayableId);
+      if (!p) return;
+      const errorEl = document.getElementById('epError');
+      const fail = (msg) => { errorEl.innerHTML = `<div class="form-error">⚠️ ${escapeHtml(msg)}</div>`; };
+      errorEl.innerHTML = '';
+      const body = {
+        action: 'updatePayable',
+        id: p.id,
+        description: document.getElementById('epDescription').value.trim(),
+        category: document.getElementById('epCategory').value,
+        paymentMethod: document.getElementById('epMethod').value,
+        supplier: document.getElementById('epSupplier').value.trim(),
+        estimatedValue: parseMoneyInput(document.getElementById('epEstimated').value),
+        dueDate: document.getElementById('epDueDate').value,
+        note: document.getElementById('epNote').value.trim(),
+      };
+      if (!body.description) return fail('Informe a descrição.');
+      if (!(body.estimatedValue > 0)) return fail('Informe o valor previsto.');
+      if (!body.dueDate) return fail('Informe o vencimento.');
+      // Avulsa e recorrente: competência acompanha o vencimento; parcelada fica no mês da compra.
+      if (p.type !== 'Parcelada') body.competence = body.dueDate.slice(0, 7);
+      if (p.status === 'Pago') {
+        body.paidValue = parseMoneyInput(document.getElementById('epPaidValue').value);
+        body.paidDate = document.getElementById('epPaidDate').value;
+        if (!(body.paidValue > 0)) return fail('Informe o valor pago.');
+        if (!body.paidDate || body.paidDate > localDateStr(new Date())) return fail('Data do pagamento inválida (não pode ser no futuro).');
+      }
+      const btn = document.getElementById('epSubmitBtn');
+      btn.disabled = true;
+      try {
+        await payablesPost(body);
+        closeEditPayableModal();
+        showToast('💾 Conta atualizada');
+        await fetchPayablesData();
+      } catch (err) {
+        errorEl.innerHTML = `<div class="form-error">❌ ${errorText(err)}</div>`;
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    // --- Excluir ---
+    let deletePayableId = null;
+
+    function openDeletePayableModal(id) {
+      const p = allPayables.find(x => x.id === id);
+      if (!p) return;
+      deletePayableId = id;
+      const following = allPayables.filter(x => x.id !== id && p.group && x.group === p.group && x.status !== 'Pago' && x.dueDate >= p.dueDate);
+      document.getElementById('dpInfo').innerHTML = payableInfoHtml(p)
+        + (p.status === 'Pago' ? '<p class="ap-hint" style="margin-top:8px;">⚠️ Esta conta já está paga. Se o pagamento foi lançado por engano, prefira ↩️ Desfazer baixa.</p>' : '')
+        + '<p class="ap-hint" style="margin-top:8px;">A exclusão fica registrada no Log Alterações.</p>';
+      const followingBtn = document.getElementById('dpFollowingBtn');
+      followingBtn.style.display = following.length ? '' : 'none';
+      followingBtn.textContent = `Excluir esta e as ${following.length} seguinte${following.length > 1 ? 's' : ''} em aberto`;
+      document.getElementById('deletePayableModal').classList.add('open');
+    }
+
+    function closeDeletePayableModal() {
+      document.getElementById('deletePayableModal').classList.remove('open');
+      deletePayableId = null;
+    }
+
+    async function submitDeletePayable(scope) {
+      const id = deletePayableId;
+      if (!id) return;
+      ['dpOneBtn', 'dpFollowingBtn'].forEach(b => { document.getElementById(b).disabled = true; });
+      try {
+        const result = await payablesPost({ action: 'deletePayable', id, scope });
+        closeDeletePayableModal();
+        showToast(`🗑️ ${result.deleted} conta${result.deleted > 1 ? 's excluídas' : ' excluída'}${result.productsDeleted ? ` · ${result.productsDeleted} produto(s) da compra` : ''}`);
+        await fetchPayablesData();
+      } catch (err) {
+        alert(`❌ ${friendlyError(err)}`);
+      } finally {
+        ['dpOneBtn', 'dpFollowingBtn'].forEach(b => { document.getElementById(b).disabled = false; });
+      }
+    }
+
+    // --- Categorias ---
+    function openExpenseCategoriesModal() {
+      const settings = loadSettings();
+      if (!settings || !settings.scriptUrl) { alert(NOT_CONFIGURED_MSG); return; }
+      document.getElementById('ecError').innerHTML = '';
+      document.getElementById('ecNewName').value = '';
+      renderExpenseCategories();
+      document.getElementById('expenseCategoriesModal').classList.add('open');
+    }
+
+    function closeExpenseCategoriesModal() {
+      document.getElementById('expenseCategoriesModal').classList.remove('open');
+      // Lançamento aberto por baixo: atualiza a lista do campo Categoria.
+      if (document.getElementById('payableModal').classList.contains('open')) {
+        fillSelect('pfCategory', expenseCategoryOptions(), document.getElementById('pfCategory').value, 'Escolha…');
+      }
+    }
+
+    function renderExpenseCategories() {
+      document.getElementById('ecList').innerHTML = expenseCategories.map(c => {
+        const used = allPayables.filter(p => p.category === c).length;
+        return `
+        <div class="ap-cat-row">
+          <span>${escapeHtml(c)}${used ? ` <span class="ap-hint">· ${used} conta${used > 1 ? 's' : ''}</span>` : ''}</span>
+          <span style="display:flex; gap:6px;">
+            <button class="complete-btn" onclick="renameExpenseCategoryFromUI(${jsArg(c)})" title="Renomear" aria-label="Renomear categoria">✏️</button>
+            <button class="complete-btn complete-btn-danger" onclick="deleteExpenseCategoryFromUI(${jsArg(c)})" title="Excluir" aria-label="Excluir categoria">🗑️</button>
+          </span>
+        </div>`;
+      }).join('');
+    }
+
+    async function runCategoryAction(body, okMsg) {
+      const errorEl = document.getElementById('ecError');
+      errorEl.innerHTML = '';
+      try {
+        await payablesPost(body);
+        showToast(okMsg);
+        await fetchPayablesData();
+        renderExpenseCategories();
+        return true;
+      } catch (err) {
+        errorEl.innerHTML = `<div class="form-error">❌ ${errorText(err)}</div>`;
+        return false;
+      }
+    }
+
+    async function addExpenseCategoryFromUI() {
+      const input = document.getElementById('ecNewName');
+      const name = input.value.trim().replace(/\s+/g, ' ');
+      if (!name) return;
+      if (await runCategoryAction({ action: 'addExpenseCategory', name }, `🏷️ Categoria "${name}" criada`)) input.value = '';
+    }
+
+    async function renameExpenseCategoryFromUI(oldName) {
+      const newName = (prompt(`Novo nome para "${oldName}":`, oldName) || '').trim().replace(/\s+/g, ' ');
+      if (!newName || newName === oldName) return;
+      await runCategoryAction({ action: 'renameExpenseCategory', oldName, newName }, `🏷️ "${oldName}" agora é "${newName}"`);
+    }
+
+    async function deleteExpenseCategoryFromUI(name) {
+      const used = allPayables.filter(p => p.category === name).length;
+      if (!confirm(`Tirar "${name}" da lista de categorias?${used ? `\n\nAs ${used} conta(s) já lançadas continuam com essa categoria.` : ''}`)) return;
+      await runCategoryAction({ action: 'deleteExpenseCategory', name }, `🗑️ Categoria "${name}" excluída`);
     }
 
     // ---------- Simulador ----------
