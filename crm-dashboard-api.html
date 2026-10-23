@@ -1582,6 +1582,27 @@
       font-size: 13px;
     }
 
+    /* Produtos aplicados (rastreabilidade de lote, 2026-10-23) */
+    .form-warning {
+      background: #fff3cd;
+      border: 1px solid #ffe69c;
+      color: #664d03;
+      padding: 10px;
+      border-radius: 4px;
+      margin-bottom: 12px;
+      font-size: 13px;
+    }
+    .prod-section h3 { font-size: 14px; color: var(--cor-texto-marca); margin: 18px 0 10px; }
+    .prod-section .prod-req { font-weight: 400; font-size: 12px; color: var(--cor-cinza-cacau); }
+    .prod-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+    .prod-actions .btn { flex: 1; min-width: 140px; }
+    .prod-form { border: 1px solid var(--cor-creme-avela); border-radius: 6px; padding: 12px; margin-bottom: 12px; background: var(--cor-branco-perola); }
+    .prod-form-row { display: flex; gap: 10px; }
+    .prod-form-row .form-group { flex: 1; min-width: 0; margin-bottom: 10px; }
+    .prod-photo { max-width: 100%; max-height: 160px; border-radius: 4px; display: block; margin-bottom: 10px; }
+    .prod-remove { background: none; border: none; color: var(--cor-cinza-cacau); cursor: pointer; font-size: 15px; padding: 0 4px; }
+    .lot-mono { font-family: 'Courier New', monospace; font-weight: 700; letter-spacing: .5px; }
+
     .form-success {
       background: #d4edda;
       border: 1px solid #c3e6cb;
@@ -2243,7 +2264,10 @@
   <div class="container module-view" id="view-clientes" hidden>
     <div class="module-title">
       <h2>👥 Clientes</h2>
-      <button class="agenda-toggle-btn" onclick="openNewLeadModal()">➕ Novo Cliente</button>
+      <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        <button class="agenda-toggle-btn" onclick="openLotSearch()">🔎 Busca por lote</button>
+        <button class="agenda-toggle-btn" onclick="openNewLeadModal()">➕ Novo Cliente</button>
+      </div>
     </div>
     <div class="kpi-grid" id="clientesKpis"></div>
     <div class="controls" style="margin-bottom:10px;">
@@ -2529,6 +2553,11 @@
       <span class="close-btn" onclick="closeCompleteModal()">&times;</span>
       <h2>✅ Concluir Atendimento</h2>
       <div class="lead-detail-grid" id="cmBody"></div>
+      <!-- Produtos aplicados (2026-10-23): câmera do próprio celular, sem app.
+           A foto é lida pelo servidor da IA (/crm/read-label). -->
+      <div class="prod-section" id="cmProducts"></div>
+      <input type="file" id="cmLabelInput" accept="image/*" capture="environment" hidden onchange="onLabelPhotoChosen(this)">
+      <datalist id="prodRegionList"></datalist>
       <div id="cmQuestion" style="margin-top:20px;"></div>
     </div>
   </div>
@@ -2946,6 +2975,20 @@
     </div>
   </div>
 
+  <!-- Busca por lote (2026-10-23): recall ou reação adversa — quem recebeu este lote. -->
+  <div class="modal" id="lotSearchModal">
+    <div class="modal-content">
+      <span class="close-btn" onclick="closeLotSearch()">&times;</span>
+      <h2>🔎 Busca por lote</h2>
+      <div class="form-group">
+        <label for="lotSearchInput">Lote:</label>
+        <input type="text" id="lotSearchInput" placeholder="Ex.: V00…" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" oninput="renderLotSearch()">
+        <small style="color: var(--cor-cinza-cacau); margin-top: 5px; display: block;">Digite ao menos 3 caracteres. Também acha pelo nome do produto.</small>
+      </div>
+      <div id="lotSearchResults"></div>
+    </div>
+  </div>
+
   <div class="modal" id="leadDetailModal">
     <div class="modal-content">
       <span class="close-btn" onclick="closeLeadDetail()">&times;</span>
@@ -2959,6 +3002,11 @@
            marcados como ✅ Concluído (getClientHistory no Apps Script). -->
       <h3 style="font-size: 14px; color: var(--cor-texto-marca); margin: 22px 0 12px; border-top: 1px solid var(--cor-creme-avela); padding-top: 18px;">📋 Histórico de Procedimentos</h3>
       <div id="ldHistoryList"></div>
+
+      <!-- Produtos aplicados — rastreabilidade de lote (2026-10-23), aba
+           "Produtos Aplicados" gravada no Concluir. -->
+      <h3 style="font-size: 14px; color: var(--cor-texto-marca); margin: 22px 0 12px; border-top: 1px solid var(--cor-creme-avela); padding-top: 18px;">💉 Produtos aplicados</h3>
+      <div id="ldProductsList"></div>
 
       <!-- Carteira — saldo devedor corrente (pedido do usuário 2026-09-25:
            clientes recorrentes semanais que fecham procedimento novo toda
@@ -4458,6 +4506,7 @@
 
       renderLeadFinanceList(phone);
       renderLeadHistory(phone);
+      renderLeadProducts(phone);
       renderLeadCarteira(phone);
 
       // Preenche o formulário de edição com o estado atual do lead.
@@ -8290,6 +8339,10 @@
 
       const q = document.getElementById('cmQuestion');
       const typeKey = type === APPOINTMENT_TYPE_STYLES.AVALIACAO ? 'AVALIACAO' : type === APPOINTMENT_TYPE_STYLES.PROCEDIMENTO ? 'PROCEDIMENTO' : null;
+      completeContext.productsRequired = typeKey === 'PROCEDIMENTO';
+      completeContext.products = [];
+      productDraft = null;
+      renderCompleteProducts();
 
       if (typeKey === 'AVALIACAO') {
         q.innerHTML = `
@@ -8322,6 +8375,7 @@
     function closeCompleteModal() {
       document.getElementById('completeModal').classList.remove('open');
       completeContext = null;
+      productDraft = null;
     }
 
     // Prefill do próximo agendamento (encadeamento avaliação->procedimento
@@ -8334,16 +8388,35 @@
       if (!completeContext) return;
       const settings = loadSettings();
       const q = document.getElementById('cmQuestion');
+
+      const productError = completeProductsError();
+      if (productError) {
+        showProductMessage(productError, 'error');
+        return;
+      }
+      const questionHtml = q.innerHTML;
       q.innerHTML = '<p>⏳ Processando...</p>';
 
       try {
+        const products = completeContext.products.map(p => ({
+          product: p.product, manufacturer: p.manufacturer, lot: p.lot, expiry: p.expiry,
+          region: p.region, quantity: p.quantity,
+          photo: p.photo ? { data: p.photo.data, mediaType: p.photo.mediaType } : null,
+        }));
+        // Apps Script antigo ignoraria os produtos sem avisar e concluiria assim mesmo.
+        if (products.length && !(await productsScriptReady())) {
+          q.innerHTML = questionHtml;
+          showProductMessage('O Apps Script publicado ainda não grava produtos. Publique a versão nova (Gerenciar implantações → lápis → Nova versão) e conclua de novo.', 'error');
+          return;
+        }
         const response = await scriptFetch(settings.scriptUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-          body: JSON.stringify({ action: 'completeAppointment', eventId: completeContext.eventId })
+          body: JSON.stringify({ action: 'completeAppointment', eventId: completeContext.eventId, products })
         });
         const result = await response.json();
         if (!result.ok) throw new Error(result.error || 'Erro desconhecido');
+        appliedProductsCache = null;
 
         const { name, phone, source, procedure } = completeContext;
         pendingChainPrefill = chain ? { name, phone, source, type: nextType } : null;
@@ -8362,7 +8435,387 @@
         // seguem pro próximo agendamento do encadeamento depois, se houver.
         openReceivableModal(phone, { fromComplete: true, description: procedure });
       } catch (err) {
-        q.innerHTML = `<div class="form-error">❌ ${errorText(err)}</div>`;
+        // Botões de volta: dá para corrigir (ex.: produto) e concluir de novo.
+        q.innerHTML = `<div class="form-error">❌ ${errorText(err)}</div>` + questionHtml;
+      }
+    }
+
+    // --- Produtos aplicados (pedido do usuário 2026-10-23: rastreabilidade
+    // de lote por paciente, para recall e reação adversa) ---
+    // No Concluir: 📷 abre a câmera traseira (input file com capture, sem
+    // app), a foto é reduzida aqui e lida pelo servidor da IA
+    // (/crm/read-label). Os campos voltam editáveis; campo que a IA não
+    // conseguiu ler volta vazio com aviso — nunca chuta. Obrigatório ao
+    // menos 1 produto em Procedimento (o Apps Script confere de novo).
+
+    const PRODUCTS_SHEET = 'Produtos Aplicados';
+    const PRODUCT_REGIONS_KEY = 'crm_regioes_produto';
+    const DEFAULT_PRODUCT_REGIONS = [
+      'Malar', 'Mandíbula', 'Mento', 'Sulco nasogeniano', 'Lábios', 'Olheiras', 'Têmporas',
+      'Testa', 'Glabela', 'Pés de galinha', 'Nariz', 'Marionete', 'Pescoço', 'Colo', 'Mãos', 'Full face',
+    ];
+    const PRODUCT_UNITS = ['ml', 'U', 'seringa(s)', 'frasco(s)', 'fio(s)'];
+    const LABEL_MAX_SIDE = 1600;
+
+    // Item sendo conferido/digitado antes do "Adicionar" (null = formulário fechado).
+    let productDraft = null;
+    let labelServerUrl = '';
+    let productsScriptOk = false;
+
+    function productRegions() {
+      let custom = [];
+      try { custom = JSON.parse(localStorage.getItem(PRODUCT_REGIONS_KEY) || '[]'); } catch (err) { custom = []; }
+      const all = [...DEFAULT_PRODUCT_REGIONS];
+      (Array.isArray(custom) ? custom : []).forEach(r => { if (r && !all.some(a => a.toLowerCase() === String(r).toLowerCase())) all.push(String(r)); });
+      return all;
+    }
+
+    /** Região digitada que não está na lista entra nela (lista editável, guardada no aparelho). */
+    function rememberProductRegion(region) {
+      if (!region || productRegions().some(r => r.toLowerCase() === region.toLowerCase())) return;
+      try {
+        const custom = JSON.parse(localStorage.getItem(PRODUCT_REGIONS_KEY) || '[]');
+        custom.push(region);
+        localStorage.setItem(PRODUCT_REGIONS_KEY, JSON.stringify(custom.slice(-50)));
+      } catch (err) { /* sem armazenamento: só não lembra */ }
+    }
+
+    /** Endereço do servidor da IA, pelo Apps Script (fora do HTML público). Também prova que o script novo está publicado. */
+    async function productsScriptReady() {
+      if (productsScriptOk) return true;
+      const s = loadSettings() || {};
+      try {
+        const res = await scriptFetch(`${s.scriptUrl}?action=serverInfo`);
+        const body = await res.json();
+        if (!body.ok) return false;
+        labelServerUrl = safeUrl(body.serverUrl).replace(/\/+$/, '');
+        productsScriptOk = true;
+        return true;
+      } catch (err) {
+        return false;
+      }
+    }
+
+    function productQuantityText(p) {
+      return p.quantity ? escapeHtml(p.quantity) : '—';
+    }
+
+    function renderCompleteProducts() {
+      const box = document.getElementById('cmProducts');
+      if (!completeContext) { box.innerHTML = ''; return; }
+      const list = completeContext.products;
+      const items = list.map((p, i) => `
+        <div class="finance-row">
+          <div class="finance-row-main">
+            <span>${escapeHtml(p.product)}</span>
+            <button type="button" class="prod-remove" onclick="removeCompleteProduct(${i})" title="Remover" aria-label="Remover produto">✕</button>
+          </div>
+          <div class="finance-row-meta">
+            <span>Lote <span class="lot-mono">${escapeHtml(p.lot)}</span>${p.expiry ? ` · Val. ${escapeHtml(formatExpiryBR(p.expiry))}` : ''}</span>
+            <span>${escapeHtml(p.region)} · ${productQuantityText(p)}${p.photo ? ' · 📷' : ''}</span>
+          </div>
+        </div>`).join('');
+      const req = completeContext.productsRequired ? 'obrigatório ao menos 1' : 'opcional';
+      const actions = productDraft ? '' : `
+        <div class="prod-actions">
+          <button type="button" class="btn" onclick="startLabelCapture()">📷 ${list.length ? 'Ler outra etiqueta' : 'Ler etiqueta'}</button>
+          <button type="button" class="btn secondary" onclick="startManualProduct()">✍️ Digitar</button>
+        </div>`;
+      box.innerHTML = `
+        <h3>💉 Produtos aplicados <span class="prod-req">(${req})</span></h3>
+        <div id="cmProductMsg"></div>
+        ${items}
+        ${productDraft ? productFormHtml() : ''}
+        ${actions}`;
+    }
+
+    function productFormHtml() {
+      const d = productDraft;
+      const warnings = (d.warnings || []).map(w => `<div>⚠️ ${escapeHtml(w)}</div>`).join('');
+      const unitOptions = PRODUCT_UNITS.map(u => `<option value="${escapeHtml(u)}"${u === d.unit ? ' selected' : ''}>${escapeHtml(u)}</option>`).join('');
+      document.getElementById('prodRegionList').innerHTML = productRegions().map(r => `<option value="${escapeHtml(r)}"></option>`).join('');
+      if (d.reading) {
+        return `<div class="prod-form">${d.photo ? `<img class="prod-photo" src="${escapeHtml(d.photo.preview)}" alt="Foto da etiqueta">` : ''}<p>⏳ Lendo a etiqueta…</p></div>`;
+      }
+      return `
+        <div class="prod-form">
+          ${d.photo ? `<img class="prod-photo" src="${escapeHtml(d.photo.preview)}" alt="Foto da etiqueta">` : ''}
+          ${warnings ? `<div class="form-warning">${warnings}</div>` : ''}
+          <div class="form-group"><label for="pfProduct">Produto *</label><input type="text" id="pfProduct" maxlength="120" value="${escapeHtml(d.product)}" placeholder="Ex.: Rennova Lift Plus"></div>
+          <div class="form-group"><label for="pfManufacturer">Fabricante</label><input type="text" id="pfManufacturer" maxlength="120" value="${escapeHtml(d.manufacturer)}" placeholder="Ex.: Humedix Co., Ltd"></div>
+          <div class="prod-form-row">
+            <div class="form-group"><label for="pfLot">Lote *</label><input type="text" id="pfLot" maxlength="40" class="lot-mono" autocapitalize="characters" autocorrect="off" spellcheck="false" value="${escapeHtml(d.lot)}"></div>
+            <div class="form-group"><label for="pfExpiry">Validade</label><input type="text" id="pfExpiry" maxlength="10" inputmode="numeric" placeholder="AAAA-MM-DD" value="${escapeHtml(d.expiry)}"></div>
+          </div>
+          <div class="form-group"><label for="pfRegion">Região *</label><input type="text" id="pfRegion" maxlength="60" list="prodRegionList" value="${escapeHtml(d.region)}" placeholder="Escolha ou digite"></div>
+          <div class="prod-form-row">
+            <div class="form-group"><label for="pfQty">Quantidade *</label><input type="text" id="pfQty" maxlength="10" inputmode="decimal" value="${escapeHtml(d.qty)}" placeholder="Ex.: 1"></div>
+            <div class="form-group"><label for="pfUnit">Unidade</label><select id="pfUnit">${unitOptions}</select></div>
+          </div>
+          <div class="prod-actions">
+            <button type="button" class="btn secondary" onclick="cancelProductDraft()">Cancelar</button>
+            <button type="button" class="btn" onclick="addProductDraft()">➕ Adicionar</button>
+          </div>
+        </div>`;
+    }
+
+    function showProductMessage(text, kind) {
+      const el = document.getElementById('cmProductMsg');
+      if (!el) return;
+      el.innerHTML = text ? `<div class="${kind === 'error' ? 'form-error' : 'form-warning'}">${kind === 'error' ? '❌' : '⚠️'} ${escapeHtml(text)}</div>` : '';
+      if (text) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    function emptyDraft() {
+      return { product: '', manufacturer: '', lot: '', expiry: '', region: '', qty: '', unit: PRODUCT_UNITS[0], photo: null, warnings: [] };
+    }
+
+    function startManualProduct() {
+      productDraft = emptyDraft();
+      renderCompleteProducts();
+      document.getElementById('pfProduct').focus();
+    }
+
+    function startLabelCapture() {
+      const input = document.getElementById('cmLabelInput');
+      input.value = '';
+      input.click();
+    }
+
+    function cancelProductDraft() {
+      productDraft = null;
+      renderCompleteProducts();
+    }
+
+    function removeCompleteProduct(i) {
+      if (!completeContext) return;
+      completeContext.products.splice(i, 1);
+      renderCompleteProducts();
+    }
+
+    /** Foto do celular (3–12 MB) → JPEG com no máximo 1600px no lado maior. */
+    function shrinkLabelPhoto(file) {
+      return new Promise((resolve, reject) => {
+        const url = URL.createObjectURL(file);
+        const img = new Image();
+        img.onload = () => {
+          const scale = Math.min(1, LABEL_MAX_SIDE / Math.max(img.naturalWidth, img.naturalHeight));
+          const canvas = document.createElement('canvas');
+          canvas.width = Math.round(img.naturalWidth * scale);
+          canvas.height = Math.round(img.naturalHeight * scale);
+          canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+          URL.revokeObjectURL(url);
+          const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+          resolve({ preview: dataUrl, data: dataUrl.split(',')[1], mediaType: 'image/jpeg' });
+        };
+        img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Não foi possível abrir a foto.')); };
+        img.src = url;
+      });
+    }
+
+    async function onLabelPhotoChosen(input) {
+      const file = input.files && input.files[0];
+      if (!file || !completeContext) return;
+      const ctx = completeContext;
+      let photo;
+      try {
+        photo = await shrinkLabelPhoto(file);
+      } catch (err) {
+        showProductMessage(err.message, 'error');
+        return;
+      }
+      productDraft = { ...emptyDraft(), photo, reading: true };
+      renderCompleteProducts();
+
+      let result = null;
+      let failure = '';
+      try {
+        if (!(await productsScriptReady()) || !labelServerUrl) {
+          failure = 'A leitura pela câmera precisa do Apps Script novo publicado. Por enquanto, digite os dados.';
+        } else {
+          const settings = loadSettings() || {};
+          const res = await fetch(`${labelServerUrl}/crm/read-label`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify({ token: settings.accessPassword || '', image: photo.data, mediaType: photo.mediaType }),
+          });
+          result = await res.json();
+          if (!result.ok) failure = result.code ? result.error : friendlyError(new Error(result.error || `erro ${res.status}`));
+        }
+      } catch (err) {
+        console.error('Leitura da etiqueta:', err);
+        failure = 'Sem conexão com o servidor de leitura. Tire outra foto ou digite.';
+      }
+      // Modal fechado ou outro atendimento aberto enquanto lia.
+      if (completeContext !== ctx || !productDraft) return;
+
+      productDraft.reading = false;
+      if (failure) {
+        productDraft.warnings = [failure];
+      } else {
+        Object.assign(productDraft, {
+          product: result.product || '',
+          manufacturer: result.manufacturer || '',
+          lot: result.lot || '',
+          expiry: result.expiry || '',
+          warnings: result.warnings || [],
+        });
+      }
+      renderCompleteProducts();
+      const firstEmpty = ['pfProduct', 'pfLot', 'pfRegion', 'pfQty'].find(id => !document.getElementById(id).value.trim());
+      if (firstEmpty) document.getElementById(firstEmpty).focus();
+    }
+
+    function addProductDraft() {
+      if (!productDraft || !completeContext) return;
+      const val = id => document.getElementById(id).value.replace(/\s+/g, ' ').trim();
+      const draft = {
+        ...productDraft,
+        product: val('pfProduct'),
+        manufacturer: val('pfManufacturer'),
+        lot: val('pfLot').toUpperCase().replace(/\s+/g, ''),
+        expiry: val('pfExpiry'),
+        region: val('pfRegion'),
+        qty: val('pfQty').replace(',', '.'),
+        unit: document.getElementById('pfUnit').value,
+      };
+      productDraft = draft;
+      const missing = [['product', 'o produto'], ['lot', 'o lote'], ['region', 'a região'], ['qty', 'a quantidade']].filter(([k]) => !draft[k]).map(([, label]) => label);
+      if (missing.length) return showProductMessage(`Falta ${missing.join(', ')}.`, 'error');
+      if (!/^[A-Z0-9][A-Z0-9\-/.]{2,39}$/.test(draft.lot)) return showProductMessage('Lote: só letras, números e - / . (confira com a etiqueta).', 'error');
+      if (draft.expiry && !isValidExpiry(draft.expiry)) return showProductMessage('Validade no formato AAAA-MM-DD (ou AAAA-MM se a etiqueta só tem mês e ano).', 'error');
+      if (!(Number(draft.qty) > 0)) return showProductMessage('Quantidade: use um número (ex.: 1 ou 0.5).', 'error');
+
+      rememberProductRegion(draft.region);
+      completeContext.products.push({
+        product: draft.product, manufacturer: draft.manufacturer, lot: draft.lot, expiry: draft.expiry,
+        region: draft.region, quantity: `${draft.qty.replace('.', ',')} ${draft.unit}`, photo: draft.photo,
+      });
+      productDraft = null;
+      renderCompleteProducts();
+    }
+
+    function isValidExpiry(s) {
+      let m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+      if (m) {
+        const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]));
+        return d.getUTCFullYear() === +m[1] && d.getUTCMonth() === +m[2] - 1 && d.getUTCDate() === +m[3];
+      }
+      m = /^(\d{4})-(\d{2})$/.exec(s);
+      return !!m && +m[2] >= 1 && +m[2] <= 12;
+    }
+
+    /** "2027-05-31" → "31/05/2027"; "2027-05" → "05/2027". */
+    function formatExpiryBR(s) {
+      const m = /^(\d{4})-(\d{2})(?:-(\d{2}))?$/.exec(String(s || ''));
+      if (!m) return String(s || '');
+      return m[3] ? `${m[3]}/${m[2]}/${m[1]}` : `${m[2]}/${m[1]}`;
+    }
+
+    /** Antes de concluir: formulário aberto e não adicionado, ou Procedimento sem produto. */
+    function completeProductsError() {
+      if (!completeContext) return '';
+      if (productDraft) return productDraft.reading ? 'Espere terminar a leitura da etiqueta.' : 'Há um produto em edição: toque em ➕ Adicionar ou em Cancelar.';
+      if (completeContext.productsRequired && !completeContext.products.length) return 'Procedimento: registre ao menos 1 produto aplicado (📷 Ler etiqueta ou ✍️ Digitar).';
+      return '';
+    }
+
+    // --- Leitura da aba Produtos Aplicados (ficha e busca por lote) ---
+    let appliedProductsCache = null; // { at, items }
+    const APPLIED_PRODUCTS_TTL_MS = 60 * 1000;
+
+    async function loadAppliedProducts() {
+      if (appliedProductsCache && Date.now() - appliedProductsCache.at < APPLIED_PRODUCTS_TTL_MS) return appliedProductsCache.items;
+      const values = await readSheetValues(PRODUCTS_SHEET);
+      const headers = values[0] || [];
+      const col = name => headers.indexOf(name);
+      const get = (row, name) => (col(name) === -1 ? '' : String(row[col(name)] || '').trim());
+      const items = values.slice(1).filter(r => r.some(v => v !== '')).map(r => ({
+        date: get(r, 'Data'), phone: get(r, 'Telefone'), name: get(r, 'Nome'),
+        product: get(r, 'Produto'), manufacturer: get(r, 'Fabricante'), lot: get(r, 'Lote'), expiry: get(r, 'Validade'),
+        region: get(r, 'Região'), quantity: get(r, 'Quantidade'), photoUrl: safeUrl(get(r, 'Foto (link)')),
+      }));
+      items.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+      appliedProductsCache = { at: Date.now(), items };
+      return items;
+    }
+
+    function appliedProductRowHtml(p, { showPatient = false } = {}) {
+      const photo = p.photoUrl ? ` · <a href="${escapeHtml(p.photoUrl)}" target="_blank" rel="noopener">📷 foto</a>` : '';
+      const patient = showPatient
+        ? `<a href="#" onclick="openLeadFromLotSearch(${jsArg(p.phone)}); return false;">${escapeHtml(leadNameByPhone(p.phone, p.name || p.phone))}</a>`
+        : escapeHtml(p.product);
+      return `
+        <div class="finance-row">
+          <div class="finance-row-main">
+            <span>${patient}</span>
+            <span class="finance-row-value" style="color:var(--cor-cinza-cacau); font-weight:400;">${p.date ? formatDateBR(p.date) : '—'}</span>
+          </div>
+          <div class="finance-row-meta">
+            <span>${showPatient ? `${escapeHtml(p.product)} · ` : ''}Lote <span class="lot-mono">${escapeHtml(p.lot)}</span>${p.expiry ? ` · Val. ${escapeHtml(formatExpiryBR(p.expiry))}` : ''}</span>
+            <span>${escapeHtml(p.region || '—')} · ${escapeHtml(p.quantity || '—')}${photo}</span>
+          </div>
+        </div>`;
+    }
+
+    async function renderLeadProducts(phone) {
+      const container = document.getElementById('ldProductsList');
+      container.innerHTML = '<div class="agenda-empty" style="padding:8px 0;">⏳ Carregando produtos...</div>';
+      try {
+        const digits = phoneDigits(phone);
+        const items = (await loadAppliedProducts()).filter(p => digits && phoneDigits(p.phone) === digits);
+        if (currentDetailPhone !== phone) return;
+        container.innerHTML = items.length
+          ? items.map(p => appliedProductRowHtml(p)).join('')
+          : '<div class="agenda-empty" style="padding:8px 0;">Nenhum produto registrado ainda.</div>';
+      } catch (err) {
+        if (currentDetailPhone !== phone) return;
+        console.error('Erro ao buscar produtos aplicados:', err);
+        container.innerHTML = /não liberada/.test(err.message || '')
+          ? '<div class="agenda-empty" style="padding:8px 0;">Aparece depois de publicar o Apps Script novo.</div>'
+          : '<div class="agenda-empty" style="padding:8px 0;">❌ Erro ao carregar produtos.</div>';
+      }
+    }
+
+    // --- Busca por lote (recall / reação adversa) ---
+    async function openLotSearch() {
+      document.getElementById('lotSearchModal').classList.add('open');
+      const input = document.getElementById('lotSearchInput');
+      input.focus();
+      appliedProductsCache = null; // sempre o que está na planilha agora
+      renderLotSearch();
+    }
+
+    function closeLotSearch() {
+      document.getElementById('lotSearchModal').classList.remove('open');
+    }
+
+    function openLeadFromLotSearch(phone) {
+      const digits = phoneDigits(phone);
+      const lead = allData.find(l => phoneDigits(l.phone) === digits);
+      if (!lead) return showToast('Cadastro não encontrado para este telefone.');
+      closeLotSearch();
+      openLeadDetail(lead.phone);
+    }
+
+    let lotSearchSeq = 0;
+    async function renderLotSearch() {
+      const out = document.getElementById('lotSearchResults');
+      const q = document.getElementById('lotSearchInput').value.trim().toUpperCase().replace(/\s+/g, '');
+      if (q.length < 3) { out.innerHTML = ''; return; }
+      const seq = ++lotSearchSeq;
+      if (!appliedProductsCache) out.innerHTML = '<div class="agenda-empty" style="padding:8px 0;">⏳ Buscando...</div>';
+      try {
+        const items = await loadAppliedProducts();
+        if (seq !== lotSearchSeq) return;
+        const hits = items.filter(p => p.lot.toUpperCase().includes(q) || p.product.toUpperCase().replace(/\s+/g, '').includes(q));
+        if (!hits.length) { out.innerHTML = '<div class="agenda-empty" style="padding:8px 0;">Nenhuma paciente com este lote.</div>'; return; }
+        const patients = new Set(hits.map(p => phoneDigits(p.phone) || p.name)).size;
+        out.innerHTML = `<p style="font-size:13px; color:var(--cor-cinza-cacau); margin-bottom:10px;">${hits.length} aplicaç${hits.length === 1 ? 'ão' : 'ões'} · ${patients} paciente${patients === 1 ? '' : 's'}</p>`
+          + hits.map(p => appliedProductRowHtml(p, { showPatient: true })).join('');
+      } catch (err) {
+        if (seq !== lotSearchSeq) return;
+        out.innerHTML = `<div class="form-error">❌ ${errorText(err)}</div>`;
       }
     }
 
