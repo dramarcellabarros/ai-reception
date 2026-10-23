@@ -9452,7 +9452,6 @@
 
       const q = document.getElementById('cmQuestion');
       const typeKey = type === APPOINTMENT_TYPE_STYLES.AVALIACAO ? 'AVALIACAO' : type === APPOINTMENT_TYPE_STYLES.PROCEDIMENTO ? 'PROCEDIMENTO' : null;
-      completeContext.productsRequired = typeKey === 'PROCEDIMENTO';
       completeContext.products = [];
       productDraft = null;
       renderCompleteProducts();
@@ -9558,8 +9557,10 @@
     // No Concluir: 📷 abre a câmera traseira (input file com capture, sem
     // app), a foto é reduzida aqui e lida pelo servidor da IA
     // (/crm/read-label). Os campos voltam editáveis; campo que a IA não
-    // conseguiu ler volta vazio com aviso — nunca chuta. Obrigatório ao
-    // menos 1 produto em Procedimento (o Apps Script confere de novo).
+    // conseguiu ler volta vazio com aviso — nunca chuta. Produtos são
+    // opcionais em todo tipo de atendimento e só o nome é obrigatório
+    // (pedido do usuário 2026-10-23: nem todo procedimento usa produto
+    // com etiqueta, lote ou validade).
 
     const PRODUCTS_SHEET = 'Produtos Aplicados';
     const PRODUCT_REGIONS_KEY = 'crm_regioes_produto';
@@ -9609,8 +9610,17 @@
       }
     }
 
-    function productQuantityText(p) {
-      return p.quantity ? escapeHtml(p.quantity) : '—';
+    // Só o nome do produto é obrigatório (pedido do usuário 2026-10-23:
+    // nem todo produto tem etiqueta com lote/validade) — mostra o que houver.
+    function productLotHtml(p) {
+      return [
+        p.lot ? `Lote <span class="lot-mono">${escapeHtml(p.lot)}</span>` : '',
+        p.expiry ? `Val. ${escapeHtml(formatExpiryBR(p.expiry))}` : '',
+      ].filter(Boolean).join(' · ');
+    }
+
+    function productUseHtml(p) {
+      return [p.region, p.quantity].filter(Boolean).map(escapeHtml).join(' · ') || '—';
     }
 
     function renderCompleteProducts() {
@@ -9624,11 +9634,11 @@
             <button type="button" class="prod-remove" onclick="removeCompleteProduct(${i})" title="Remover" aria-label="Remover produto">✕</button>
           </div>
           <div class="finance-row-meta">
-            <span>Lote <span class="lot-mono">${escapeHtml(p.lot)}</span>${p.expiry ? ` · Val. ${escapeHtml(formatExpiryBR(p.expiry))}` : ''}</span>
-            <span>${escapeHtml(p.region)} · ${productQuantityText(p)}${p.photo ? ' · 📷' : ''}</span>
+            <span>${productLotHtml(p) || '—'}</span>
+            <span>${productUseHtml(p)}${p.photo ? ' · 📷' : ''}</span>
           </div>
         </div>`).join('');
-      const req = completeContext.productsRequired ? 'obrigatório ao menos 1' : 'opcional';
+      const req = 'opcional';
       const actions = productDraft ? '' : `
         <div class="prod-actions">
           <button type="button" class="btn" onclick="startLabelCapture()">📷 ${list.length ? 'Ler outra etiqueta' : 'Ler etiqueta'}</button>
@@ -9657,12 +9667,12 @@
           <div class="form-group"><label for="pfProduct">Produto *</label><input type="text" id="pfProduct" maxlength="120" value="${escapeHtml(d.product)}" placeholder="Ex.: Rennova Lift Plus"></div>
           <div class="form-group"><label for="pfManufacturer">Fabricante</label><input type="text" id="pfManufacturer" maxlength="120" value="${escapeHtml(d.manufacturer)}" placeholder="Ex.: Humedix Co., Ltd"></div>
           <div class="prod-form-row">
-            <div class="form-group"><label for="pfLot">Lote *</label><input type="text" id="pfLot" maxlength="40" class="lot-mono" autocapitalize="characters" autocorrect="off" spellcheck="false" value="${escapeHtml(d.lot)}"></div>
+            <div class="form-group"><label for="pfLot">Lote</label><input type="text" id="pfLot" maxlength="40" class="lot-mono" autocapitalize="characters" autocorrect="off" spellcheck="false" value="${escapeHtml(d.lot)}"></div>
             <div class="form-group"><label for="pfExpiry">Validade</label><input type="text" id="pfExpiry" maxlength="10" inputmode="numeric" placeholder="DD/MM/AAAA" oninput="maskExpiryInput(this)" onblur="finishExpiryInput(this)" value="${escapeHtml(formatExpiryBR(d.expiry))}"></div>
           </div>
-          <div class="form-group"><label for="pfRegion">Região *</label><input type="text" id="pfRegion" maxlength="60" list="prodRegionList" value="${escapeHtml(d.region)}" placeholder="Escolha ou digite"></div>
+          <div class="form-group"><label for="pfRegion">Região</label><input type="text" id="pfRegion" maxlength="60" list="prodRegionList" value="${escapeHtml(d.region)}" placeholder="Escolha ou digite"></div>
           <div class="prod-form-row">
-            <div class="form-group"><label for="pfQty">Quantidade *</label><input type="text" id="pfQty" maxlength="10" inputmode="decimal" value="${escapeHtml(d.qty)}" placeholder="Ex.: 1"></div>
+            <div class="form-group"><label for="pfQty">Quantidade</label><input type="text" id="pfQty" maxlength="10" inputmode="decimal" value="${escapeHtml(d.qty)}" placeholder="Ex.: 1"></div>
             <div class="form-group"><label for="pfUnit">Unidade</label><select id="pfUnit">${unitOptions}</select></div>
           </div>
           <div class="prod-actions">
@@ -9793,16 +9803,15 @@
         unit: document.getElementById('pfUnit').value,
       };
       productDraft = draft;
-      const missing = [['product', 'o produto'], ['lot', 'o lote'], ['region', 'a região'], ['qty', 'a quantidade']].filter(([k]) => !draft[k]).map(([, label]) => label);
-      if (missing.length) return showProductMessage(`Falta ${missing.join(', ')}.`, 'error');
-      if (!/^[A-Z0-9][A-Z0-9\-/.]{2,39}$/.test(draft.lot)) return showProductMessage('Lote: só letras, números e - / . (confira com a etiqueta).', 'error');
+      if (!draft.product) return showProductMessage('Falta o nome do produto.', 'error');
+      if (draft.lot && !/^[A-Z0-9][A-Z0-9\-/.]{2,39}$/.test(draft.lot)) return showProductMessage('Lote: só letras, números e - / . (confira com a etiqueta).', 'error');
       if (draft.expiry && !isValidExpiry(draft.expiry)) return showProductMessage('Validade: digite dia, mês e ano (DD/MM/AAAA), ou só mês e ano (MM/AAAA) se a etiqueta não tem o dia.', 'error');
-      if (!(Number(draft.qty) > 0)) return showProductMessage('Quantidade: use um número (ex.: 1 ou 0.5).', 'error');
+      if (draft.qty && !(Number(draft.qty) > 0)) return showProductMessage('Quantidade: use um número (ex.: 1 ou 0.5).', 'error');
 
-      rememberProductRegion(draft.region);
+      if (draft.region) rememberProductRegion(draft.region);
       completeContext.products.push({
         product: draft.product, manufacturer: draft.manufacturer, lot: draft.lot, expiry: draft.expiry,
-        region: draft.region, quantity: `${draft.qty.replace('.', ',')} ${draft.unit}`, photo: draft.photo,
+        region: draft.region, quantity: draft.qty ? `${draft.qty.replace('.', ',')} ${draft.unit}` : '', photo: draft.photo,
       });
       productDraft = null;
       renderCompleteProducts();
@@ -9848,11 +9857,10 @@
       return m[3] ? `${m[3]}/${m[2]}/${m[1]}` : `${m[2]}/${m[1]}`;
     }
 
-    /** Antes de concluir: formulário aberto e não adicionado, ou Procedimento sem produto. */
+    /** Antes de concluir: formulário aberto e não adicionado (produtos são opcionais em todo tipo, 2026-10-23). */
     function completeProductsError() {
       if (!completeContext) return '';
       if (productDraft) return productDraft.reading ? 'Espere terminar a leitura da etiqueta.' : 'Há um produto em edição: toque em ➕ Adicionar ou em Cancelar.';
-      if (completeContext.productsRequired && !completeContext.products.length) return 'Procedimento: registre ao menos 1 produto aplicado (📷 Ler etiqueta ou ✍️ Digitar).';
       return '';
     }
 
@@ -9888,8 +9896,8 @@
             <span class="finance-row-value" style="color:var(--cor-cinza-cacau); font-weight:400;">${p.date ? formatDateBR(p.date) : '—'}</span>
           </div>
           <div class="finance-row-meta">
-            <span>${showPatient ? `${escapeHtml(p.product)} · ` : ''}Lote <span class="lot-mono">${escapeHtml(p.lot)}</span>${p.expiry ? ` · Val. ${escapeHtml(formatExpiryBR(p.expiry))}` : ''}</span>
-            <span>${escapeHtml(p.region || '—')} · ${escapeHtml(p.quantity || '—')}${photo}</span>
+            <span>${[showPatient ? escapeHtml(p.product) : '', productLotHtml(p)].filter(Boolean).join(' · ') || '—'}</span>
+            <span>${productUseHtml(p)}${photo}</span>
           </div>
         </div>`;
     }
