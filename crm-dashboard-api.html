@@ -2172,6 +2172,8 @@
     .ap-total { color: var(--cor-texto-marca); border-top: 1px solid var(--cor-creme-avela); padding-top: 8px; }
     .ap-late { color: #B3462F; font-weight: 600; }
     .ap-label { font-weight: 400; font-size: 12px; color: var(--cor-cinza-cacau); }
+    .ap-parcel-hint { background: var(--cor-rosa-sereno); border-radius: 8px; padding: 10px 12px; font-size: 13px; color: var(--cor-texto-marca); margin-bottom: 12px; }
+    .ap-parcel-hint .agenda-toggle-btn { display: block; margin-top: 6px; }
     .ap-cat-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--cor-creme-avela); font-size: 14px; }
     @media (max-width: 400px) { .ap-form-row { grid-template-columns: 1fr; gap: 0; } }
 
@@ -2993,7 +2995,7 @@
         <p class="ap-hint" id="pfTypeHint"></p>
         <div class="form-group">
           <label for="pfDescription">Descrição *</label>
-          <input type="text" id="pfDescription" maxlength="150" placeholder="Ex.: Conta de energia, Compra Rennova">
+          <input type="text" id="pfDescription" maxlength="150" placeholder="Ex.: Conta de energia, Compra Rennova" oninput="updatePayableParcelHint()">
         </div>
         <div class="ap-form-row">
           <div class="form-group">
@@ -3079,8 +3081,9 @@
 
         <div class="form-group">
           <label for="pfNote">Observação</label>
-          <input type="text" id="pfNote" maxlength="300" placeholder="Opcional">
+          <input type="text" id="pfNote" maxlength="300" placeholder="Opcional" oninput="updatePayableParcelHint()">
         </div>
+        <div id="pfParcelHint"></div>
         <button class="btn" onclick="reviewPayable()" style="width:100%;">Revisar →</button>
       </div>
 
@@ -8015,7 +8018,9 @@
     // com o mesmo "Lançamento". Previsto × pago ficam separados: a conta
     // de energia lançada a ~R$ 500 recebe na baixa o valor real (473,86).
     let allPayables = [];
-    let expenseCategories = [];
+    // Começa com a lista padrão: o modal pode abrir antes de a leitura terminar
+    // (achado da equipe 27/10: no iPhone a Categoria ficava só com "Escolha…").
+    let expenseCategories = ['Produtos', 'Insumos', 'Aluguel', 'Internet', 'Energia', 'Água', 'Telefone', 'Contabilidade', 'Marketing', 'Impostos', 'Outros'];
     let stockEntryCountByGroup = {};
     let productCatalog = [];   // aba "Cadastro de Produtos" (NF-e)
     let supplierRegistry = []; // aba "Fornecedores" (NF-e)
@@ -8138,7 +8143,19 @@
       }
       payablesLoading = false;
       payablesLoaded = true;
+      refreshOpenCategorySelects();
       if (currentModule === 'pagar') renderPagar();
+    }
+
+    /** Atualiza a lista de categorias nos formulários abertos, mantendo o que já foi escolhido. */
+    function refreshOpenCategorySelects() {
+      const isOpen = (id) => document.getElementById(id).classList.contains('open');
+      if (isOpen('payableModal')) fillSelect('pfCategory', expenseCategoryOptions(), document.getElementById('pfCategory').value, 'Escolha…');
+      if (isOpen('editPayableModal')) fillSelect('epCategory', expenseCategoryOptions(), document.getElementById('epCategory').value);
+      if (isOpen('nfeModal') && nfeImport && document.getElementById('nfeCategory')) {
+        fillSelect('nfeCategory', expenseCategoryOptions(), nfeImport.category);
+        nfeImport.category = document.getElementById('nfeCategory').value;
+      }
     }
 
     async function payablesPost(body) {
@@ -8373,6 +8390,7 @@
       document.getElementById('pfRecorrente').hidden = t !== 'Recorrente';
       fillSelect('pfMethod', PAYABLE_METHODS, PAYABLE_TYPE_INFO[t].method);
       onPayableCategoryChange();
+      updatePayableParcelHint();
     }
 
     function onPayableCategoryChange() {
@@ -8380,6 +8398,36 @@
       const show = payableType !== 'Recorrente' && (PRODUCT_EXPENSE_CATEGORIES.includes(cat) || payableProducts.length > 0);
       document.getElementById('pfProductsBlock').hidden = !show;
       if (show && !payableProducts.length) addPayableProduct();
+    }
+
+    // "2x", "3 x", "em 10x" na descrição/observação de uma Avulsa: sugere a aba Parcelada.
+    function payableParcelCount() {
+      const text = `${document.getElementById('pfDescription').value} ${document.getElementById('pfNote').value}`;
+      const m = text.match(/(?:^|[^\d])(\d{1,2})\s*x(?![a-z])/i);
+      const n = m ? parseInt(m[1], 10) : 0;
+      return n >= 2 && n <= 60 ? n : 0;
+    }
+
+    function updatePayableParcelHint() {
+      const n = payableType === 'Avulsa' ? payableParcelCount() : 0;
+      document.getElementById('pfParcelHint').innerHTML = n ? `
+        <div class="ap-parcel-hint">💡 Parece compra em <strong>${n}x</strong>. Lançada como Avulsa vira uma conta só; em Parcelada vira ${n} contas, uma por mês.
+          <button type="button" class="agenda-toggle-btn" onclick="switchPayableToParcelada(${n})">Usar Parcelada (${n}x)</button></div>` : '';
+    }
+
+    function switchPayableToParcelada(n) {
+      const value = document.getElementById('pfValue').value;
+      const due = document.getElementById('pfDueDate').value;
+      const method = document.getElementById('pfMethod').value;
+      setPayableType('Parcelada');
+      document.getElementById('pfMethod').value = method;
+      document.getElementById('pfTotal').value = value;
+      document.getElementById('pfCount').value = n;
+      const today = localDateStr(new Date());
+      if (due && due <= today) {
+        document.getElementById('pfPurchaseDate').value = due;
+        onPayablePurchaseDateChange();
+      }
     }
 
     function onPayablePurchaseDateChange() {
@@ -8790,9 +8838,7 @@
     function closeExpenseCategoriesModal() {
       document.getElementById('expenseCategoriesModal').classList.remove('open');
       // Lançamento aberto por baixo: atualiza a lista do campo Categoria.
-      if (document.getElementById('payableModal').classList.contains('open')) {
-        fillSelect('pfCategory', expenseCategoryOptions(), document.getElementById('pfCategory').value, 'Escolha…');
-      }
+      refreshOpenCategorySelects();
     }
 
     function renderExpenseCategories() {
