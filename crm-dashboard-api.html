@@ -2374,6 +2374,8 @@
       <h2>📤 Contas a Pagar</h2>
       <div style="display:flex; gap:8px; flex-wrap:wrap;">
         <button class="agenda-toggle-btn" onclick="openExpenseCategoriesModal()">🏷️ Categorias</button>
+        <button class="agenda-toggle-btn" onclick="chooseNfeFile()">📄 Importar XML</button>
+        <input type="file" id="nfeFileInput" hidden onchange="onNfeFileChosen(this)">
         <button class="btn-primary-soft" onclick="openPayableModal()">➕ Lançar despesa</button>
       </div>
     </div>
@@ -2383,7 +2385,7 @@
       <div class="kpi-grid" id="pagarKpis"></div>
       <div class="controls" style="margin-bottom:10px;">
         <div class="search-box search-clear-wrap">
-          <input type="text" id="pagarSearch" placeholder="Filtrar por descrição ou fornecedor..." autocomplete="off" autocorrect="off" spellcheck="false" oninput="renderPagar(); toggleSearchClearBtn('pagarSearch', 'pagarSearchClearBtn')">
+          <input type="text" id="pagarSearch" placeholder="Filtrar por descrição, fornecedor ou nº da NF-e..." autocomplete="off" autocorrect="off" spellcheck="false" oninput="renderPagar(); toggleSearchClearBtn('pagarSearch', 'pagarSearchClearBtn')">
           <button type="button" class="search-clear-btn" id="pagarSearchClearBtn" onclick="clearSearchField('pagarSearch', 'pagarSearchClearBtn'); renderPagar()" title="Limpar busca" aria-label="Limpar busca">✕</button>
         </div>
       </div>
@@ -3088,6 +3090,20 @@
           <button class="btn secondary" onclick="backToPayableForm()">← Voltar</button>
           <button class="btn" id="pfSubmitBtn" onclick="submitPayable()" style="flex:1;">✅ Confirmar e Lançar</button>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Importar XML da NF-e (2026-10-27): prévia conferida pela equipe antes de gravar. -->
+  <div class="modal" id="nfeModal">
+    <div class="modal-content">
+      <span class="close-btn" onclick="closeNfeModal()">&times;</span>
+      <h2>📄 Importar NF-e</h2>
+      <div id="nfeError"></div>
+      <div id="nfeBody"></div>
+      <div style="display:flex; gap:10px; margin-top:16px;">
+        <button class="btn secondary" onclick="closeNfeModal()">Cancelar</button>
+        <button class="btn" id="nfeSubmitBtn" onclick="submitNfeImport()" style="flex:1;">✅ Confirmar e importar</button>
       </div>
     </div>
   </div>
@@ -8001,6 +8017,8 @@
     let allPayables = [];
     let expenseCategories = [];
     let stockEntryCountByGroup = {};
+    let productCatalog = [];   // aba "Cadastro de Produtos" (NF-e)
+    let supplierRegistry = []; // aba "Fornecedores" (NF-e)
     let payablesLoadError = '';
     // Carrega só ao abrir o módulo (não pesa a abertura do CRM); depois, também no Atualizar.
     let payablesLoaded = false;
@@ -8010,7 +8028,7 @@
     let pagarMonth = '';
 
     const DEFAULT_EXPENSE_CATEGORIES = ['Produtos', 'Insumos', 'Aluguel', 'Internet', 'Energia', 'Água', 'Telefone', 'Contabilidade', 'Marketing', 'Impostos', 'Outros'];
-    const PAYABLE_METHODS = ['Pix', 'Boleto', 'Cartão de crédito', 'Débito automático', 'Transferência', 'Dinheiro', 'Outro'];
+    const PAYABLE_METHODS = ['Pix', 'Boleto', 'Cartão de crédito', 'Cartão de débito', 'Débito automático', 'Transferência', 'Dinheiro', 'Outro'];
     const PAYABLE_TYPE_INFO = {
       Avulsa: { label: 'Avulsa', method: 'Pix', hint: 'Uma conta só (ex.: manutenção, compra à vista).' },
       Parcelada: { label: 'Parcelada', method: 'Cartão de crédito', hint: 'Compra em N vezes: vira uma conta por mês. Os vencimentos podem ser ajustados na revisão.' },
@@ -8060,10 +8078,12 @@
       if (!hasDataConfig(loadSettings())) { allPayables = []; return; }
       payablesLoading = true;
       try {
-        const [values, cats, stock] = await Promise.all([
+        const [values, cats, stock, catalog, suppliers] = await Promise.all([
           readSheetValues('Contas a Pagar'),
           readSheetValues('Categorias de Despesa').catch(() => []),
           readSheetValues('Entradas de Produtos').catch(() => []),
+          readSheetValues('Cadastro de Produtos').catch(() => []),
+          readSheetValues('Fornecedores').catch(() => []),
         ]);
         payablesLoadError = '';
         const headers = values[0] || [];
@@ -8086,8 +8106,22 @@
             paidDate: col(row, 'Data de Pagamento'),
             method: col(row, 'Forma de Pagamento'),
             note: col(row, 'Observação'),
+            supplierDoc: col(row, 'Fornecedor (CNPJ)'),
+            nfeKey: col(row, 'NF-e (chave)'),
+            nfeNumber: col(row, 'NF-e (número)'),
           };
         }).filter(p => p.id);
+        const ch = (catalog && catalog[0]) || [];
+        productCatalog = (catalog || []).slice(1).map(r => ({
+          id: r[ch.indexOf('ID')] || '',
+          name: r[ch.indexOf('Nome')] || '',
+          codes: String(r[ch.indexOf('Códigos do Fornecedor')] || '').split('; ').filter(Boolean),
+        })).filter(p => p.id && p.name);
+        const sh0 = (suppliers && suppliers[0]) || [];
+        supplierRegistry = (suppliers || []).slice(1).map(r => ({
+          doc: String(r[sh0.indexOf('CNPJ/CPF')] || '').replace(/\D/g, ''),
+          name: r[sh0.indexOf('Razão Social')] || '',
+        })).filter(x => x.doc);
         const catNames = (cats || []).slice(1).map(r => String(r[0] || '').trim()).filter(Boolean);
         expenseCategories = catNames.length ? catNames : DEFAULT_EXPENSE_CATEGORIES.slice();
         stockEntryCountByGroup = {};
@@ -8168,7 +8202,7 @@
       const showPaid = pagarFilter === 'pagas';
       const items = (lists[pagarFilter] || open)
         .filter(p => cat === 'todas' || p.category === cat)
-        .filter(p => !query || `${p.description} ${p.supplier} ${p.note}`.toLowerCase().includes(query))
+        .filter(p => !query || `${p.description} ${p.supplier} ${p.note} ${p.nfeNumber} ${p.nfeKey} ${p.supplierDoc}`.toLowerCase().includes(query))
         .slice()
         .sort((a, b) => (showPaid ? (b.paidDate || '').localeCompare(a.paidDate || '') : (a.dueDate || '').localeCompare(b.dueDate || '')));
 
@@ -8220,6 +8254,7 @@
         p.method ? `<span>${escapeHtml(p.method)}</span>` : '',
         isPaid && Math.abs(diff) >= 0.01 ? `<span>previsto ${formatCurrencyBRL(p.estimated)} (${diff > 0 ? '+' : '−'}${formatCurrencyBRL(Math.abs(diff))})</span>` : '',
         !isPaid && p.type === 'Recorrente' ? '<span>valor previsto</span>' : '',
+        p.nfeNumber ? `<span>🧾 NF-e ${escapeHtml(p.nfeNumber)}</span>` : '',
         products ? `<span>📦 ${products} produto${products > 1 ? 's' : ''}</span>` : '',
         p.note ? `<span>📝 ${escapeHtml(p.note)}</span>` : '',
       ].filter(Boolean).join('');
@@ -8806,6 +8841,417 @@
       const used = allPayables.filter(p => p.category === name).length;
       if (!confirm(`Tirar "${name}" da lista de categorias?${used ? `\n\nAs ${used} conta(s) já lançadas continuam com essa categoria.` : ''}`)) return;
       await runCategoryAction({ action: 'deleteExpenseCategory', name }, `🗑️ Categoria "${name}" excluída`);
+    }
+
+    // --- Importar XML da NF-e (pedido do usuário 2026-10-27) ---
+    // O XML é lido aqui no aparelho (nada sai antes da confirmação). A
+    // prévia mostra fornecedor, contas (das duplicatas) e itens com lote/
+    // validade; a equipe confere/ajusta e confirma → Apps Script importNfe.
+    // Todo texto do XML é conteúdo de fora: sempre escapeHtml.
+    const NFE_NS = 'http://www.portalfiscal.inf.br/nfe';
+    // tPag (forma de pagamento da NF-e) → forma do Contas a Pagar.
+    const NFE_PAYMENT_METHODS = {
+      '01': 'Dinheiro', '02': 'Outro', '03': 'Cartão de crédito', '04': 'Cartão de débito', '05': 'Outro',
+      '10': 'Outro', '11': 'Outro', '12': 'Outro', '13': 'Outro', '15': 'Boleto', '16': 'Transferência',
+      '17': 'Pix', '18': 'Transferência', '19': 'Outro', '99': 'Outro',
+    };
+    const NFE_PAID_AT_PURCHASE = ['Dinheiro', 'Pix', 'Cartão de débito'];
+    let nfeImport = null;
+
+    function nfeEls(root, tag) {
+      if (!root) return [];
+      let list = root.getElementsByTagNameNS(NFE_NS, tag);
+      if (!list.length) list = root.getElementsByTagName(tag);
+      return Array.from(list);
+    }
+    function nfeText(root, tag) {
+      const el = nfeEls(root, tag)[0];
+      return el ? el.textContent.trim() : '';
+    }
+    function nfeNum(root, tag) {
+      const n = Number(nfeText(root, tag));
+      return isFinite(n) ? n : 0;
+    }
+
+    /** Lê o XML (nfeProc ou NFe solto). Erro com mensagem para a equipe se não for NF-e. */
+    function parseNfeXml(text) {
+      const doc = new DOMParser().parseFromString(text, 'application/xml');
+      if (doc.getElementsByTagName('parsererror').length) throw new Error('O arquivo não é um XML válido.');
+      const inf = nfeEls(doc, 'infNFe')[0];
+      if (!inf) throw new Error('Este XML não é de uma NF-e (não tem o grupo infNFe). Confira se é o XML da nota, e não o de um evento, boleto ou cancelamento.');
+      let key = (inf.getAttribute('Id') || '').replace(/^NFe/i, '').replace(/\D/g, '');
+      if (key.length !== 44) key = nfeText(doc, 'chNFe').replace(/\D/g, '');
+      if (key.length !== 44) throw new Error('Não achei a chave de acesso (44 números) no XML.');
+      const ide = nfeEls(inf, 'ide')[0];
+      const model = nfeText(ide, 'mod');
+      if (model && model !== '55' && model !== '65') throw new Error(`Modelo ${model}: não é NF-e (55) nem NFC-e (65).`);
+      const emit = nfeEls(inf, 'emit')[0];
+      if (!emit) throw new Error('O XML não traz o emitente (fornecedor).');
+      const ender = nfeEls(emit, 'enderEmit')[0];
+      const dest = nfeEls(inf, 'dest')[0];
+      const prot = nfeEls(doc, 'infProt')[0];
+      const cobr = nfeEls(inf, 'cobr')[0];
+      const totalEl = nfeEls(inf, 'ICMSTot')[0];
+      return {
+        key,
+        number: nfeText(ide, 'nNF'),
+        series: nfeText(ide, 'serie'),
+        model,
+        issueDate: (nfeText(ide, 'dhEmi') || nfeText(ide, 'dEmi')).slice(0, 10),
+        authorized: prot ? nfeText(prot, 'cStat') === '100' : null,
+        supplier: {
+          doc: nfeText(emit, 'CNPJ') || nfeText(emit, 'CPF'),
+          name: nfeText(emit, 'xNome'),
+          fantasy: nfeText(emit, 'xFant'),
+          address: ['xLgr', 'nro', 'xCpl', 'xBairro'].map(t => nfeText(ender, t)).filter(Boolean).join(', '),
+          city: nfeText(ender, 'xMun'),
+          uf: nfeText(ender, 'UF'),
+          cep: nfeText(ender, 'CEP'),
+          phone: nfeText(ender, 'fone'),
+        },
+        destName: nfeText(dest, 'xNome'),
+        destDoc: nfeText(dest, 'CNPJ') || nfeText(dest, 'CPF'),
+        items: nfeEls(inf, 'det').map(det => {
+          const prod = nfeEls(det, 'prod')[0];
+          return {
+            code: nfeText(prod, 'cProd'),
+            name: nfeText(prod, 'xProd'),
+            ncm: nfeText(prod, 'NCM'),
+            unit: nfeText(prod, 'uCom'),
+            qty: nfeNum(prod, 'qCom'),
+            unitValue: nfeNum(prod, 'vUnCom'),
+            total: nfeNum(prod, 'vProd'),
+            lots: nfeEls(prod, 'rastro').map(r => ({ lot: nfeText(r, 'nLote'), qty: nfeNum(r, 'qLote'), expiry: nfeText(r, 'dVal') })),
+          };
+        }),
+        dups: nfeEls(cobr, 'dup').map(d => ({ number: nfeText(d, 'nDup'), dueDate: nfeText(d, 'dVenc'), value: nfeNum(d, 'vDup') })),
+        pags: nfeEls(inf, 'detPag').map(p => ({ t: nfeText(p, 'tPag'), v: nfeNum(p, 'vPag') })),
+        total: nfeNum(totalEl, 'vNF'),
+      };
+    }
+
+    function formatDocBR(doc) {
+      const d = String(doc || '').replace(/\D/g, '');
+      if (d.length === 14) return `${d.slice(0, 2)}.${d.slice(2, 5)}.${d.slice(5, 8)}/${d.slice(8, 12)}-${d.slice(12)}`;
+      if (d.length === 11) return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9)}`;
+      return d;
+    }
+
+    function chooseNfeFile() {
+      const settings = loadSettings();
+      if (!settings || !settings.scriptUrl) { alert(NOT_CONFIGURED_MSG); return; }
+      document.getElementById('nfeFileInput').click();
+    }
+
+    async function onNfeFileChosen(input) {
+      const file = input.files && input.files[0];
+      input.value = '';
+      if (!file) return;
+      if (/\.zip$/i.test(file.name)) { alert('Arquivo .zip: extraia e escolha o arquivo .xml que está dentro dele.'); return; }
+      if (/\.pdf$/i.test(file.name)) { alert('Este é o PDF (DANFE). Escolha o arquivo .xml da nota, que o fornecedor manda junto.'); return; }
+      if (file.size > 3 * 1024 * 1024) { alert('Arquivo grande demais para um XML de NF-e (mais de 3 MB).'); return; }
+      let parsed;
+      try {
+        parsed = parseNfeXml(await file.text());
+      } catch (err) {
+        alert(`❌ ${err.message}`);
+        return;
+      }
+      if (!payablesLoaded) await fetchPayablesData();
+      openNfeModal(parsed);
+    }
+
+    function openNfeModal(nf) {
+      const today = localDateStr(new Date());
+      const doc = nf.supplier.doc.replace(/\D/g, '');
+      const main = nf.pags.filter(p => p.t !== '90').sort((a, b) => b.v - a.v)[0];
+      let method = main ? (NFE_PAYMENT_METHODS[main.t] || 'Outro') : '';
+      if (nf.dups.length && (!method || method === 'Outro' || NFE_PAID_AT_PURCHASE.includes(method))) method = 'Boleto';
+      if (!method) method = 'Boleto';
+      const issue = nf.issueDate || today;
+      const single = !nf.dups.length;
+      const paidNow = single && NFE_PAID_AT_PURCHASE.includes(method);
+      nfeImport = {
+        nf,
+        description: `NF-e ${nf.number} — ${nf.supplier.fantasy || nf.supplier.name}`.slice(0, 150),
+        category: expenseCategoryOptions().includes('Produtos') ? 'Produtos' : (expenseCategoryOptions()[0] || ''),
+        method,
+        fromDups: !single,
+        installments: single
+          ? [{ label: '1/1', dueDate: issue, value: nf.total, paid: paidNow, paidValue: nf.total, paidDate: issue > today ? today : issue }]
+          : nf.dups.map((d, i) => ({ label: `${i + 1}/${nf.dups.length}`, dueDate: d.dueDate, value: d.value, dupNumber: d.number, paid: false })),
+        items: nf.items.map(it => {
+          const byCode = productCatalog.find(p => it.code && p.codes.includes(`${doc}|${it.code}`));
+          const byName = productCatalog.find(p => normalizeText(p.name) === normalizeText(it.name));
+          const match = byCode || byName;
+          return {
+            ...it,
+            productId: match ? match.id : '',
+            matchedBy: byCode ? 'código' : (byName ? 'nome' : ''),
+            productName: it.name,
+            fromXml: it.lots.length > 0,
+            lots: it.lots.length
+              ? it.lots.map(l => ({ lot: l.lot, expiry: formatExpiryBR(l.expiry), qty: formatQty(l.qty) }))
+              : [{ lot: '', expiry: '', qty: formatQty(it.qty) }],
+          };
+        }),
+      };
+      document.getElementById('nfeError').innerHTML = '';
+      renderNfeModal();
+      document.getElementById('nfeModal').classList.add('open');
+    }
+
+    function closeNfeModal() {
+      document.getElementById('nfeModal').classList.remove('open');
+      nfeImport = null;
+    }
+
+    function normalizeText(s) {
+      return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
+    }
+
+    function formatQty(n) {
+      return n ? String(Math.round(n * 10000) / 10000).replace('.', ',') : '';
+    }
+
+    function renderNfeModal() {
+      const st = nfeImport;
+      const nf = st.nf;
+      const row = (label, value) => `<div class="ld-row"><span class="ld-label">${label}</span><span class="ld-value">${value}</span></div>`;
+      const existing = allPayables.filter(p => p.nfeKey === nf.key);
+      const supplierKnown = supplierRegistry.some(s => s.doc === nf.supplier.doc.replace(/\D/g, ''));
+      const keyGroups = nf.key.replace(/(\d{4})(?=\d)/g, '$1 ');
+
+      document.getElementById('nfeSubmitBtn').disabled = existing.length > 0;
+      document.getElementById('nfeBody').innerHTML = `
+        ${existing.length ? `<div class="form-error">⚠️ Esta nota já foi importada: "${escapeHtml(existing[0].description)}" (${existing.length} conta${existing.length > 1 ? 's' : ''} em A Pagar).
+          <button type="button" class="agenda-toggle-btn" style="margin-top:6px;" onclick="showNfeInList(${jsArg(nf.number)})">Ver em A Pagar</button></div>` : ''}
+        ${nf.authorized === false ? '<div class="form-error">⚠️ O protocolo deste XML não é de nota autorizada (cStat diferente de 100). Confira com o fornecedor antes de importar.</div>' : ''}
+        <div class="review-part-title" style="border-top:none; padding-top:0; margin-top:0;">🧾 Nota</div>
+        ${row('Número', `${escapeHtml(nf.number)}${nf.series ? ` · série ${escapeHtml(nf.series)}` : ''}${nf.model === '65' ? ' · NFC-e' : ''}`)}
+        ${row('Emissão', formatDateBR(nf.issueDate))}
+        ${row('Valor total', `<strong>${formatCurrencyBRL(nf.total)}</strong>`)}
+        ${nf.destName ? row('Destinatário', `${escapeHtml(nf.destName)}${nf.destDoc ? `<div class="ap-hint">${escapeHtml(formatDocBR(nf.destDoc))}</div>` : ''}`) : ''}
+        ${row('Chave', `<span style="font-size:11px; word-break:break-all;">${escapeHtml(keyGroups)}</span>`)}
+
+        <div class="review-part-title">🏭 Fornecedor ${supplierKnown ? '<span class="ap-hint">· já cadastrado (dados atualizados pelo XML)</span>' : '<span class="ap-hint">· novo cadastro</span>'}</div>
+        ${row('Razão social', escapeHtml(nf.supplier.name))}
+        ${nf.supplier.fantasy ? row('Nome fantasia', escapeHtml(nf.supplier.fantasy)) : ''}
+        ${row(nf.supplier.doc.length === 11 ? 'CPF' : 'CNPJ', escapeHtml(formatDocBR(nf.supplier.doc)))}
+        ${nf.supplier.city ? row('Cidade', `${escapeHtml(nf.supplier.city)}${nf.supplier.uf ? `/${escapeHtml(nf.supplier.uf)}` : ''}`) : ''}
+
+        <div class="review-part-title">📤 Contas a pagar</div>
+        <div class="form-group"><label for="nfeDescription">Descrição *</label>
+          <input type="text" id="nfeDescription" maxlength="150" value="${escapeHtml(st.description)}" oninput="nfeImport.description = this.value"></div>
+        <div class="ap-form-row">
+          <div class="form-group"><label for="nfeCategory">Categoria *</label>
+            <select id="nfeCategory" onchange="nfeImport.category = this.value">${expenseCategoryOptions().map(c => `<option value="${escapeHtml(c)}"${c === st.category ? ' selected' : ''}>${escapeHtml(c)}</option>`).join('')}</select></div>
+          <div class="form-group"><label for="nfeMethod">Forma de pagamento</label>
+            <select id="nfeMethod" onchange="nfeImport.method = this.value">${Array.from(new Set([st.method, ...PAYABLE_METHODS])).map(m => `<option value="${escapeHtml(m)}"${m === st.method ? ' selected' : ''}>${escapeHtml(m)}</option>`).join('')}</select></div>
+        </div>
+        <p class="ap-hint">${st.fromDups
+          ? `${nf.dups.length} duplicata${nf.dups.length > 1 ? 's' : ''} na nota: uma conta por parcela.`
+          : 'A nota não traz duplicatas: uma conta com o valor total. Se foi parcelado (ex.: no cartão), divida abaixo.'}</p>
+        ${st.fromDups ? '' : `
+        <div class="form-group" style="display:flex; align-items:center; gap:8px;">
+          <label for="nfeSplit" style="margin:0;">Dividir em</label>
+          <input type="number" id="nfeSplit" inputmode="numeric" min="1" max="60" value="${st.installments.length}" onchange="setNfeSplit(this.value)" style="width:70px;">
+          <span class="ap-hint" style="margin:0;">parcela(s) mensal(is)</span>
+        </div>`}
+        <div id="nfeInstallments">${nfeInstallmentsHtml()}</div>
+
+        <div class="review-part-title">📦 Itens (${st.items.length})</div>
+        <p class="ap-hint">Associe cada item a um produto já cadastrado ou cadastre. Lote e validade ${st.items.some(i => i.fromXml) ? 'que vieram na nota já estão preenchidos; os outros' : 'não vieram na nota:'} a equipe digita se quiser (dá para deixar em branco).</p>
+        <div id="nfeItems">${st.items.map((_, i) => nfeItemHtml(i)).join('')}</div>
+        <p class="ap-hint" style="margin-top:10px;">ℹ️ Energia, internet, aluguel e serviços não vêm em XML de NF-e de produto: continuam em ➕ Lançar despesa.</p>
+      `;
+      updateNfeSumCheck();
+    }
+
+    function nfeInstallmentsHtml() {
+      const st = nfeImport;
+      const today = localDateStr(new Date());
+      const n = st.installments.length;
+      return st.installments.map((inst, i) => `
+        <div class="installment-edit">
+          <div class="installment-edit-title">${n > 1 ? `Parcela ${escapeHtml(inst.label)}` : 'Conta'}${inst.dupNumber ? ` <span class="ap-label">dup. ${escapeHtml(inst.dupNumber)}</span>` : ''}</div>
+          <div class="installment-edit-fields">
+            <label>Valor (R$)<input type="text" inputmode="decimal" value="${formatMoneyInput(inst.value)}" onchange="updateNfeInst(${i}, 'value', this.value, this)"></label>
+            <label>Vencimento<input type="date" value="${escapeHtml(inst.dueDate)}" onchange="updateNfeInst(${i}, 'dueDate', this.value)"></label>
+          </div>
+          ${n === 1 ? `
+          <label class="installment-edit-check">
+            <input type="checkbox" style="width:auto;" ${inst.paid ? 'checked' : ''} onchange="updateNfeInst(0, 'paid', this.checked)"> Já paga
+            <span id="nfePaidWrap" style="display:${inst.paid ? 'inline-flex' : 'none'}; align-items:center; gap:6px;">em
+              <input type="date" value="${escapeHtml(inst.paidDate)}" max="${today}" onchange="updateNfeInst(0, 'paidDate', this.value)" style="width:auto; padding:4px 6px; font-size:12.5px;">
+            </span>
+          </label>` : ''}
+        </div>`).join('') + '<div id="nfeSumCheck" style="font-size:13px; margin:4px 0 6px;"></div>';
+    }
+
+    function nfeItemHtml(i) {
+      const it = nfeImport.items[i];
+      const skip = it.productId === 'skip';
+      const isNew = !it.productId;
+      const options = [
+        `<option value=""${isNew ? ' selected' : ''}>➕ Cadastrar produto novo</option>`,
+        `<option value="skip"${skip ? ' selected' : ''}>🚫 Não entra no estoque (frete, brinde, serviço…)</option>`,
+        ...productCatalog.slice().sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'))
+          .map(p => `<option value="${escapeHtml(p.id)}"${p.id === it.productId ? ' selected' : ''}>${escapeHtml(p.name)}</option>`),
+      ].join('');
+      return `
+        <div class="pay-part">
+          <div class="pay-part-head" style="align-items:flex-start;"><span>${i + 1}. ${escapeHtml(it.name)}</span></div>
+          <div class="ap-hint" style="margin:-4px 0 8px;">${[it.code && `cód. ${escapeHtml(it.code)}`, it.ncm && `NCM ${escapeHtml(it.ncm)}`].filter(Boolean).join(' · ')}
+            <div>${escapeHtml(formatQty(it.qty))} ${escapeHtml(it.unit)} × ${formatCurrencyBRL(it.unitValue)} = <strong>${formatCurrencyBRL(it.total)}</strong></div></div>
+          <div class="form-group" style="margin-bottom:8px;">
+            <label>Produto no cadastro${it.matchedBy && !isNew && !skip ? ` <span class="ap-label">(achado pelo ${it.matchedBy})</span>` : ''}</label>
+            <select onchange="setNfeItemProduct(${i}, this.value)">${options}</select>
+          </div>
+          ${isNew ? `<div class="form-group" style="margin-bottom:8px;"><label>Nome do produto novo *</label>
+            <input type="text" maxlength="100" value="${escapeHtml(it.productName)}" oninput="nfeImport.items[${i}].productName = this.value"></div>` : ''}
+          ${skip ? '' : `
+          <div class="pay-part-grid" style="grid-template-columns: 1.2fr 1.2fr 0.8fr; margin-bottom:4px;">
+            ${it.lots.map((l, j) => `
+              <label>Lote<input type="text" maxlength="40" autocapitalize="characters" value="${escapeHtml(l.lot)}" oninput="nfeImport.items[${i}].lots[${j}].lot = this.value"></label>
+              <label>Validade<input type="text" maxlength="10" inputmode="numeric" placeholder="DD/MM/AAAA" value="${escapeHtml(l.expiry)}" oninput="maskExpiryInput(this); nfeImport.items[${i}].lots[${j}].expiry = this.value" onblur="finishExpiryInput(this); nfeImport.items[${i}].lots[${j}].expiry = this.value"></label>
+              <label>Qtd.<input type="text" maxlength="12" inputmode="decimal" value="${escapeHtml(l.qty)}" oninput="nfeImport.items[${i}].lots[${j}].qty = this.value"></label>${it.lots.length > 1 ? `<div style="grid-column: 1 / -1; margin-top:-4px; text-align:right;"><button type="button" class="pay-part-remove" onclick="removeNfeLot(${i}, ${j})">remover este lote</button></div>` : ''}`).join('')}
+          </div>
+          <button type="button" class="pay-part-remove" onclick="addNfeLot(${i})">➕ outro lote deste item</button>`}
+        </div>`;
+    }
+
+    function rerenderNfeItem(i) {
+      const holder = document.getElementById('nfeItems').children[i];
+      if (holder) holder.outerHTML = nfeItemHtml(i);
+    }
+
+    function setNfeItemProduct(i, value) {
+      nfeImport.items[i].productId = value;
+      nfeImport.items[i].matchedBy = '';
+      rerenderNfeItem(i);
+    }
+
+    function addNfeLot(i) {
+      nfeImport.items[i].lots.push({ lot: '', expiry: '', qty: '' });
+      rerenderNfeItem(i);
+    }
+
+    function removeNfeLot(i, j) {
+      nfeImport.items[i].lots.splice(j, 1);
+      rerenderNfeItem(i);
+    }
+
+    function setNfeSplit(raw) {
+      const st = nfeImport;
+      const n = Math.max(1, Math.min(60, parseInt(raw, 10) || 1));
+      const first = st.installments[0];
+      // 1 parcela: vence na emissão; parcelado: 1ª no mês seguinte (fatura do cartão), ajustável.
+      const issue = st.nf.issueDate || localDateStr(new Date());
+      st.installments = n === 1
+        ? [{ label: '1/1', dueDate: issue, value: st.nf.total, paid: false, paidValue: st.nf.total, paidDate: first.paidDate }]
+        : splitInstallments(st.nf.total, n, addMonthsClamped(issue, 1)).map((x, k) => ({ label: `${k + 1}/${n}`, dueDate: x.dueDate, value: x.value, paid: false }));
+      document.getElementById('nfeInstallments').innerHTML = nfeInstallmentsHtml();
+      updateNfeSumCheck();
+    }
+
+    function updateNfeInst(i, field, raw, el) {
+      const inst = nfeImport.installments[i];
+      if (field === 'value') {
+        const v = parseMoneyInput(raw);
+        inst.value = v > 0 ? v : 0;
+        if (el) el.value = v > 0 ? formatMoneyInput(v) : '';
+        updateNfeSumCheck();
+      } else if (field === 'paid') {
+        inst.paid = raw;
+        document.getElementById('nfePaidWrap').style.display = raw ? 'inline-flex' : 'none';
+      } else {
+        inst[field] = raw;
+      }
+    }
+
+    function updateNfeSumCheck() {
+      const el = document.getElementById('nfeSumCheck');
+      if (!el || !nfeImport) return;
+      const sum = nfeImport.installments.reduce((s, x) => s + x.value, 0);
+      const diff = Math.round((sum - nfeImport.nf.total) * 100) / 100;
+      el.innerHTML = Math.abs(diff) < 0.01
+        ? `<span style="color:#4A7A3B; font-weight:600;">✓ Soma: ${formatCurrencyBRL(sum)} = total da nota</span>`
+        : `<span style="color:#B3462F; font-weight:600;">⚠️ Soma das contas: ${formatCurrencyBRL(sum)} — ${diff > 0 ? 'passa' : 'falta'} ${formatCurrencyBRL(Math.abs(diff))} do total da nota (${formatCurrencyBRL(nfeImport.nf.total)}). Pode ser entrada paga à parte; confira.</span>`;
+    }
+
+    function showNfeInList(number) {
+      closeNfeModal();
+      pagarMode = 'contas';
+      pagarFilter = 'todas';
+      document.getElementById('pagarSearch').value = number;
+      toggleSearchClearBtn('pagarSearch', 'pagarSearchClearBtn');
+      renderPagar();
+    }
+
+    async function submitNfeImport() {
+      const st = nfeImport;
+      if (!st) return;
+      const errorEl = document.getElementById('nfeError');
+      const fail = (msg) => { errorEl.innerHTML = `<div class="form-error">⚠️ ${escapeHtml(msg)}</div>`; errorEl.scrollIntoView({ block: 'nearest' }); };
+      errorEl.innerHTML = '';
+      const today = localDateStr(new Date());
+      const description = st.description.trim();
+      if (!description) return fail('Informe a descrição.');
+      if (!st.category) return fail('Escolha a categoria.');
+      const n = st.installments.length;
+      for (let i = 0; i < n; i++) {
+        const x = st.installments[i];
+        if (!(x.value > 0) || !x.dueDate) return fail(`${n > 1 ? `Parcela ${i + 1}: ` : ''}confira valor e vencimento.`);
+        if (x.paid && (!x.paidDate || x.paidDate > today)) return fail('Data do pagamento inválida (não pode ser no futuro).');
+      }
+      const items = [];
+      for (let i = 0; i < st.items.length; i++) {
+        const it = st.items[i];
+        if (!it.productId && !it.productName.trim()) return fail(`Item ${i + 1}: informe o nome do produto novo.`);
+        const lots = [];
+        for (const l of (it.productId === 'skip' ? [] : it.lots)) {
+          const expiry = expiryFromBR(l.expiry);
+          if (expiry && !isValidExpiry(expiry)) return fail(`Item ${i + 1}: validade inválida (use DD/MM/AAAA ou MM/AAAA).`);
+          const qty = parseMoneyInput(l.qty);
+          if (String(l.qty || '').trim() && !(qty > 0)) return fail(`Item ${i + 1}: quantidade inválida.`);
+          if (!l.lot.trim() && !expiry && !(qty > 0)) continue;
+          lots.push({ lot: l.lot.trim(), expiry, qty: qty > 0 ? qty : '' });
+        }
+        items.push({
+          code: it.code, name: it.name, ncm: it.ncm, unit: it.unit, qty: it.qty, unitValue: it.unitValue,
+          productId: it.productId, productName: it.productName.trim(), lots,
+        });
+      }
+      const competence = (st.nf.issueDate || today).slice(0, 7);
+      const btn = document.getElementById('nfeSubmitBtn');
+      btn.disabled = true;
+      btn.textContent = '⏳ Importando...';
+      try {
+        const result = await payablesPost({
+          action: 'importNfe',
+          nfe: { key: st.nf.key, number: st.nf.number, series: st.nf.series, issueDate: st.nf.issueDate },
+          supplierData: st.nf.supplier,
+          type: n > 1 ? 'Parcelada' : 'Avulsa',
+          description,
+          category: st.category,
+          paymentMethod: st.method,
+          installments: st.installments.map(x => ({
+            label: x.label, dueDate: x.dueDate, value: x.value, competence,
+            paid: !!x.paid, paidValue: x.paid ? x.value : '', paidDate: x.paid ? x.paidDate : '',
+          })),
+          items,
+        });
+        closeNfeModal();
+        showToast(`✅ NF-e importada: ${result.count} conta${result.count > 1 ? 's' : ''} · ${result.stockEntries} entrada(s) no estoque${result.newProducts ? ` · ${result.newProducts} produto(s) novo(s)` : ''}`);
+        await fetchPayablesData();
+      } catch (err) {
+        errorEl.innerHTML = `<div class="form-error">❌ ${errorText(err)}</div>`;
+        errorEl.scrollIntoView({ block: 'nearest' });
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '✅ Confirmar e importar';
+      }
     }
 
     // ---------- Simulador ----------
