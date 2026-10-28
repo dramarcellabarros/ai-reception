@@ -2376,6 +2376,9 @@
         <strong id="fluxoMonthLabel"></strong>
         <button class="agenda-view-btn" onclick="shiftFluxoMonth(1)" aria-label="Próximo mês">›</button>
       </div>
+      <div id="fluxoTodayRow" style="text-align:center; margin:-4px 0 12px;" hidden>
+        <button class="agenda-toggle-btn" onclick="fluxoMonth = ''; renderFluxo();">↩️ Voltar para o mês atual</button>
+      </div>
       <div class="kpi-grid" id="fluxoKpis"></div>
       <div class="module-card">
         <h3 id="fluxoMesTitle">Caixa do mês</h3>
@@ -4835,6 +4838,10 @@
             return raw && new Date(raw).toDateString() === todayStr;
           });
         }
+        // Histórico: mais recente primeiro (pedido do usuário 2026-10-28);
+        // a agenda (o que vai acontecer) segue na ordem do relógio.
+        const startMs = (e) => new Date(e.start && (e.start.dateTime || e.start.date)).getTime() || 0;
+        events = events.slice().sort((a, b) => startMs(b) - startMs(a));
       }
 
       // Agenda ativa só mostra a semana atual por padrão — a Visão do Mês
@@ -8282,6 +8289,7 @@
       if (!fluxoMonth) fluxoMonth = cur;
       const m = fluxoMonth;
       document.getElementById('fluxoMonthLabel').textContent = monthLabelPT(m);
+      document.getElementById('fluxoTodayRow').hidden = m === cur;
       if (!payablesLoaded && !payablesLoading) fetchPayablesData();
       if (!openingBalancesLoaded && !openingBalancesLoading) fetchOpeningBalances();
       if (!payablesLoaded || !openingBalancesLoaded) {
@@ -8292,9 +8300,14 @@
         return;
       }
 
-      const lastMonth = addMonthsClamped(`${m}-01`, FLUXO_MONTHS_AHEAD - 1).slice(0, 7);
-      const rows = fluxoChain(m, lastMonth, today);
-      const r = rows[0];
+      // Tabela "Próximos meses" ancorada no mês atual: tocar num mês futuro
+      // só destaca a linha, não empurra a tabela (bug 2026-10-28: o mês atual
+      // sumia da lista e não dava para voltar). Mês fora da janela (passado
+      // ou além dela) começa a tabela nele.
+      const plusMonths = (ym, n) => addMonthsClamped(`${ym}-01`, n).slice(0, 7);
+      const tableStart = m > cur && m <= plusMonths(cur, FLUXO_MONTHS_AHEAD - 1) ? cur : m;
+      const rows = fluxoChain(tableStart, plusMonths(tableStart, FLUXO_MONTHS_AHEAD - 1), today);
+      const r = rows.find(x => x.month === m);
       const f = r.flow;
       const isPast = m < cur;
       const isCur = m === cur;
@@ -8374,8 +8387,8 @@
             const tag = x.month < cur ? '' : (x.month === cur ? 'realizado + previsto' : 'previsto');
             const neg = (v) => (v !== null && v < -0.004 ? ' style="color:#B3462F; font-weight:600;"' : '');
             return `
-            <tr class="clickable" onclick="fluxoMonth = ${jsArg(x.month)}; renderFluxo(); document.getElementById('fluxoPane').scrollIntoView({ behavior: 'smooth', block: 'start' });">
-              <td>${monthLabelPT(x.month)}${tag ? `<div class="muted">${tag}</div>` : ''}</td>
+            <tr class="clickable"${x.month === m ? ' style="background:var(--cor-areia-suave);" aria-current="true"' : ''} onclick="fluxoMonth = ${jsArg(x.month)}; renderFluxo(); document.getElementById('fluxoMonthLabel').scrollIntoView({ behavior: 'smooth', block: 'center' });">
+              <td>${x.month === m ? '▸ ' : ''}${monthLabelPT(x.month)}${tag ? `<div class="muted">${tag}</div>` : ''}</td>
               <td class="num hide-mobile">${formatCurrencyBRL(x.flow.totalIn)}</td>
               <td class="num hide-mobile">− ${formatCurrencyBRL(x.flow.totalOut)}</td>
               <td class="num"${neg(x.flow.result)}>${signedBRL(x.flow.result)}</td>
