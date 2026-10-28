@@ -2032,9 +2032,13 @@
     .fin-tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; background: var(--cor-creme-avela); border-radius: 12px; padding: 3px; }
     .fin-tabs .chip { border: none; background: transparent; border-radius: 10px; padding: 8px 6px; font-size: 13px; font-weight: 600; }
     .fin-tabs .chip.active { background: var(--cor-branco-perola); box-shadow: 0 1px 4px rgba(107,68,35,0.18); color: var(--cor-texto-marca); }
-    /* Abas principais do Financeiro: 6 numa linha; no celular, 3 × 2. */
-    .fin-main-tabs { grid-template-columns: repeat(6, 1fr); }
-    @media (max-width: 720px) { .fin-main-tabs { grid-template-columns: repeat(3, 1fr); } }
+    /* Abas principais do Financeiro: 4 numa linha; no celular, 2 × 2. */
+    .fin-main-tabs { grid-template-columns: repeat(4, 1fr); }
+    @media (max-width: 520px) { .fin-main-tabs { grid-template-columns: repeat(2, 1fr); } }
+    /* Detalhe do Resumo: "← Resumo" + Vendas | Recebido, mais discreto que as abas. */
+    .fin-drill { align-items: center; margin-top: 10px; }
+    .fin-drill .fin-drill-label { font-size: 12.5px; color: var(--cor-cinza-cacau); margin-right: 2px; }
+    .fin-drill .fin-drill-back { border: none; background: none; color: var(--cor-texto-marca); font-weight: 600; font-size: 13px; padding: 6px 4px; cursor: pointer; }
 
     .period-bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
     .period-bar input[type="date"] { width: auto; padding: 6px 8px; font-size: 13px; }
@@ -2333,13 +2337,15 @@
   <div class="container module-view" id="view-vendas" hidden>
     <div class="module-title">
       <h2>💰 Financeiro</h2>
-      <button class="btn-primary-soft" onclick="openClientPicker('Lançar venda para…', openReceivableModal)">➕ Lançar venda</button>
+      <button class="btn-primary-soft" id="vendasPrimaryBtn" onclick="vendasPrimaryAction()">➕ Lançar venda</button>
     </div>
     <!-- Abas do Financeiro (2026-09-30: Resumo | Vendas | Recebido; 2026-10-28:
          + Fluxo de caixa, A Receber e A Pagar, que saíram da barra de cima).
          A Receber e A Pagar continuam telas próprias (#receber, #pagar) com
          a mesma fileira de abas no topo. -->
     <div class="chip-row fin-tabs fin-main-tabs" id="vendasModeChips"></div>
+    <!-- Vendas e Recebido = detalhe do Resumo (revisão de UX 2026-10-28). -->
+    <div class="chip-row fin-drill" id="vendasDrill"></div>
     <div class="chip-row" id="vendasPeriodChips"></div>
     <div class="period-bar">
       <label style="font-size:13px; color:var(--cor-cinza-cacau);">De</label>
@@ -2387,15 +2393,20 @@
         <div id="fluxoMes"></div>
       </div>
       <div class="module-card">
+        <h3>Próximos meses</h3>
+        <div id="fluxoMeses"></div>
+      </div>
+      <!-- Veio do antigo "Resumo do mês" do A Pagar (revisão de UX 2026-10-28). -->
+      <div class="module-card">
+        <h3>Saídas pagas por categoria</h3>
+        <div id="fluxoCategorias"></div>
+      </div>
+      <div class="module-card">
         <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:8px;">
           <h3 style="margin:0;">Retiradas e aportes</h3>
           <button class="agenda-toggle-btn" onclick="openCashMovementModal()">➕ Movimento</button>
         </div>
         <div id="fluxoMovimentos"></div>
-      </div>
-      <div class="module-card">
-        <h3>Próximos meses</h3>
-        <div id="fluxoMeses"></div>
       </div>
     </div>
   </div>
@@ -2442,7 +2453,6 @@
       </div>
     </div>
     <div class="chip-row fin-tabs fin-main-tabs" id="pagarFinTabs"></div>
-    <div class="chip-row" id="pagarModeChips"></div>
 
     <div id="pagarContasPane">
       <div class="kpi-grid" id="pagarKpis"></div>
@@ -2463,23 +2473,6 @@
       </div>
     </div>
 
-    <div id="pagarResumoPane" hidden>
-      <div class="ap-month-bar">
-        <button class="agenda-view-btn" onclick="shiftPagarMonth(-1)" aria-label="Mês anterior">‹</button>
-        <strong id="pagarMonthLabel"></strong>
-        <button class="agenda-view-btn" onclick="shiftPagarMonth(1)" aria-label="Próximo mês">›</button>
-      </div>
-      <div class="kpi-grid" id="pagarResumoKpis"></div>
-      <div class="module-card">
-        <h3>Previsto para o mês</h3>
-        <div id="pagarResumoPrevisto"></div>
-      </div>
-      <div class="module-card">
-        <h3>Saídas pagas por categoria</h3>
-        <div id="pagarResumoCategorias"></div>
-      </div>
-      <p style="color: var(--cor-cinza-cacau); font-size: 12px; margin: -6px 0 16px;">ℹ️ Entradas = o que entrou na conta no mês (Financeiro → Recebido, líquido das taxas do cartão). Saídas = contas pagas no mês, pela data do pagamento e pelo valor realmente pago.</p>
-    </div>
   </div>
 
   <!-- ===== Módulo Simulador ===== -->
@@ -7864,15 +7857,39 @@
 
     function setVendasMode(m) { vendasMode = m; renderVendas(); }
 
-    // Abas do Financeiro (2026-10-28): as quatro primeiras são modos da tela
-    // Financeiro; A Receber e A Pagar são as telas #receber e #pagar.
+    // Abas do Financeiro (revisão de UX 2026-10-28): quatro perguntas —
+    // como estou (Resumo), para onde vou (Fluxo), o que entra (A Receber),
+    // o que sai (A Pagar). Vendas e Recebido são o detalhe do Resumo (mesmo
+    // período, mesmos números abertos), não abas próprias. A Receber e A
+    // Pagar são as telas #receber e #pagar.
     const FIN_TABS = [
-      ['resumo', '📊 Resumo'], ['vendido', '🛍️ Vendas'], ['recebido', '💵 Recebido'],
-      ['fluxo', '🏦 Fluxo de caixa'], ['receber', '🧾 A Receber'], ['pagar', '📤 A Pagar'],
+      ['resumo', '📊 Resumo'], ['fluxo', '🏦 Fluxo de caixa'],
+      ['receber', '🧾 A Receber'], ['pagar', '📤 A Pagar'],
     ];
     const FIN_SCREENS = ['receber', 'pagar'];
+    const RESUMO_DETAILS = ['vendido', 'recebido'];
 
-    function finTabsHtml(active) { return chipsHtml(FIN_TABS, active, 'openFinTab'); }
+    function finTabsHtml(active) {
+      return chipsHtml(FIN_TABS, RESUMO_DETAILS.includes(active) ? 'resumo' : active, 'openFinTab');
+    }
+
+    // Fileira de detalhe abaixo das abas: no Resumo convida a abrir; no
+    // detalhe mostra onde está e o caminho de volta.
+    function renderVendasDrill() {
+      const el = document.getElementById('vendasDrill');
+      const detail = RESUMO_DETAILS.includes(vendasMode);
+      el.style.display = detail || vendasMode === 'resumo' ? '' : 'none'; // .chip-row é flex: hidden não basta
+      el.innerHTML = (detail
+        ? '<button class="fin-drill-back" onclick="setVendasMode(\'resumo\')">← Resumo</button>'
+        : '<span class="fin-drill-label">Detalhar:</span>')
+        + chipsHtml([['vendido', '🛍️ Vendas'], ['recebido', '💵 Recebido']], vendasMode, 'setVendasMode');
+    }
+
+    // Ação principal do título conforme a aba.
+    function vendasPrimaryAction() {
+      if (vendasMode === 'fluxo') openCashMovementModal();
+      else openClientPicker('Lançar venda para…', openReceivableModal);
+    }
 
     function openFinTab(key) {
       if (FIN_SCREENS.includes(key)) { switchModule(key); return; }
@@ -8020,6 +8037,8 @@
       ], vendasPeriod, 'setVendasPeriod');
 
       document.getElementById('vendasModeChips').innerHTML = finTabsHtml(vendasMode);
+      renderVendasDrill();
+      document.getElementById('vendasPrimaryBtn').textContent = vendasMode === 'fluxo' ? '➕ Movimento' : '➕ Lançar venda';
 
       // Fluxo de caixa anda por mês (‹ ›), não pelo período De/até.
       const fluxo = vendasMode === 'fluxo';
@@ -8315,6 +8334,7 @@
         document.getElementById('fluxoMes').innerHTML = '<div class="loading">⏳ Carregando contas a pagar e saldo...</div>';
         document.getElementById('fluxoMeses').innerHTML = '';
         document.getElementById('fluxoMovimentos').innerHTML = '';
+        document.getElementById('fluxoCategorias').innerHTML = '';
         return;
       }
 
@@ -8380,6 +8400,22 @@
         + (openingBalancesError ? `<p class="ap-hint" style="margin-top:10px;">⚠️ ${escapeHtml(openingBalancesError)}</p>` : '')
         + (payablesLoadError ? `<p class="ap-hint" style="margin-top:10px;">⚠️ ${escapeHtml(payablesLoadError)}</p>` : '')
         + `<p style="color: var(--cor-cinza-cacau); font-size: 12px; margin-top: 10px;">ℹ️ Cartão entra na data da venda, já sem a taxa (na conta pode cair depois). Conta a pagar vencida entra no mês atual; parcela atrasada e Carteira não entram no previsto.${hasOpening ? '' : ' Informe o saldo inicial para ver o saldo da conta, não só o resultado.'}</p>`;
+
+      // Saídas pagas por categoria (veio do antigo Resumo do mês do A Pagar).
+      const paidInMonth = allPayables.filter(p => p.status === 'Pago' && (p.paidDate || '').slice(0, 7) === m);
+      const byCat = {};
+      paidInMonth.forEach(p => { const c = p.category || 'Sem categoria'; byCat[c] = (byCat[c] || 0) + payableValue(p); });
+      const catItems = Object.entries(byCat).map(([label, value]) => ({ label, value })).sort((a, b) => b.value - a.value);
+      const paidEstimated = paidInMonth.reduce((s, p) => s + p.estimated, 0);
+      const estDiff = Math.round((f.realOut - paidEstimated) * 100) / 100;
+      const competence = allPayables.filter(p => p.competence === m).reduce((s, p) => s + payableValue(p), 0);
+      document.getElementById('fluxoCategorias').innerHTML = catItems.length
+        ? hbarsHtml(catItems, i => `${formatCurrencyBRL(i.value)} · ${f.realOut ? Math.round(i.value / f.realOut * 100) : 0}%`)
+          + `<div style="margin-top:10px;">${[
+            row('Previsto × pago', `${formatCurrencyBRL(paidEstimated)} → ${formatCurrencyBRL(f.realOut)}${Math.abs(estDiff) >= 0.01 ? ` (${estDiff > 0 ? '+' : '−'}${formatCurrencyBRL(Math.abs(estDiff))})` : ''}`),
+            row(`Despesas de competência ${m.slice(5, 7)}/${m.slice(0, 4)}`, `${formatCurrencyBRL(competence)} <span class="ap-hint">(pagas + a pagar)</span>`),
+          ].join('')}</div>`
+        : '<div class="chart-empty">Nenhuma conta paga neste mês.</div>';
 
       const movs = f.movements.slice().sort((a, b) => a.date.localeCompare(b.date));
       document.getElementById('fluxoMovimentos').innerHTML = movs.length ? movs.map(x => {
@@ -8656,9 +8692,7 @@
     // Carrega só ao abrir o módulo (não pesa a abertura do CRM); depois, também no Atualizar.
     let payablesLoaded = false;
     let payablesLoading = false;
-    let pagarMode = 'contas';
     let pagarFilter = 'abertas';
-    let pagarMonth = '';
 
     const DEFAULT_EXPENSE_CATEGORIES = ['Produtos', 'Insumos', 'Aluguel', 'Internet', 'Energia', 'Água', 'Telefone', 'Contabilidade', 'Marketing', 'Impostos', 'Outros'];
     const PAYABLE_METHODS = ['Pix', 'Boleto', 'Cartão de crédito', 'Cartão de débito', 'Débito automático', 'Transferência', 'Dinheiro', 'Outro'];
@@ -8800,19 +8834,11 @@
       return result;
     }
 
-    function setPagarMode(m) { pagarMode = m; renderPagar(); }
     function setPagarFilter(f) { pagarFilter = (f === pagarFilter && f !== 'abertas') ? 'abertas' : f; renderPagar(); }
-    function shiftPagarMonth(n) { pagarMonth = addMonthsClamped(`${pagarMonth}-01`, n).slice(0, 7); renderPagar(); }
 
     function renderPagar() {
       document.getElementById('pagarFinTabs').innerHTML = finTabsHtml('pagar');
       const today = localDateStr(new Date());
-      if (!pagarMonth) pagarMonth = today.slice(0, 7);
-      document.getElementById('pagarModeChips').innerHTML = chipsHtml([['contas', '📋 Contas'], ['resumo', '📊 Resumo do mês']], pagarMode, 'setPagarMode');
-      document.getElementById('pagarContasPane').hidden = pagarMode !== 'contas';
-      document.getElementById('pagarResumoPane').hidden = pagarMode !== 'resumo';
-      if (pagarMode === 'resumo') { renderPagarResumo(); return; }
-
       const sum = (arr) => arr.reduce((s, p) => s + payableValue(p), 0);
       const open = allPayables.filter(p => p.status !== 'Pago');
       const paid = allPayables.filter(p => p.status === 'Pago');
@@ -8920,49 +8946,6 @@
             <button class="complete-btn complete-btn-danger" onclick="openDeletePayableModal(${jsArg(p.id)})" title="Excluir" aria-label="Excluir conta">🗑️</button>
           </div>
         </div>`;
-    }
-
-    // Resumo do mês: caixa (o que entrou × o que saiu) e o previsto até o fim do mês.
-    function renderPagarResumo() {
-      const m = pagarMonth;
-      document.getElementById('pagarMonthLabel').textContent = monthLabelPT(m);
-      if (!payablesLoaded && !payablesLoading) fetchPayablesData();
-      const inMonth = (d) => (d || '').slice(0, 7) === m;
-      const receipts = buildReceipts().filter(r => inMonth(r.date));
-      const entradas = receipts.reduce((s, r) => s + r.net, 0);
-      const paid = allPayables.filter(p => p.status === 'Pago' && inMonth(p.paidDate));
-      const saidas = paid.reduce((s, p) => s + payableValue(p), 0);
-      const saldo = entradas - saidas;
-      const toReceive = allFinance.filter(f => f.status !== 'Recebido' && inMonth(f.dueDate));
-      const toPay = allPayables.filter(p => p.status !== 'Pago' && inMonth(p.dueDate));
-      const toReceiveSum = toReceive.reduce((s, f) => s + f.value, 0);
-      const toPaySum = toPay.reduce((s, p) => s + p.estimated, 0);
-      const competence = allPayables.filter(p => p.competence === m).reduce((s, p) => s + payableValue(p), 0);
-      const paidEstimated = paid.reduce((s, p) => s + p.estimated, 0);
-
-      document.getElementById('pagarResumoKpis').innerHTML = [
-        kpiHtml('Entradas', formatCurrencyBRL(entradas), `${receipts.length} recebimento(s) · líquido`, 'kpi-good'),
-        kpiHtml('Saídas', `− ${formatCurrencyBRL(saidas)}`, `${paid.length} conta(s) paga(s)`),
-        kpiHtml('Saldo do mês', `${saldo < 0 ? '− ' : ''}${formatCurrencyBRL(Math.abs(saldo))}`, 'entradas − saídas', saldo < 0 ? 'kpi-alert' : 'kpi-hero'),
-      ].join('');
-
-      const row = (label, value, strong) => `<div class="ld-row"><span class="ld-label">${label}</span><span class="ld-value">${strong ? `<strong>${value}</strong>` : value}</span></div>`;
-      const forecast = saldo + toReceiveSum - toPaySum;
-      const estDiff = Math.round((saidas - paidEstimated) * 100) / 100;
-      document.getElementById('pagarResumoPrevisto').innerHTML = [
-        row('A receber ainda no mês', `${formatCurrencyBRL(toReceiveSum)} · ${toReceive.length} parcela(s)`),
-        row('A pagar ainda no mês', `− ${formatCurrencyBRL(toPaySum)} · ${toPay.length} conta(s)`),
-        row('Saldo previsto do mês', `${forecast < 0 ? '− ' : ''}${formatCurrencyBRL(Math.abs(forecast))}`, true),
-        paid.length ? row('Contas pagas: previsto × pago', `${formatCurrencyBRL(paidEstimated)} → ${formatCurrencyBRL(saidas)}${Math.abs(estDiff) >= 0.01 ? ` (${estDiff > 0 ? '+' : '−'}${formatCurrencyBRL(Math.abs(estDiff))})` : ''}`) : '',
-        row(`Despesas de competência ${m.slice(5, 7)}/${m.slice(0, 4)}`, `${formatCurrencyBRL(competence)} <span class="ap-hint">(pagas + a pagar)</span>`),
-      ].join('') + `<p style="margin-top:10px;"><a href="#vendas" onclick="event.preventDefault(); fluxoMonth = ${jsArg(m)}; vendasMode = 'fluxo'; switchModule('vendas');">🏦 Ver saldo da conta e próximos meses no Fluxo de caixa ›</a></p>`;
-
-      const byCat = {};
-      paid.forEach(p => { const c = p.category || 'Sem categoria'; byCat[c] = (byCat[c] || 0) + payableValue(p); });
-      const catItems = Object.entries(byCat).map(([label, value]) => ({ label, value })).sort((a, b) => b.value - a.value);
-      document.getElementById('pagarResumoCategorias').innerHTML = payablesLoadError
-        ? `<div class="chart-empty">⚠️ ${escapeHtml(payablesLoadError)}</div>`
-        : (catItems.length ? hbarsHtml(catItems, i => `${formatCurrencyBRL(i.value)} · ${saidas ? Math.round(i.value / saidas * 100) : 0}%`) : '<div class="chart-empty">Nenhuma conta paga neste mês.</div>');
     }
 
     // --- Lançar despesa ---
@@ -9858,7 +9841,6 @@
 
     function showNfeInList(number) {
       closeNfeModal();
-      pagarMode = 'contas';
       pagarFilter = 'todas';
       document.getElementById('pagarSearch').value = number;
       toggleSearchClearBtn('pagarSearch', 'pagarSearchClearBtn');
