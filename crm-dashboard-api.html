@@ -2339,6 +2339,25 @@
       <h3 id="vendasListTitle">Vendas do período</h3>
       <div id="vendasList"></div>
     </div>
+    <!-- Fluxo de Caixa (2026-10-28): liquidez do mês = saldo inicial +
+         entradas − saídas (realizado) e o previsto até o fim do mês, com a
+         projeção dos próximos meses. -->
+    <div id="fluxoPane" hidden>
+      <div class="ap-month-bar">
+        <button class="agenda-view-btn" onclick="shiftFluxoMonth(-1)" aria-label="Mês anterior">‹</button>
+        <strong id="fluxoMonthLabel"></strong>
+        <button class="agenda-view-btn" onclick="shiftFluxoMonth(1)" aria-label="Próximo mês">›</button>
+      </div>
+      <div class="kpi-grid" id="fluxoKpis"></div>
+      <div class="module-card">
+        <h3 id="fluxoMesTitle">Caixa do mês</h3>
+        <div id="fluxoMes"></div>
+      </div>
+      <div class="module-card">
+        <h3>Próximos meses</h3>
+        <div id="fluxoMeses"></div>
+      </div>
+    </div>
   </div>
 
   <!-- ===== Módulo Contas a Receber ===== -->
@@ -3136,6 +3155,33 @@
       <div style="display:flex; gap:10px;">
         <button class="btn secondary" onclick="closePayPayableModal()">Cancelar</button>
         <button class="btn" id="ppSubmitBtn" onclick="submitPayPayable()" style="flex:1;">✅ Confirmar pagamento</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Saldo inicial do mês no Fluxo de Caixa (2026-10-28). -->
+  <div class="modal" id="openingBalanceModal" style="z-index: 1100;">
+    <div class="modal-content">
+      <span class="close-btn" onclick="closeOpeningBalanceModal()">&times;</span>
+      <h2>🏦 Saldo inicial</h2>
+      <div id="obError"></div>
+      <p id="obInfo" style="color: var(--cor-cinza-cacau); font-size: 13px; margin-bottom:14px;"></p>
+      <div class="form-group">
+        <label for="obValue">Saldo no banco no dia 1º (R$) *</label>
+        <input type="text" id="obValue" inputmode="decimal" autocomplete="off" placeholder="0,00">
+        <div class="ap-hint" style="margin-top:4px;">Some as contas da clínica (banco, PagBank, maquininha).</div>
+      </div>
+      <label style="display:flex; align-items:center; gap:8px; font-size:14px; margin-bottom:14px;">
+        <input type="checkbox" id="obNegative"> Saldo negativo (conta no vermelho)
+      </label>
+      <div class="form-group">
+        <label for="obNote">Observação</label>
+        <input type="text" id="obNote" autocomplete="off" placeholder="ex.: extrato Sicoob + PagBank">
+      </div>
+      <div style="display:flex; gap:10px; flex-wrap:wrap;">
+        <button class="btn secondary" onclick="closeOpeningBalanceModal()">Cancelar</button>
+        <button class="btn secondary" id="obClearBtn" onclick="submitOpeningBalance(true)">Usar o calculado</button>
+        <button class="btn" id="obSubmitBtn" onclick="submitOpeningBalance(false)" style="flex:1;">💾 Salvar</button>
       </div>
     </div>
   </div>
@@ -4379,6 +4425,7 @@
       fetchFinanceData();
       fetchCarteiraData();
       if (payablesLoaded) fetchPayablesData();
+      if (openingBalancesLoaded) fetchOpeningBalances();
       loadProcedureList();
       loadCardFees();
     }
@@ -7756,7 +7803,20 @@
         ['resumo', '📊 Resumo'],
         ['vendido', '🛍️ Vendas'],
         ['recebido', '💵 Recebido'],
+        ['fluxo', '🏦 Fluxo de caixa'],
       ], vendasMode, 'setVendasMode');
+
+      // Fluxo de caixa anda por mês (‹ ›), não pelo período De/até.
+      const fluxo = vendasMode === 'fluxo';
+      document.getElementById('fluxoPane').hidden = !fluxo;
+      ['vendasPeriodChips', 'vendasKpis'].forEach(id => { document.getElementById(id).style.display = fluxo ? 'none' : ''; });
+      document.querySelector('#view-vendas .period-bar').style.display = fluxo ? 'none' : '';
+      if (fluxo) {
+        ['vendasChartCard', 'vendasByMethodCard', 'vendasListCard', 'vendasByProcedureCard', 'vendasResumoCard'].forEach(id => { document.getElementById(id).style.display = 'none'; });
+        document.getElementById('vendasMethodChips').innerHTML = '';
+        renderFluxo();
+        return;
+      }
 
       const resumo = vendasMode === 'resumo';
       ['vendasChartCard', 'vendasByMethodCard', 'vendasListCard'].forEach(id => { document.getElementById(id).style.display = resumo ? 'none' : ''; });
@@ -7892,6 +7952,243 @@
           ? 'ℹ️ Recebido = parcelas baixadas como recebidas (pela data do recebimento) + pagamentos na Carteira. Cartão entra na data da venda, já com a taxa.'
           : 'ℹ️ Venda = tudo que o cliente comprou no mesmo dia (cobranças lançadas + débitos na Carteira). Toque numa venda para ver os recebimentos.'}</p>
       ` : `<div class="agenda-empty">${received ? 'Nenhum recebimento no período.' : 'Nenhuma venda no período.'}</div>`;
+    }
+
+    // ---------- Fluxo de Caixa (2026-10-28) ----------
+    // Liquidez do mês: saldo inicial + entradas − saídas.
+    // - Realizado: recebimentos (líquido; cartão na data da venda, já sem
+    //   a taxa) e contas pagas (valor realmente pago, na data da baixa).
+    // - Previsto (mês atual e futuros): parcelas a receber e contas a pagar
+    //   que vencem no mês. Conservador: conta a pagar vencida entra no mês
+    //   atual; parcela a receber atrasada e saldo da Carteira não entram.
+    // - Saldo inicial: informado pela equipe (aba "Saldo Inicial"); mês sem
+    //   saldo informado herda o saldo final calculado do mês anterior.
+    let fluxoMonth = '';
+    let openingBalances = {}; // 'AAAA-MM' → { value, note, updatedAt }
+    let openingBalancesLoaded = false;
+    let openingBalancesLoading = false;
+    let openingBalancesError = '';
+    let openingBalanceMonth = '';
+    const FLUXO_MONTHS_AHEAD = 6;
+
+    async function fetchOpeningBalances() {
+      if (!hasDataConfig(loadSettings())) return;
+      openingBalancesLoading = true;
+      try {
+        const values = await readSheetValues('Saldo Inicial');
+        const h = values[0] || [];
+        openingBalances = {};
+        values.slice(1).forEach(r => {
+          const month = String(r[h.indexOf('Mês')] || '');
+          const value = parseMoneyInput(r[h.indexOf('Saldo')]);
+          if (/^\d{4}-\d{2}$/.test(month) && isFinite(value)) {
+            openingBalances[month] = { value, note: r[h.indexOf('Observação')] || '', updatedAt: r[h.indexOf('Atualizado em')] || '' };
+          }
+        });
+        openingBalancesError = '';
+      } catch (err) {
+        console.error('Erro ao ler o saldo inicial:', err);
+        openingBalancesError = /não liberada|ação desconhecida/i.test(String(err && err.message))
+          ? 'Saldo inicial indisponível: falta publicar o Apps Script novo (Nova versão).'
+          : friendlyError(err);
+      }
+      openingBalancesLoading = false;
+      openingBalancesLoaded = true;
+      if (currentModule === 'vendas' && vendasMode === 'fluxo') renderFluxo();
+    }
+
+    function shiftFluxoMonth(n) { fluxoMonth = addMonthsClamped(`${fluxoMonth}-01`, n).slice(0, 7); renderFluxo(); }
+
+    function lastDayOfMonth(ym) {
+      return localDateStr(new Date(+ym.slice(0, 4), +ym.slice(5, 7), 0));
+    }
+
+    /** Entradas e saídas de um mês: realizado + (mês atual/futuro) previsto. */
+    function monthCashFlow(m, today) {
+      const cur = today.slice(0, 7);
+      const inMonth = (d) => (d || '').slice(0, 7) === m;
+      const receipts = buildReceipts().filter(r => inMonth(r.date));
+      const paid = allPayables.filter(p => p.status === 'Pago' && inMonth(p.paidDate));
+      const f = {
+        realIn: receipts.reduce((s, r) => s + r.net, 0), realInCount: receipts.length,
+        realOut: paid.reduce((s, p) => s + payableValue(p), 0), realOutCount: paid.length,
+        pendIn: 0, pendInCount: 0, pendOut: 0, pendOutCount: 0, overdueOutCount: 0,
+      };
+      if (m >= cur) {
+        const end = lastDayOfMonth(m);
+        const toReceive = allFinance.filter(x => x.status !== 'Recebido' && x.dueDate && inMonth(x.dueDate) && x.dueDate >= today);
+        const toPay = allPayables.filter(p => p.status !== 'Pago' && p.dueDate && (m === cur ? p.dueDate <= end : inMonth(p.dueDate)));
+        f.pendIn = toReceive.reduce((s, x) => s + x.value, 0);
+        f.pendInCount = toReceive.length;
+        f.pendOut = toPay.reduce((s, p) => s + p.estimated, 0);
+        f.pendOutCount = toPay.length;
+        f.overdueOutCount = m === cur ? toPay.filter(p => p.dueDate < today).length : 0;
+      }
+      f.result = f.realIn - f.realOut + f.pendIn - f.pendOut;
+      return f;
+    }
+
+    /**
+     * Saldo inicial de cada mês de `from` até `to`, encadeado a partir do
+     * último saldo informado até `from`. null = nenhum saldo informado
+     * até ali (mostra só o resultado do mês).
+     */
+    function fluxoChain(from, to, today) {
+      const informed = Object.keys(openingBalances).sort();
+      const anchor = informed.filter(k => k <= from).pop();
+      let m = anchor || from;
+      let opening = null;
+      const rows = [];
+      while (m <= to) {
+        const flow = monthCashFlow(m, today);
+        const inf = openingBalances[m];
+        const calculated = opening;
+        if (inf) opening = inf.value;
+        const close = opening === null ? null : opening + flow.result;
+        if (m >= from) rows.push({ month: m, flow, opening, calculated, informed: inf || null, close });
+        opening = close;
+        m = addMonthsClamped(`${m}-01`, 1).slice(0, 7);
+      }
+      return rows;
+    }
+
+    function signedBRL(v) {
+      return `${v < -0.004 ? '− ' : ''}${formatCurrencyBRL(Math.abs(v))}`;
+    }
+
+    function renderFluxo() {
+      const today = localDateStr(new Date());
+      const cur = today.slice(0, 7);
+      if (!fluxoMonth) fluxoMonth = cur;
+      const m = fluxoMonth;
+      document.getElementById('fluxoMonthLabel').textContent = monthLabelPT(m);
+      if (!payablesLoaded && !payablesLoading) fetchPayablesData();
+      if (!openingBalancesLoaded && !openingBalancesLoading) fetchOpeningBalances();
+      if (!payablesLoaded || !openingBalancesLoaded) {
+        document.getElementById('fluxoKpis').innerHTML = '';
+        document.getElementById('fluxoMes').innerHTML = '<div class="loading">⏳ Carregando contas a pagar e saldo...</div>';
+        document.getElementById('fluxoMeses').innerHTML = '';
+        return;
+      }
+
+      const lastMonth = addMonthsClamped(`${m}-01`, FLUXO_MONTHS_AHEAD - 1).slice(0, 7);
+      const rows = fluxoChain(m, lastMonth, today);
+      const r = rows[0];
+      const f = r.flow;
+      const isPast = m < cur;
+      const isCur = m === cur;
+      const hasOpening = r.opening !== null;
+      const realized = (hasOpening ? r.opening : 0) + f.realIn - f.realOut;
+      const editOpening = { onclick: `openOpeningBalanceModal(${jsArg(m)})`, active: false };
+
+      const openingSub = r.informed ? 'informado · toque para alterar' : (hasOpening ? 'calculado · toque para informar' : 'toque para informar');
+      document.getElementById('fluxoKpis').innerHTML = [
+        kpiHtml('Saldo inicial', hasOpening ? signedBRL(r.opening) : '—', openingSub, '', editOpening),
+        kpiHtml('Entrou', formatCurrencyBRL(f.realIn), `${f.realInCount} recebimento(s) · líquido`, 'kpi-good'),
+        kpiHtml('Saiu', `− ${formatCurrencyBRL(f.realOut)}`, `${f.realOutCount} conta(s) paga(s)`),
+        isPast
+          ? kpiHtml(hasOpening ? 'Saldo final' : 'Resultado do mês', signedBRL(realized), hasOpening ? 'inicial + entrou − saiu' : 'entrou − saiu', realized < 0 ? 'kpi-alert' : 'kpi-hero')
+          : kpiHtml(hasOpening ? 'Previsto no fim do mês' : 'Resultado previsto', signedBRL(hasOpening ? r.close : f.result), isCur ? (hasOpening ? `hoje: ${signedBRL(realized)}` : `até hoje: ${signedBRL(realized)}`) : 'só o que vence no mês', (hasOpening ? r.close : f.result) < 0 ? 'kpi-alert' : 'kpi-hero'),
+      ].join('');
+
+      const row = (label, value, strong) => `<div class="ld-row"><span class="ld-label">${label}</span><span class="ld-value">${strong ? `<strong>${value}</strong>` : value}</span></div>`;
+      const openingLabel = r.informed
+        ? `Saldo inicial <span class="ap-hint">(informado${r.informed.note ? `: ${escapeHtml(r.informed.note)}` : ''})</span>`
+        : `Saldo inicial <span class="ap-hint">(${hasOpening ? 'calculado do mês anterior' : 'não informado'})</span>`;
+      const diff = r.informed && r.calculated !== null ? Math.round((r.informed.value - r.calculated) * 100) / 100 : 0;
+      const lines = [
+        row(openingLabel, `${hasOpening ? signedBRL(r.opening) : '—'} <button class="agenda-toggle-btn" style="margin-left:6px; padding:2px 8px;" onclick="openOpeningBalanceModal(${jsArg(m)})">✏️</button>`),
+        Math.abs(diff) >= 0.01 ? row('<span class="ap-hint">Diferença do calculado</span>', `<span class="ap-hint">${diff > 0 ? '+' : '−'}${formatCurrencyBRL(Math.abs(diff))} (movimento fora do CRM?)</span>`) : '',
+        row('Entrou (líquido)', `${formatCurrencyBRL(f.realIn)} · ${f.realInCount}`),
+        row('Saiu', `− ${formatCurrencyBRL(f.realOut)} · ${f.realOutCount}`),
+      ];
+      if (isPast) {
+        lines.push(row(hasOpening ? 'Saldo final' : 'Resultado do mês', signedBRL(realized), true));
+      } else {
+        if (isCur) lines.push(row(hasOpening ? 'Saldo hoje' : 'Resultado até hoje', signedBRL(realized), true));
+        lines.push(
+          row(isCur ? 'A receber até o fim do mês' : 'A receber no mês', `${formatCurrencyBRL(f.pendIn)} · ${f.pendInCount} parcela(s)`),
+          row(isCur ? 'A pagar até o fim do mês' : 'A pagar no mês', `− ${formatCurrencyBRL(f.pendOut)} · ${f.pendOutCount} conta(s)${f.overdueOutCount ? ` <span class="ap-late">${f.overdueOutCount} vencida(s)</span>` : ''}`),
+          row(hasOpening ? 'Saldo previsto no fim do mês' : 'Resultado previsto do mês', signedBRL(hasOpening ? r.close : f.result), true),
+        );
+      }
+      // O que pode entrar mas não está na conta (sem data certa).
+      if (isCur) {
+        const overdueIn = allFinance.filter(x => x.status !== 'Recebido' && x.dueDate && x.dueDate < today);
+        const carteiraOpen = Array.from(new Set(allCarteira.map(c => c.phone))).reduce((s, ph) => s + Math.max(0, getCarteiraBalance(ph)), 0);
+        if (overdueIn.length) lines.push(row('<span class="ap-hint">Fora da conta: parcelas atrasadas</span>', `<span class="ap-hint">${formatCurrencyBRL(overdueIn.reduce((s, x) => s + x.value, 0))} · ${overdueIn.length}</span>`));
+        if (carteiraOpen > 0.004) lines.push(row('<span class="ap-hint">Fora da conta: em aberto na Carteira</span>', `<span class="ap-hint">${formatCurrencyBRL(carteiraOpen)}</span>`));
+      }
+      document.getElementById('fluxoMesTitle').textContent = isPast ? 'Caixa do mês' : (isCur ? 'Caixa do mês: realizado e previsto' : 'Caixa previsto do mês');
+      document.getElementById('fluxoMes').innerHTML = lines.join('')
+        + (openingBalancesError ? `<p class="ap-hint" style="margin-top:10px;">⚠️ ${escapeHtml(openingBalancesError)}</p>` : '')
+        + (payablesLoadError ? `<p class="ap-hint" style="margin-top:10px;">⚠️ ${escapeHtml(payablesLoadError)}</p>` : '')
+        + `<p style="color: var(--cor-cinza-cacau); font-size: 12px; margin-top: 10px;">ℹ️ Cartão entra na data da venda, já sem a taxa (na conta pode cair depois). Conta a pagar vencida entra no mês atual; parcela atrasada e Carteira não entram no previsto.${hasOpening ? '' : ' Informe o saldo inicial para ver o saldo da conta, não só o resultado.'}</p>`;
+
+      const anyOpening = rows.some(x => x.close !== null);
+      document.getElementById('fluxoMeses').innerHTML = `
+        <div class="data-table-wrap"><table class="data-table">
+          <thead><tr><th>Mês</th><th class="num hide-mobile">Entradas</th><th class="num hide-mobile">Saídas</th><th class="num">Resultado</th>${anyOpening ? '<th class="num">Saldo final</th>' : ''}</tr></thead>
+          <tbody>${rows.map(x => {
+            const tag = x.month < cur ? '' : (x.month === cur ? 'realizado + previsto' : 'previsto');
+            const neg = (v) => (v !== null && v < -0.004 ? ' style="color:#B3462F; font-weight:600;"' : '');
+            return `
+            <tr class="clickable" onclick="fluxoMonth = ${jsArg(x.month)}; renderFluxo(); document.getElementById('fluxoPane').scrollIntoView({ behavior: 'smooth', block: 'start' });">
+              <td>${monthLabelPT(x.month)}${tag ? `<div class="muted">${tag}</div>` : ''}</td>
+              <td class="num hide-mobile">${formatCurrencyBRL(x.flow.realIn + x.flow.pendIn)}</td>
+              <td class="num hide-mobile">− ${formatCurrencyBRL(x.flow.realOut + x.flow.pendOut)}</td>
+              <td class="num"${neg(x.flow.result)}>${signedBRL(x.flow.result)}</td>
+              ${anyOpening ? `<td class="num"${neg(x.close)}><strong>${x.close === null ? '—' : `${x.close < -0.004 ? '⚠️ ' : ''}${signedBRL(x.close)}`}</strong></td>` : ''}
+            </tr>`;
+          }).join('')}
+          </tbody>
+        </table></div>
+        <p style="color: var(--cor-cinza-cacau); font-size: 12px; margin-top: 10px;">ℹ️ Meses futuros mostram só o que já está lançado (parcelas, contas parceladas e recorrentes). Toque num mês para ver o detalhe.</p>`;
+    }
+
+    function openOpeningBalanceModal(month) {
+      const settings = loadSettings();
+      if (!settings || !settings.scriptUrl) { alert(NOT_CONFIGURED_MSG); return; }
+      openingBalanceMonth = month;
+      const inf = openingBalances[month];
+      const row = fluxoChain(month, month, localDateStr(new Date()))[0];
+      document.getElementById('obError').innerHTML = '';
+      document.getElementById('obInfo').innerHTML = `Saldo da conta da clínica no início de <strong>${monthLabelPT(month)}</strong>.`
+        + (row && row.calculated !== null ? ` Calculado pelo mês anterior: ${signedBRL(row.calculated)}.` : '');
+      document.getElementById('obValue').value = inf ? formatMoneyInput(Math.abs(inf.value)) : '';
+      document.getElementById('obNegative').checked = Boolean(inf && inf.value < 0);
+      document.getElementById('obNote').value = inf ? inf.note : '';
+      document.getElementById('obClearBtn').style.display = inf ? '' : 'none';
+      document.getElementById('openingBalanceModal').classList.add('open');
+      setTimeout(() => document.getElementById('obValue').focus(), 50);
+    }
+
+    function closeOpeningBalanceModal() {
+      document.getElementById('openingBalanceModal').classList.remove('open');
+    }
+
+    async function submitOpeningBalance(clear) {
+      const errorEl = document.getElementById('obError');
+      const raw = document.getElementById('obValue').value.trim();
+      // Teclado decimal do iPhone não tem "−": o sinal vem da caixinha (ou de um "-" colado).
+      const negative = document.getElementById('obNegative').checked || /^[-−]/.test(raw);
+      const value = parseMoneyInput(raw.replace(/^[-−]\s*/, ''));
+      errorEl.innerHTML = '';
+      if (!clear && !isFinite(value)) { errorEl.innerHTML = '<div class="form-error">⚠️ Informe o saldo (pode ser 0).</div>'; return; }
+      const btn = document.getElementById(clear ? 'obClearBtn' : 'obSubmitBtn');
+      btn.disabled = true;
+      try {
+        await payablesPost(clear
+          ? { action: 'setOpeningBalance', month: openingBalanceMonth, clear: true }
+          : { action: 'setOpeningBalance', month: openingBalanceMonth, value: negative ? -value : value, note: document.getElementById('obNote').value.trim() });
+        closeOpeningBalanceModal();
+        showToast(clear ? '↩️ Saldo inicial volta a ser o calculado' : `💾 Saldo inicial de ${monthLabelPT(openingBalanceMonth)} salvo`);
+        await fetchOpeningBalances();
+      } catch (err) {
+        errorEl.innerHTML = `<div class="form-error">❌ ${/desconhecida/i.test(String(err && err.message)) ? 'Falta publicar o Apps Script novo (Nova versão).' : errorText(err)}</div>`;
+      } finally {
+        btn.disabled = false;
+      }
     }
 
     // ---------- Contas a Receber ----------
@@ -8145,6 +8442,7 @@
       payablesLoaded = true;
       refreshOpenCategorySelects();
       if (currentModule === 'pagar') renderPagar();
+      if (currentModule === 'vendas' && vendasMode === 'fluxo') renderFluxo();
     }
 
     /** Atualiza a lista de categorias nos formulários abertos, mantendo o que já foi escolhido. */
@@ -8325,7 +8623,7 @@
         row('Saldo previsto do mês', `${forecast < 0 ? '− ' : ''}${formatCurrencyBRL(Math.abs(forecast))}`, true),
         paid.length ? row('Contas pagas: previsto × pago', `${formatCurrencyBRL(paidEstimated)} → ${formatCurrencyBRL(saidas)}${Math.abs(estDiff) >= 0.01 ? ` (${estDiff > 0 ? '+' : '−'}${formatCurrencyBRL(Math.abs(estDiff))})` : ''}`) : '',
         row(`Despesas de competência ${m.slice(5, 7)}/${m.slice(0, 4)}`, `${formatCurrencyBRL(competence)} <span class="ap-hint">(pagas + a pagar)</span>`),
-      ].join('');
+      ].join('') + `<p style="margin-top:10px;"><a href="#vendas" onclick="event.preventDefault(); fluxoMonth = ${jsArg(m)}; vendasMode = 'fluxo'; switchModule('vendas');">🏦 Ver saldo da conta e próximos meses no Fluxo de caixa ›</a></p>`;
 
       const byCat = {};
       paid.forEach(p => { const c = p.category || 'Sem categoria'; byCat[c] = (byCat[c] || 0) + payableValue(p); });
