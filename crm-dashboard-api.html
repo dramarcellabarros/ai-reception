@@ -2354,6 +2354,13 @@
         <div id="fluxoMes"></div>
       </div>
       <div class="module-card">
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:8px;">
+          <h3 style="margin:0;">Retiradas e aportes</h3>
+          <button class="agenda-toggle-btn" onclick="openCashMovementModal()">➕ Movimento</button>
+        </div>
+        <div id="fluxoMovimentos"></div>
+      </div>
+      <div class="module-card">
         <h3>Próximos meses</h3>
         <div id="fluxoMeses"></div>
       </div>
@@ -3182,6 +3189,35 @@
         <button class="btn secondary" onclick="closeOpeningBalanceModal()">Cancelar</button>
         <button class="btn secondary" id="obClearBtn" onclick="submitOpeningBalance(true)">Usar o calculado</button>
         <button class="btn" id="obSubmitBtn" onclick="submitOpeningBalance(false)" style="flex:1;">💾 Salvar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Movimento de caixa: retirada, aporte e outros (2026-10-28). -->
+  <div class="modal" id="cashMovementModal" style="z-index: 1100;">
+    <div class="modal-content">
+      <span class="close-btn" onclick="closeCashMovementModal()">&times;</span>
+      <h2>➕ Movimento de caixa</h2>
+      <div id="cmError"></div>
+      <div class="chip-row" id="cmTypeChips" style="margin-bottom:6px;"></div>
+      <div id="cmTypeHint" class="ap-hint" style="margin-bottom:14px;"></div>
+      <div class="ap-form-row">
+        <div class="form-group">
+          <label for="cmValue">Valor (R$) *</label>
+          <input type="text" id="cmValue" inputmode="decimal" autocomplete="off" placeholder="0,00">
+        </div>
+        <div class="form-group">
+          <label for="cmDate">Data *</label>
+          <input type="date" id="cmDate">
+        </div>
+      </div>
+      <div class="form-group">
+        <label for="cmDescription">Descrição</label>
+        <input type="text" id="cmDescription" autocomplete="off" placeholder="ex.: pró-labore de novembro">
+      </div>
+      <div style="display:flex; gap:10px;">
+        <button class="btn secondary" onclick="closeCashMovementModal()">Cancelar</button>
+        <button class="btn" id="cmSubmitBtn" onclick="submitCashMovement()" style="flex:1;">💾 Salvar</button>
       </div>
     </div>
   </div>
@@ -7970,12 +8006,33 @@
     let openingBalancesError = '';
     let openingBalanceMonth = '';
     const FLUXO_MONTHS_AHEAD = 6;
+    // Movimentos de caixa: entram no saldo, ficam fora de vendas e despesas.
+    // Data no futuro = previsto (ex.: retirada programada).
+    let cashMovements = []; // { id, date, type, value, description }
+    let cashMovementType = 'Retirada';
+    const CASH_MOVEMENT_TYPES = {
+      Retirada: { sign: -1, icon: '🙋‍♀️', hint: 'Dinheiro que a sócia tira da conta (pró-labore, distribuição de lucro). Não é despesa da clínica.' },
+      Aporte: { sign: 1, icon: '💼', hint: 'Dinheiro que a sócia coloca na conta da clínica.' },
+      'Outra entrada': { sign: 1, icon: '⬇️', hint: 'Entrada que não é venda: empréstimo recebido, rendimento, reembolso.' },
+      'Outra saída': { sign: -1, icon: '⬆️', hint: 'Saída que não é conta a pagar: tarifa do banco, parcela de empréstimo.' },
+    };
 
     async function fetchOpeningBalances() {
       if (!hasDataConfig(loadSettings())) return;
       openingBalancesLoading = true;
       try {
-        const values = await readSheetValues('Saldo Inicial');
+        const [values, movs] = await Promise.all([
+          readSheetValues('Saldo Inicial'),
+          readSheetValues('Movimentos de Caixa'),
+        ]);
+        const mh = movs[0] || [];
+        cashMovements = movs.slice(1).map(r => ({
+          id: r[mh.indexOf('ID')] || '',
+          date: r[mh.indexOf('Data')] || '',
+          type: r[mh.indexOf('Tipo')] || '',
+          value: parseMoneyInput(r[mh.indexOf('Valor')]) || 0,
+          description: r[mh.indexOf('Descrição')] || '',
+        })).filter(x => x.id && CASH_MOVEMENT_TYPES[x.type] && /^\d{4}-\d{2}-\d{2}$/.test(x.date));
         const h = values[0] || [];
         openingBalances = {};
         values.slice(1).forEach(r => {
@@ -8024,7 +8081,16 @@
         f.pendOutCount = toPay.length;
         f.overdueOutCount = m === cur ? toPay.filter(p => p.dueDate < today).length : 0;
       }
-      f.result = f.realIn - f.realOut + f.pendIn - f.pendOut;
+      // Movimentos: até hoje = realizado; depois de hoje = previsto.
+      f.movements = cashMovements.filter(x => inMonth(x.date));
+      const movSum = (done, sign) => f.movements
+        .filter(x => (x.date <= today) === done && CASH_MOVEMENT_TYPES[x.type].sign === sign)
+        .reduce((s, x) => s + x.value, 0);
+      f.movIn = movSum(true, 1); f.movOut = movSum(true, -1);
+      f.pendMovIn = movSum(false, 1); f.pendMovOut = movSum(false, -1);
+      f.totalIn = f.realIn + f.movIn + f.pendIn + f.pendMovIn;
+      f.totalOut = f.realOut + f.movOut + f.pendOut + f.pendMovOut;
+      f.result = f.totalIn - f.totalOut;
       return f;
     }
 
@@ -8068,6 +8134,7 @@
         document.getElementById('fluxoKpis').innerHTML = '';
         document.getElementById('fluxoMes').innerHTML = '<div class="loading">⏳ Carregando contas a pagar e saldo...</div>';
         document.getElementById('fluxoMeses').innerHTML = '';
+        document.getElementById('fluxoMovimentos').innerHTML = '';
         return;
       }
 
@@ -8078,7 +8145,7 @@
       const isPast = m < cur;
       const isCur = m === cur;
       const hasOpening = r.opening !== null;
-      const realized = (hasOpening ? r.opening : 0) + f.realIn - f.realOut;
+      const realized = (hasOpening ? r.opening : 0) + f.realIn - f.realOut + f.movIn - f.movOut;
       const editOpening = { onclick: `openOpeningBalanceModal(${jsArg(m)})`, active: false };
 
       const openingSub = r.informed ? 'informado · toque para alterar' : (hasOpening ? 'calculado · toque para informar' : 'toque para informar');
@@ -8101,6 +8168,8 @@
         Math.abs(diff) >= 0.01 ? row('<span class="ap-hint">Diferença do calculado</span>', `<span class="ap-hint">${diff > 0 ? '+' : '−'}${formatCurrencyBRL(Math.abs(diff))} (movimento fora do CRM?)</span>`) : '',
         row('Entrou (líquido)', `${formatCurrencyBRL(f.realIn)} · ${f.realInCount}`),
         row('Saiu', `− ${formatCurrencyBRL(f.realOut)} · ${f.realOutCount}`),
+        f.movIn ? row('Aportes e outras entradas', formatCurrencyBRL(f.movIn)) : '',
+        f.movOut ? row('Retiradas e outras saídas', `− ${formatCurrencyBRL(f.movOut)}`) : '',
       ];
       if (isPast) {
         lines.push(row(hasOpening ? 'Saldo final' : 'Resultado do mês', signedBRL(realized), true));
@@ -8109,6 +8178,8 @@
         lines.push(
           row(isCur ? 'A receber até o fim do mês' : 'A receber no mês', `${formatCurrencyBRL(f.pendIn)} · ${f.pendInCount} parcela(s)`),
           row(isCur ? 'A pagar até o fim do mês' : 'A pagar no mês', `− ${formatCurrencyBRL(f.pendOut)} · ${f.pendOutCount} conta(s)${f.overdueOutCount ? ` <span class="ap-late">${f.overdueOutCount} vencida(s)</span>` : ''}`),
+          f.pendMovIn ? row('Aportes e entradas programados', formatCurrencyBRL(f.pendMovIn)) : '',
+          f.pendMovOut ? row('Retiradas e saídas programadas', `− ${formatCurrencyBRL(f.pendMovOut)}`) : '',
           row(hasOpening ? 'Saldo previsto no fim do mês' : 'Resultado previsto do mês', signedBRL(hasOpening ? r.close : f.result), true),
         );
       }
@@ -8125,6 +8196,22 @@
         + (payablesLoadError ? `<p class="ap-hint" style="margin-top:10px;">⚠️ ${escapeHtml(payablesLoadError)}</p>` : '')
         + `<p style="color: var(--cor-cinza-cacau); font-size: 12px; margin-top: 10px;">ℹ️ Cartão entra na data da venda, já sem a taxa (na conta pode cair depois). Conta a pagar vencida entra no mês atual; parcela atrasada e Carteira não entram no previsto.${hasOpening ? '' : ' Informe o saldo inicial para ver o saldo da conta, não só o resultado.'}</p>`;
 
+      const movs = f.movements.slice().sort((a, b) => a.date.localeCompare(b.date));
+      document.getElementById('fluxoMovimentos').innerHTML = movs.length ? movs.map(x => {
+        const t = CASH_MOVEMENT_TYPES[x.type];
+        return `
+          <div class="finance-row">
+            <div class="finance-row-main">
+              <span>${t.icon} ${escapeHtml(x.type)}${x.description ? ` <span class="ap-hint">${escapeHtml(x.description)}</span>` : ''}</span>
+              <span class="finance-row-value">${t.sign < 0 ? '− ' : ''}${formatCurrencyBRL(x.value)}</span>
+            </div>
+            <div class="finance-row-meta" style="align-items:center;">
+              <span>${formatDateShortBR(x.date)}${x.date > today ? ' · programado' : ''}</span>
+              <button class="complete-btn complete-btn-danger" style="margin-left:auto;" onclick="deleteCashMovementFromUI(${jsArg(x.id)})" title="Excluir" aria-label="Excluir movimento">🗑️</button>
+            </div>
+          </div>`;
+      }).join('') : '<div class="chart-empty">Nenhuma retirada ou aporte neste mês.</div>';
+
       const anyOpening = rows.some(x => x.close !== null);
       document.getElementById('fluxoMeses').innerHTML = `
         <div class="data-table-wrap"><table class="data-table">
@@ -8135,8 +8222,8 @@
             return `
             <tr class="clickable" onclick="fluxoMonth = ${jsArg(x.month)}; renderFluxo(); document.getElementById('fluxoPane').scrollIntoView({ behavior: 'smooth', block: 'start' });">
               <td>${monthLabelPT(x.month)}${tag ? `<div class="muted">${tag}</div>` : ''}</td>
-              <td class="num hide-mobile">${formatCurrencyBRL(x.flow.realIn + x.flow.pendIn)}</td>
-              <td class="num hide-mobile">− ${formatCurrencyBRL(x.flow.realOut + x.flow.pendOut)}</td>
+              <td class="num hide-mobile">${formatCurrencyBRL(x.flow.totalIn)}</td>
+              <td class="num hide-mobile">− ${formatCurrencyBRL(x.flow.totalOut)}</td>
               <td class="num"${neg(x.flow.result)}>${signedBRL(x.flow.result)}</td>
               ${anyOpening ? `<td class="num"${neg(x.close)}><strong>${x.close === null ? '—' : `${x.close < -0.004 ? '⚠️ ' : ''}${signedBRL(x.close)}`}</strong></td>` : ''}
             </tr>`;
@@ -8188,6 +8275,64 @@
         errorEl.innerHTML = `<div class="form-error">❌ ${/desconhecida/i.test(String(err && err.message)) ? 'Falta publicar o Apps Script novo (Nova versão).' : errorText(err)}</div>`;
       } finally {
         btn.disabled = false;
+      }
+    }
+
+    function setCashMovementType(t) {
+      cashMovementType = t;
+      document.getElementById('cmTypeChips').innerHTML = chipsHtml(Object.keys(CASH_MOVEMENT_TYPES).map(k => [k, `${CASH_MOVEMENT_TYPES[k].icon} ${k}`]), t, 'setCashMovementType');
+      document.getElementById('cmTypeHint').textContent = CASH_MOVEMENT_TYPES[t].hint;
+    }
+
+    function openCashMovementModal() {
+      const settings = loadSettings();
+      if (!settings || !settings.scriptUrl) { alert(NOT_CONFIGURED_MSG); return; }
+      const today = localDateStr(new Date());
+      // Mês aberto no Fluxo: hoje se for o mês atual, senão o dia 1º dele.
+      document.getElementById('cmDate').value = fluxoMonth && fluxoMonth !== today.slice(0, 7) ? `${fluxoMonth}-01` : today;
+      document.getElementById('cmValue').value = '';
+      document.getElementById('cmDescription').value = '';
+      document.getElementById('cmError').innerHTML = '';
+      setCashMovementType('Retirada');
+      document.getElementById('cashMovementModal').classList.add('open');
+      setTimeout(() => document.getElementById('cmValue').focus(), 50);
+    }
+
+    function closeCashMovementModal() {
+      document.getElementById('cashMovementModal').classList.remove('open');
+    }
+
+    async function submitCashMovement() {
+      const errorEl = document.getElementById('cmError');
+      const value = parseMoneyInput(document.getElementById('cmValue').value);
+      const date = document.getElementById('cmDate').value;
+      errorEl.innerHTML = '';
+      if (!(value > 0)) { errorEl.innerHTML = '<div class="form-error">⚠️ Informe o valor.</div>'; return; }
+      if (!date) { errorEl.innerHTML = '<div class="form-error">⚠️ Informe a data.</div>'; return; }
+      const btn = document.getElementById('cmSubmitBtn');
+      btn.disabled = true;
+      try {
+        await payablesPost({ action: 'createCashMovement', type: cashMovementType, value, date, description: document.getElementById('cmDescription').value.trim() });
+        closeCashMovementModal();
+        showToast(`💾 ${cashMovementType} de ${formatCurrencyBRL(value)} em ${formatDateBR(date)}`);
+        fluxoMonth = date.slice(0, 7);
+        await fetchOpeningBalances();
+      } catch (err) {
+        errorEl.innerHTML = `<div class="form-error">❌ ${/desconhecida/i.test(String(err && err.message)) ? 'Falta publicar o Apps Script novo (Nova versão).' : errorText(err)}</div>`;
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    async function deleteCashMovementFromUI(id) {
+      const x = cashMovements.find(m => m.id === id);
+      if (!x || !confirm(`Excluir ${x.type.toLowerCase()} de ${formatCurrencyBRL(x.value)} em ${formatDateBR(x.date)}?`)) return;
+      try {
+        await payablesPost({ action: 'deleteCashMovement', id });
+        showToast('🗑️ Movimento excluído');
+        await fetchOpeningBalances();
+      } catch (err) {
+        alert(`❌ ${errorText(err)}`);
       }
     }
 
