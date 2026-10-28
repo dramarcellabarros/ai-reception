@@ -4599,6 +4599,15 @@
       document.getElementById('errorContainer').innerHTML = '';
     }
 
+    // Depois de uma ação da agenda, recarrega só o que ela mudou
+    // (otimização 2026-10-28, medido: refreshData relia Leads, Financeiro e
+    // Carteira — ~3,3 s — quando só a agenda e o lead tinham mudado).
+    function refreshAfterAgendaAction({ leads = true, finance = false } = {}) {
+      fetchCalendarEvents();
+      if (leads) fetchSheetsData();
+      if (finance) fetchFinanceData();
+    }
+
     function refreshData() {
       fetchSheetsData();
       fetchCalendarEvents();
@@ -11184,7 +11193,7 @@
 
         closeEditAppointmentModal();
         showToast(`✅ Agendamento de ${name} atualizado`);
-        refreshData();
+        refreshAfterAgendaAction();
       } catch (err) {
         document.getElementById('editAppointmentError').innerHTML = `<div class="form-error">❌ ${errorText(err)}</div>`;
       } finally {
@@ -11279,7 +11288,7 @@
 
         closeBlockModal();
         showToast(result.count > 1 ? `🔒 Agenda bloqueada em ${result.count} dias` : '🔒 Horário bloqueado');
-        refreshData();
+        refreshAfterAgendaAction({ leads: false });
       } catch (err) {
         errorBox.innerHTML = `<div class="form-error">❌ ${errorText(err).replace(/\n/g, '<br>')}</div>`;
       } finally {
@@ -11312,7 +11321,7 @@
         const result = await response.json();
         if (!result.ok) throw new Error(result.error || 'Erro desconhecido');
         showToast('🔓 Horário liberado');
-        refreshData();
+        refreshAfterAgendaAction({ leads: false });
       } catch (err) {
         showToast(`❌ Não foi possível liberar: ${friendlyError(err)}`);
       }
@@ -11431,7 +11440,7 @@ ${result.noticeError}
 
 Confirme com ela pelo WhatsApp da clínica.`);
         }
-        refreshData();
+        refreshAfterAgendaAction({ leads: false }); // só a descrição do evento muda
         // Lançamento no Financeiro: mesmo modal do "Cobrar sinal" do CRM.
         openReceivableModal(result.phone || info.phone, {
           fromComplete: true,
@@ -11501,7 +11510,7 @@ Confirme com ela pelo WhatsApp da clínica.`);
         } else {
           showToast(result.depositReversed > 0 ? '❌ Desmarcado e sinal estornado no Financeiro' : '❌ Atendimento desmarcado — foi pro histórico');
         }
-        refreshData();
+        refreshAfterAgendaAction({ finance: result.depositReversed > 0 });
         if (result.depositReversed > 0) fetchFinanceData();
       } catch (err) {
         document.getElementById('cancelError').innerHTML = `<div class="form-error">❌ ${errorText(err)}</div>`;
@@ -11532,7 +11541,7 @@ Confirme com ela pelo WhatsApp da clínica.`);
         if (!result.ok) throw new Error(result.error || 'Erro desconhecido');
 
         showToast('↩️ Atendimento reaberto — voltou pra Agenda ativa');
-        refreshData();
+        refreshAfterAgendaAction();
       } catch (err) {
         showToast(`❌ Não foi possível reabrir: ${friendlyError(err)}`);
       }
@@ -11581,7 +11590,7 @@ Confirme com ela pelo WhatsApp da clínica.`);
 
         closeNewAppointmentModal();
         showToast(`✅ Agendamento criado para ${name} — ${formatDateBR(date)} às ${start}`);
-        refreshData();
+        refreshAfterAgendaAction();
 
         // Pergunta se quer cobrar um sinal/pagamento já na criação do
         // agendamento (pedido do usuário 2026-09-24: "avaliação que
