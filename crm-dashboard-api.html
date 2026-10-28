@@ -2032,6 +2032,9 @@
     .fin-tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; background: var(--cor-creme-avela); border-radius: 12px; padding: 3px; }
     .fin-tabs .chip { border: none; background: transparent; border-radius: 10px; padding: 8px 6px; font-size: 13px; font-weight: 600; }
     .fin-tabs .chip.active { background: var(--cor-branco-perola); box-shadow: 0 1px 4px rgba(107,68,35,0.18); color: var(--cor-texto-marca); }
+    /* Abas principais do Financeiro: 6 numa linha; no celular, 3 × 2. */
+    .fin-main-tabs { grid-template-columns: repeat(6, 1fr); }
+    @media (max-width: 720px) { .fin-main-tabs { grid-template-columns: repeat(3, 1fr); } }
 
     .period-bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
     .period-bar input[type="date"] { width: auto; padding: 6px 8px; font-size: 13px; }
@@ -2295,8 +2298,6 @@
       <button class="module-nav-btn active" data-module="agenda" onclick="switchModule('agenda')">📅 Agenda</button>
       <button class="module-nav-btn" data-module="clientes" onclick="switchModule('clientes')">👥 Clientes</button>
       <button class="module-nav-btn" data-module="vendas" onclick="switchModule('vendas')">💰 Financeiro</button>
-      <button class="module-nav-btn" data-module="receber" onclick="switchModule('receber')">🧾 A Receber</button>
-      <button class="module-nav-btn" data-module="pagar" onclick="switchModule('pagar')">📤 A Pagar</button>
       <button class="module-nav-btn" data-module="conversas" onclick="switchModule('conversas')">💬 Conversas</button>
       <button class="module-nav-btn" data-module="simulador" onclick="switchModule('simulador')">🧮 Simulador</button>
       <button class="module-nav-btn" onclick="toggleSettings()" title="Configurações">⚙️ Config</button>
@@ -2334,10 +2335,11 @@
       <h2>💰 Financeiro</h2>
       <button class="btn-primary-soft" onclick="openClientPicker('Lançar venda para…', openReceivableModal)">➕ Lançar venda</button>
     </div>
-    <!-- Abas Resumo | Vendas | Recebido (pedido do usuário 2026-09-30: "não
-         estou encontrando o resumo financeiro e visualizar separadamente o
-         que eu já recebi por forma de pagamento"). -->
-    <div class="chip-row fin-tabs" id="vendasModeChips"></div>
+    <!-- Abas do Financeiro (2026-09-30: Resumo | Vendas | Recebido; 2026-10-28:
+         + Fluxo de caixa, A Receber e A Pagar, que saíram da barra de cima).
+         A Receber e A Pagar continuam telas próprias (#receber, #pagar) com
+         a mesma fileira de abas no topo. -->
+    <div class="chip-row fin-tabs fin-main-tabs" id="vendasModeChips"></div>
     <div class="chip-row" id="vendasPeriodChips"></div>
     <div class="period-bar">
       <label style="font-size:13px; color:var(--cor-cinza-cacau);">De</label>
@@ -2401,9 +2403,10 @@
   <!-- ===== Módulo Contas a Receber ===== -->
   <div class="container module-view" id="view-receber" hidden>
     <div class="module-title">
-      <h2>🧾 Contas a Receber</h2>
+      <h2>💰 Financeiro</h2>
       <button class="btn-primary-soft" onclick="openClientPicker('Lançar cobrança para…', openReceivableModal)">➕ Lançar cobrança</button>
     </div>
+    <div class="chip-row fin-tabs fin-main-tabs" id="receberFinTabs"></div>
     <div class="kpi-grid" id="receberKpis"></div>
     <div class="controls" style="margin-bottom:10px;">
       <div class="search-box search-clear-wrap">
@@ -2430,7 +2433,7 @@
   <!-- ===== Módulo Contas a Pagar (2026-10-23) ===== -->
   <div class="container module-view" id="view-pagar" hidden>
     <div class="module-title">
-      <h2>📤 Contas a Pagar</h2>
+      <h2>💰 Financeiro</h2>
       <div style="display:flex; gap:8px; flex-wrap:wrap;">
         <button class="agenda-toggle-btn" onclick="openExpenseCategoriesModal()">🏷️ Categorias</button>
         <button class="agenda-toggle-btn" onclick="chooseNfeFile()">📄 Importar XML</button>
@@ -2438,7 +2441,8 @@
         <button class="btn-primary-soft" onclick="openPayableModal()">➕ Lançar despesa</button>
       </div>
     </div>
-    <div class="chip-row fin-tabs ap-tabs" id="pagarModeChips"></div>
+    <div class="chip-row fin-tabs fin-main-tabs" id="pagarFinTabs"></div>
+    <div class="chip-row" id="pagarModeChips"></div>
 
     <div id="pagarContasPane">
       <div class="kpi-grid" id="pagarKpis"></div>
@@ -6909,9 +6913,11 @@
       currentModule = name;
       if (changed || name === 'conversas') setConversasActive(name === 'conversas');
       MODULES.forEach(m => { document.getElementById(`view-${m}`).hidden = m !== name; });
-      document.querySelectorAll('.module-nav-btn').forEach(b => b.classList.toggle('active', b.dataset.module === name));
+      // A Receber e A Pagar ficam dentro do Financeiro (2026-10-28): o botão aceso é o dele.
+      const navName = FIN_SCREENS.includes(name) ? 'vendas' : name;
+      document.querySelectorAll('.module-nav-btn').forEach(b => b.classList.toggle('active', b.dataset.module === navName));
       // Módulo escolhido fica sempre visível na barra (no celular ela rola).
-      const activeBtn = document.querySelector(`.module-nav-btn[data-module="${name}"]`);
+      const activeBtn = document.querySelector(`.module-nav-btn[data-module="${navName}"]`);
       if (activeBtn) activeBtn.scrollIntoView({ block: 'nearest', inline: 'nearest' });
       updateModuleNavArrows();
       if (location.hash.slice(1) !== name) location.hash = name;
@@ -7858,6 +7864,23 @@
 
     function setVendasMode(m) { vendasMode = m; renderVendas(); }
 
+    // Abas do Financeiro (2026-10-28): as quatro primeiras são modos da tela
+    // Financeiro; A Receber e A Pagar são as telas #receber e #pagar.
+    const FIN_TABS = [
+      ['resumo', '📊 Resumo'], ['vendido', '🛍️ Vendas'], ['recebido', '💵 Recebido'],
+      ['fluxo', '🏦 Fluxo de caixa'], ['receber', '🧾 A Receber'], ['pagar', '📤 A Pagar'],
+    ];
+    const FIN_SCREENS = ['receber', 'pagar'];
+
+    function finTabsHtml(active) { return chipsHtml(FIN_TABS, active, 'openFinTab'); }
+
+    function openFinTab(key) {
+      if (FIN_SCREENS.includes(key)) { switchModule(key); return; }
+      vendasMode = key;
+      if (currentModule !== 'vendas') switchModule('vendas');
+      else renderVendas();
+    }
+
     function setVendasMethod(m) { vendasMethod = (m === vendasMethod) ? 'todas' : m; renderVendas(); }
 
     // Resumo → toca numa forma → aba Recebido já filtrada por ela.
@@ -7996,12 +8019,7 @@
         ['hoje', 'Hoje'], ['7dias', '7 dias'], ['mes', 'Este mês'], ['mespassado', 'Mês passado'], ['ano', 'Este ano'],
       ], vendasPeriod, 'setVendasPeriod');
 
-      document.getElementById('vendasModeChips').innerHTML = chipsHtml([
-        ['resumo', '📊 Resumo'],
-        ['vendido', '🛍️ Vendas'],
-        ['recebido', '💵 Recebido'],
-        ['fluxo', '🏦 Fluxo de caixa'],
-      ], vendasMode, 'setVendasMode');
+      document.getElementById('vendasModeChips').innerHTML = finTabsHtml(vendasMode);
 
       // Fluxo de caixa anda por mês (‹ ›), não pelo período De/até.
       const fluxo = vendasMode === 'fluxo';
@@ -8517,6 +8535,7 @@
     function setReceberMethod(m) { receberMethod = (m === receberMethod) ? 'todas' : m; renderReceber(); }
 
     function renderReceber() {
+      document.getElementById('receberFinTabs').innerHTML = finTabsHtml('receber');
       const today = localDateStr(new Date());
       const in7 = addDays(today, 7);
       const monthKey = today.slice(0, 7);
@@ -8786,6 +8805,7 @@
     function shiftPagarMonth(n) { pagarMonth = addMonthsClamped(`${pagarMonth}-01`, n).slice(0, 7); renderPagar(); }
 
     function renderPagar() {
+      document.getElementById('pagarFinTabs').innerHTML = finTabsHtml('pagar');
       const today = localDateStr(new Date());
       if (!pagarMonth) pagarMonth = today.slice(0, 7);
       document.getElementById('pagarModeChips').innerHTML = chipsHtml([['contas', '📋 Contas'], ['resumo', '📊 Resumo do mês']], pagarMode, 'setPagarMode');
