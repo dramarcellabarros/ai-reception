@@ -807,6 +807,23 @@
       color: white;
     }
 
+    /* Tratamentos por sessão (2026-10-29). */
+    .session-badge {
+      display: inline-block; font-size: 10.5px; font-weight: 700; padding: 3px 8px; border-radius: 999px;
+      background: var(--cor-rosa-sereno); color: var(--cor-texto-marca); white-space: nowrap;
+    }
+    .session-badge.session-last { background: var(--cor-dourado-ambar); color: #fff; }
+    .treatment-picker { margin-top: 12px; padding: 12px; border-radius: 10px; background: var(--cor-areia-suave); border: 1px solid var(--cor-creme-avela); }
+    .treatment-picker label { font-weight: 600; }
+    .treatment-picker .tp-hint { font-size: 12.5px; color: var(--cor-cinza-cacau); margin-top: 6px; }
+    .treatment-picker .tp-hint.tp-warn { color: #B3462F; font-weight: 600; }
+    .treatment-card { padding: 12px; border: 1px solid var(--cor-creme-avela); border-radius: 10px; margin-bottom: 10px; background: var(--cor-branco-perola); }
+    .treatment-card-head { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+    .treatment-progress { display: flex; gap: 3px; margin: 8px 0 6px; }
+    .treatment-progress span { flex: 1; height: 6px; border-radius: 3px; background: var(--cor-creme-avela); }
+    .treatment-progress span.done { background: var(--cor-texto-marca); }
+    .treatment-progress span.scheduled { background: var(--cor-dourado-ambar); }
+
     /* Bloqueio de agenda (2026-10-02): visual "riscado" neutro, pra nunca
        ser confundido com atendimento de cliente. Não é clicável. */
     .agenda-day-group .agenda-event.agenda-event-block,
@@ -2618,7 +2635,7 @@
         </div>
         <div class="form-group">
           <label>Telefone:</label>
-          <input type="tel" id="apPhone" oninput="maskCellphoneInput(this)">
+          <input type="tel" id="apPhone" oninput="maskCellphoneInput(this); renderTreatmentPicker('ap')">
         </div>
         <div class="form-group">
           <label>Origem:</label>
@@ -2641,6 +2658,7 @@
           <label>Procedimento(s):</label>
           <div class="procedure-checklist" id="apProcedureChecklist"></div>
           <div class="procedure-check-summary" id="apProcSummary"></div>
+          <div class="treatment-picker" id="apTreatmentGroup" style="display:none;"></div>
         </div>
         <div class="form-group">
           <label>Data:</label>
@@ -2828,6 +2846,7 @@
         <label>Procedimento(s):</label>
         <div class="procedure-checklist" id="editProcedureChecklist"></div>
         <div class="procedure-check-summary" id="editProcSummary"></div>
+        <div class="treatment-picker" id="editTreatmentGroup" style="display:none;"></div>
       </div>
       <div class="form-group">
         <label>Data:</label>
@@ -3194,6 +3213,35 @@
     </div>
   </div>
 
+  <!-- Ajustar tratamento por sessão (2026-10-29). -->
+  <div class="modal" id="treatmentModal" style="z-index: 1100;">
+    <div class="modal-content">
+      <span class="close-btn" onclick="closeTreatmentModal()">&times;</span>
+      <h2>🔁 Tratamento</h2>
+      <div id="trError"></div>
+      <div id="trInfo" style="margin-bottom:14px;"></div>
+      <div class="ap-form-row">
+        <div class="form-group">
+          <label for="trTotal">Total de sessões *</label>
+          <input type="number" id="trTotal" inputmode="numeric" min="1" max="100" step="1">
+        </div>
+        <div class="form-group">
+          <label for="trRegion">Região</label>
+          <input type="text" id="trRegion" maxlength="40" autocomplete="off" placeholder="ex.: rosto, abdômen">
+        </div>
+      </div>
+      <div class="form-group">
+        <label for="trNote">Observação</label>
+        <input type="text" id="trNote" maxlength="300" autocomplete="off">
+      </div>
+      <div style="display:flex; gap:10px; flex-wrap:wrap;">
+        <button class="btn secondary" onclick="closeTreatmentModal()">Cancelar</button>
+        <button class="btn secondary" id="trCloseBtn" onclick="submitTreatment('toggle')"></button>
+        <button class="btn" id="trSubmitBtn" onclick="submitTreatment('save')" style="flex:1;">💾 Salvar</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Saldo inicial do mês no Fluxo de Caixa (2026-10-28). -->
   <div class="modal" id="openingBalanceModal" style="z-index: 1100;">
     <div class="modal-content">
@@ -3424,6 +3472,12 @@
            "acesso ao cadastro de clientes onde exibirá um histórico de
            procedimentos individuais já realizados". Só os agendamentos
            marcados como ✅ Concluído (getClientHistory no Apps Script). -->
+      <!-- Tratamentos por sessão (2026-10-29): pacote de N sessões de um procedimento. -->
+      <div id="ldTreatmentsSection" style="display:none;">
+        <h3 style="font-size: 14px; color: var(--cor-texto-marca); margin: 22px 0 12px; border-top: 1px solid var(--cor-creme-avela); padding-top: 18px;">🔁 Tratamentos</h3>
+        <div id="ldTreatmentsList"></div>
+      </div>
+
       <h3 style="font-size: 14px; color: var(--cor-texto-marca); margin: 22px 0 12px; border-top: 1px solid var(--cor-creme-avela); padding-top: 18px;">📋 Histórico de Procedimentos</h3>
       <div id="ldHistoryList"></div>
 
@@ -3579,6 +3633,8 @@
       'Toxina Botulínica',
     ];
 
+    let PROCEDURE_SESSIONS = {}; // nome → sessões do pacote padrão (só os controlados por sessão)
+
     /** Busca a lista de procedimentos da aba "Procedimentos" na planilha
      * (via Apps Script, não a API pública do Sheets — assim a aba não
      * precisa ser "Disponibilizada ao público" como a Leads/Financeiro).
@@ -3596,10 +3652,249 @@
           PROCEDURE_OPTIONS = body.procedures
             .map(p => p.name)
             .sort((a, b) => a.localeCompare(b, 'pt-BR', { sensitivity: 'base' }));
+          // Coluna "Sessões" da aba Procedimentos (2026-10-29): > 0 = controlado por sessão.
+          PROCEDURE_SESSIONS = {};
+          body.procedures.forEach(p => { if (p.sessions > 0) PROCEDURE_SESSIONS[p.name] = p.sessions; });
         }
       } catch (err) {
         console.error('Erro ao buscar procedimentos:', err);
       }
+    }
+
+    // ================================================================
+    // Tratamentos por sessão (pedido do usuário 2026-10-29). Pacote de N
+    // sessões de um procedimento (com região opcional). O servidor numera
+    // ("Sessão: k/N." na descrição do evento) e mantém a aba Tratamentos;
+    // aqui: escolher/criar o tratamento ao agendar, mostrar a sessão na
+    // agenda e o andamento na ficha. Regras: total definido no início
+    // (ajustável), desmarcado e falta não contam, feita = ✅ concluído.
+    // ================================================================
+    let allTreatments = [];
+    let treatmentEditId = null;
+
+    async function fetchTreatments() {
+      if (!hasDataConfig(loadSettings())) return;
+      try {
+        const values = await readSheetValues('Tratamentos');
+        const h = values[0] || [];
+        const col = (r, name) => r[h.indexOf(name)] || '';
+        allTreatments = values.slice(1).map(r => ({
+          id: col(r, 'ID'),
+          phone: col(r, 'Telefone'),
+          name: col(r, 'Cliente'),
+          procedure: col(r, 'Procedimento'),
+          region: col(r, 'Região'),
+          total: parseInt(col(r, 'Total de Sessões'), 10) || 0,
+          done: parseInt(col(r, 'Feitas'), 10) || 0,
+          scheduled: parseInt(col(r, 'Agendadas'), 10) || 0,
+          status: col(r, 'Status') || 'Em andamento',
+          start: col(r, 'Início'),
+          closedAt: col(r, 'Encerrado em'),
+          sessions: col(r, 'Sessões'),
+          note: col(r, 'Observação'),
+        })).filter(t => t.id);
+      } catch (err) {
+        // Aba ainda não existe / script antigo: sem tratamentos, o resto segue.
+        allTreatments = [];
+      }
+      const detail = document.getElementById('leadDetailModal');
+      if (detail && detail.classList.contains('open') && currentDetailPhone) renderLeadTreatments(currentDetailPhone);
+    }
+
+    function treatmentLabel(t) {
+      return `${t.procedure}${t.region ? ` · ${t.region}` : ''}`;
+    }
+
+    function sessionInfo(description) {
+      const m = String(description || '').match(/Sessão:\s*(\d+)\/(\d+)\./);
+      return m ? { k: +m[1], total: +m[2] } : null;
+    }
+
+    function treatmentIdOf(description) {
+      const m = String(description || '').match(/Tratamento:\s*(T-[A-Z0-9]{8})\./);
+      return m ? m[1] : '';
+    }
+
+    /** Selo "Sessão 3/6" na agenda (e "última" quando k = N). */
+    function sessionBadgeHtml(description) {
+      const s = sessionInfo(description);
+      if (!s) return '';
+      const last = s.k >= s.total;
+      return ` <span class="session-badge${last ? ' session-last' : ''}" title="Sessão do tratamento${last ? ' — última' : ''}">Sessão ${s.k}/${s.total}${s.k === s.total ? ' · última' : s.k > s.total ? ' · além do total' : ''}</span>`;
+    }
+
+    /** Primeiro procedimento marcado que é controlado por sessão (ou null). */
+    function sessionProcedureOf(namespace, typeSelectId) {
+      const type = document.getElementById(typeSelectId).value;
+      if (type !== 'PROCEDIMENTO' && type !== 'RETORNO') return null;
+      const name = getSelectedProcedures(namespace).find(p => PROCEDURE_SESSIONS[p] > 0);
+      return name ? { name, sessions: PROCEDURE_SESSIONS[name] } : null;
+    }
+
+    function treatmentPickerPhone(namespace) {
+      if (namespace === 'edit') return (editContext && editContext.phone) || '';
+      return document.getElementById('apPhone').value;
+    }
+
+    /**
+     * Bloco "Tratamento" abaixo dos procedimentos (Novo e Editar agendamento).
+     * Mantém a escolha atual ao redesenhar (troca de procedimento/telefone).
+     */
+    function renderTreatmentPicker(namespace) {
+      const group = document.getElementById(`${namespace}TreatmentGroup`);
+      if (!group) return;
+      const typeId = namespace === 'edit' ? 'editType' : 'apType';
+      const proc = sessionProcedureOf(namespace, typeId);
+      if (!proc) { group.style.display = 'none'; group.innerHTML = ''; return; }
+      const digits = phoneDigits(normalizePhoneBR(treatmentPickerPhone(namespace)) || '');
+      const linkedId = namespace === 'edit' && editContext ? editContext.treatmentId : '';
+      const options = allTreatments.filter(t => digits && phoneDigits(t.phone) === digits && t.procedure === proc.name
+        && (t.status === 'Em andamento' || t.id === linkedId));
+      const prev = document.getElementById(`${namespace}TreatmentSel`);
+      const prevTotal = document.getElementById(`${namespace}TreatmentTotal`);
+      const prevRegion = document.getElementById(`${namespace}TreatmentRegion`);
+      let selected = prev ? prev.value : (linkedId || (options[0] ? options[0].id : 'new'));
+      if (selected !== 'new' && selected !== 'none' && !options.some(t => t.id === selected)) selected = options[0] ? options[0].id : 'new';
+      const opt = (value, label) => `<option value="${escapeHtml(value)}"${value === selected ? ' selected' : ''}>${escapeHtml(label)}</option>`;
+      const t = options.find(x => x.id === selected);
+      let hint = '';
+      if (t) {
+        const own = t.id === linkedId; // editando uma sessão que já é deste tratamento
+        const next = own ? null : t.done + t.scheduled + 1;
+        hint = own
+          ? `<div class="tp-hint">${t.done} feita(s) e ${t.scheduled} agendada(s) de ${t.total}.</div>`
+          : `<div class="tp-hint${next > t.total ? ' tp-warn' : ''}">${next > t.total
+            ? `⚠️ Este tratamento já tem ${t.done + t.scheduled} de ${t.total} sessões: esta será a ${next}ª, além do total. Ajuste o total na ficha se for o caso.`
+            : `Esta será a sessão ${next} de ${t.total}${next === t.total ? ' (última)' : ''}.`}</div>`;
+      }
+      group.style.display = 'block';
+      group.innerHTML = `
+        <label for="${namespace}TreatmentSel">🔁 ${escapeHtml(proc.name)} é por sessão</label>
+        <select id="${namespace}TreatmentSel" onchange="renderTreatmentPicker('${namespace}')" style="margin-top:6px;">
+          ${options.map(x => opt(x.id, `${treatmentLabel(x)} — ${x.done} feita(s) + ${x.scheduled} agendada(s) de ${x.total}`)).join('')}
+          ${opt('new', '➕ Novo tratamento')}
+          ${namespace === 'edit' ? opt('none', 'Sem tratamento (sessão avulsa)') : ''}
+        </select>
+        ${selected === 'new' ? `
+          <div class="ap-form-row" style="margin-top:10px;">
+            <div class="form-group" style="margin-bottom:0;">
+              <label for="${namespace}TreatmentTotal">Total de sessões</label>
+              <input type="number" id="${namespace}TreatmentTotal" inputmode="numeric" min="1" max="100" step="1" value="${prevTotal ? escapeHtml(prevTotal.value) : proc.sessions}">
+            </div>
+            <div class="form-group" style="margin-bottom:0;">
+              <label for="${namespace}TreatmentRegion">Região (opcional)</label>
+              <input type="text" id="${namespace}TreatmentRegion" maxlength="40" autocomplete="off" placeholder="ex.: rosto, abdômen" value="${prevRegion ? escapeHtml(prevRegion.value) : ''}">
+            </div>
+          </div>
+          <div class="tp-hint">Esta será a sessão 1. Use a região para separar dois tratamentos do mesmo procedimento.</div>` : hint}
+      `;
+    }
+
+    /**
+     * O que mandar ao servidor: { id } | { new, procedure, total, region } |
+     * { none } (editar: desligar) | undefined (sem procedimento por sessão).
+     * Lança erro de validação em texto pronto para a tela.
+     */
+    function getTreatmentPayload(namespace) {
+      const typeId = namespace === 'edit' ? 'editType' : 'apType';
+      const proc = sessionProcedureOf(namespace, typeId);
+      const linkedId = namespace === 'edit' && editContext ? editContext.treatmentId : '';
+      if (!proc) return linkedId ? { none: true } : undefined;
+      const sel = document.getElementById(`${namespace}TreatmentSel`);
+      const value = sel ? sel.value : 'new';
+      if (value === 'none') return linkedId ? { none: true } : undefined;
+      if (value !== 'new') return value === linkedId ? undefined : { id: value };
+      const total = parseInt(document.getElementById(`${namespace}TreatmentTotal`).value, 10);
+      if (!(total > 0 && total <= 100)) throw new Error('Informe o total de sessões do tratamento (1 a 100).');
+      return { new: true, procedure: proc.name, total, region: document.getElementById(`${namespace}TreatmentRegion`).value.trim() };
+    }
+
+    /** Linha do resumo "Tratamento" no passo de confirmação do agendamento. */
+    function treatmentSummaryText(payload) {
+      if (!payload) return '';
+      if (payload.new) return `Novo: ${payload.procedure}${payload.region ? ` · ${payload.region}` : ''} — ${payload.total} sessões (esta é a 1ª)`;
+      const t = allTreatments.find(x => x.id === payload.id);
+      return t ? `${treatmentLabel(t)} — sessão ${t.done + t.scheduled + 1} de ${t.total}` : '';
+    }
+
+    /** Ficha: um cartão por tratamento, em andamento primeiro. */
+    function renderLeadTreatments(phone) {
+      const section = document.getElementById('ldTreatmentsSection');
+      const list = document.getElementById('ldTreatmentsList');
+      const digits = phoneDigits(phone || '');
+      const mine = allTreatments.filter(t => digits && phoneDigits(t.phone) === digits)
+        .sort((a, b) => (a.status === 'Em andamento' ? 0 : 1) - (b.status === 'Em andamento' ? 0 : 1) || String(b.start).localeCompare(String(a.start)));
+      section.style.display = mine.length ? '' : 'none';
+      list.innerHTML = mine.map(t => {
+        const left = Math.max(0, t.total - t.done - t.scheduled);
+        const bars = Array.from({ length: Math.min(t.total, 30) }, (_, i) =>
+          `<span class="${i < t.done ? 'done' : i < t.done + t.scheduled ? 'scheduled' : ''}"></span>`).join('');
+        const statusBadge = t.status === 'Em andamento' ? ''
+          : `<span class="finance-status-badge ${t.status === 'Concluído' ? 'finance-status-paid' : ''}">${escapeHtml(t.status)}${t.closedAt ? ` ${formatDateShortBR(t.closedAt)}` : ''}</span>`;
+        return `
+          <div class="treatment-card">
+            <div class="treatment-card-head">
+              <strong>${escapeHtml(treatmentLabel(t))}</strong>
+              <span style="display:flex; gap:6px; align-items:center;">${statusBadge}
+                <button class="complete-btn complete-btn-compact" onclick="openTreatmentModal(${jsArg(t.id)})" title="Ajustar tratamento" aria-label="Ajustar tratamento">✏️</button></span>
+            </div>
+            <div class="treatment-progress" aria-hidden="true">${bars}</div>
+            <div style="font-size:13px;">${t.done} feita(s) · ${t.scheduled} agendada(s) · ${left} restante(s) de <strong>${t.total}</strong></div>
+            ${t.sessions ? `<div class="ap-hint" style="margin-top:4px;">${escapeHtml(t.sessions)}</div>` : ''}
+            ${t.note ? `<div class="ap-hint" style="margin-top:4px;">📝 ${escapeHtml(t.note)}</div>` : ''}
+          </div>`;
+      }).join('');
+    }
+
+    function openTreatmentModal(id) {
+      const t = allTreatments.find(x => x.id === id);
+      if (!t) return;
+      treatmentEditId = id;
+      document.getElementById('trError').innerHTML = '';
+      document.getElementById('trInfo').innerHTML = `<strong>${escapeHtml(t.procedure)}</strong> — ${escapeHtml(t.name)}<div class="ap-hint">${t.done} feita(s) · ${t.scheduled} agendada(s) · ${escapeHtml(t.status)}</div>`;
+      document.getElementById('trTotal').value = t.total;
+      document.getElementById('trRegion').value = t.region;
+      document.getElementById('trNote').value = t.note;
+      document.getElementById('trCloseBtn').textContent = t.status === 'Encerrado' ? '↩️ Reabrir' : '⏹️ Encerrar';
+      document.getElementById('treatmentModal').classList.add('open');
+    }
+
+    function closeTreatmentModal() {
+      document.getElementById('treatmentModal').classList.remove('open');
+      treatmentEditId = null;
+    }
+
+    async function submitTreatment(mode) {
+      const t = allTreatments.find(x => x.id === treatmentEditId);
+      if (!t) return;
+      const errorEl = document.getElementById('trError');
+      errorEl.innerHTML = '';
+      const body = { action: 'updateTreatment', id: t.id };
+      if (mode === 'toggle') {
+        const closing = t.status !== 'Encerrado';
+        if (closing && !confirm(`Encerrar o tratamento de ${t.procedure} antes de completar as ${t.total} sessões? As sessões já agendadas continuam na agenda.`)) return;
+        body.close = closing;
+      } else {
+        const total = parseInt(document.getElementById('trTotal').value, 10);
+        if (!(total > 0 && total <= 100)) { errorEl.innerHTML = '<div class="form-error">⚠️ Total de sessões entre 1 e 100.</div>'; return; }
+        Object.assign(body, { total, region: document.getElementById('trRegion').value.trim(), note: document.getElementById('trNote').value.trim() });
+      }
+      try {
+        await payablesPost(body);
+        closeTreatmentModal();
+        showToast(mode === 'toggle' ? (body.close ? '⏹️ Tratamento encerrado' : '↩️ Tratamento reaberto') : '💾 Tratamento atualizado');
+        // Total mudou: a numeração "k/N" dos eventos também muda.
+        refreshAfterAgendaAction();
+      } catch (err) {
+        errorEl.innerHTML = `<div class="form-error">❌ ${errorText(err)}</div>`;
+      }
+    }
+
+    /** Aviso depois de concluir/agendar: "Sessão 6/6 — tratamento concluído". */
+    function treatmentToastSuffix(result) {
+      const list = (result && result.treatments) || [];
+      const done = list.find(x => x.justCompleted);
+      return done ? ` · 🎉 ${done.procedure}${done.region ? ` (${done.region})` : ''}: tratamento concluído (${done.done}/${done.total})` : '';
     }
 
     // Campos de valor em R$ (todo input number com step 0.01, inclusive
@@ -4606,9 +4901,11 @@
       fetchCalendarEvents();
       if (leads) fetchSheetsData();
       if (finance) fetchFinanceData();
+      if (leads) fetchTreatments();
     }
 
     function refreshData() {
+      fetchTreatments();
       fetchSheetsData();
       fetchCalendarEvents();
       fetchFinanceData();
@@ -4956,6 +5253,7 @@
             const statusInfo = getHistoryStatusLabel(ev.summary);
             const depositPending = !completed && depositStatus(ev.description) === 'pending';
             const badge = (type ? `<span class="type-badge ${type.className}">${type.label}</span>` : '')
+              + sessionBadgeHtml(ev.description)
               + (depositPending ? ' <span class="deposit-badge" title="Avaliação marcada pela IA, aguardando o sinal">⏳ Sinal</span>' : '');
             // Passa só o eventId (alfanumérico, seguro em onclick) — summary
             // e description são lidos de allCalendarEvents dentro de cada
@@ -5061,6 +5359,7 @@
 
       renderLeadFinanceList(phone);
       renderLeadHistory(phone);
+      renderLeadTreatments(phone);
       renderLeadProducts(phone);
       renderLeadCarteira(phone);
 
@@ -10001,6 +10300,7 @@
       document.getElementById('apClientSearch').value = '';
       document.getElementById('apClientResults').innerHTML = '';
       document.getElementById('apClientResults').style.display = 'none';
+      document.getElementById('apTreatmentGroup').innerHTML = ''; // não herda a escolha da última vez
       document.getElementById('apProcedureChecklist').innerHTML = procedureChecklistHtml('ap');
       resetProcedureChecklist('ap');
       onProcedureCheckChange('ap');
@@ -10066,12 +10366,15 @@
       document.getElementById('apClientSearch').value = '';
       document.getElementById('apClientResults').innerHTML = '';
       document.getElementById('apClientResults').style.display = 'none';
+      renderTreatmentPicker('ap'); // tratamentos em andamento desta cliente
     }
 
     function toggleProcedureVisibility(typeSelectId, groupId) {
       const type = document.getElementById(typeSelectId).value;
       const show = type === 'PROCEDIMENTO' || type === 'RETORNO';
       document.getElementById(groupId).style.display = show ? 'block' : 'none';
+      if (typeSelectId === 'apType') renderTreatmentPicker('ap');
+      if (typeSelectId === 'editType') renderTreatmentPicker('edit');
     }
 
     // Checklist de procedimentos — substitui o <select> de escolha única
@@ -10129,6 +10432,7 @@
       if (!summaryEl) return;
       const selected = getSelectedProcedures(namespace);
       summaryEl.textContent = selected.length ? selected.join(PROCEDURE_JOIN_SEPARATOR) : '';
+      if (namespace === 'ap' || namespace === 'edit') renderTreatmentPicker(namespace);
 
       // Se a calculadora estava aberta e a seleção de procedimentos
       // mudou, ela ficaria com a lista errada (um input a mais/a menos
@@ -10439,6 +10743,13 @@
         showAppointmentError('⚠️ Marque pelo menos um procedimento.');
         return;
       }
+      let treatment;
+      try {
+        treatment = getTreatmentPayload('ap');
+      } catch (err) {
+        showAppointmentError(`⚠️ ${err.message}`);
+        return;
+      }
 
       const phone = normalizePhoneBR(phoneRaw);
       if (phone.replace(/\D/g, '').length < 12) {
@@ -10482,6 +10793,7 @@
         ['Origem', source],
         ['Tipo', APPOINTMENT_TYPE_LABELS[type] || type],
         ...(procedure ? [['Procedimento', procedure]] : []),
+        ...(treatment ? [['Tratamento', treatmentSummaryText(treatment)]] : []),
         ['Data', dateLabel],
         ['Horário', `${start} às ${end}${durationLabel}`],
       ];
@@ -10640,7 +10952,7 @@
         if (chain) {
           showToast(`✅ Concluído — depois de registrar a cobrança, escolha o horário do ${(APPOINTMENT_TYPE_LABELS[nextType] || '').toLowerCase()}`);
         } else {
-          showToast(`✅ Atendimento de ${name} concluído`);
+          showToast(`✅ Atendimento de ${name} concluído${treatmentToastSuffix(result)}`);
         }
         refreshData();
 
@@ -11118,12 +11430,16 @@
       const typeKey = type === APPOINTMENT_TYPE_STYLES.PROCEDIMENTO ? 'PROCEDIMENTO'
         : type === APPOINTMENT_TYPE_STYLES.RETORNO ? 'RETORNO' : 'AVALIACAO';
 
-      // Procedimento não vem do evento do Calendar (só a categoria/tipo
-      // vem) — busca na planilha, já carregada em allData, pelo telefone.
+      // Procedimento deste agendamento: o da descrição do evento (desde
+      // 2026-09-24 ela guarda "Procedimento: …"); sem ele, o último do
+      // cadastro, como antes.
       const lead = allData.find(l => l.phone === info.phone);
-      const procedureValue = (lead && lead.procedure) || '';
+      const procMatch = (ev.description || '').match(/Procedimento:\s*([^.]+)\./);
+      const eventProcedure = procMatch && procMatch[1].trim() !== '—' ? procMatch[1].trim() : '';
+      const procedureValue = eventProcedure || (lead && lead.procedure) || '';
 
-      editContext = { eventId };
+      editContext = { eventId, phone: info.phone, treatmentId: treatmentIdOf(ev.description) };
+      document.getElementById('editTreatmentGroup').innerHTML = '';
 
       document.getElementById('editAppointmentError').innerHTML = '';
       document.getElementById('editName').value = info.name || '';
@@ -11191,6 +11507,13 @@
         document.getElementById('editAppointmentError').innerHTML = '<div class="form-error">⚠️ Escolha qual procedimento.</div>';
         return;
       }
+      let treatment;
+      try {
+        treatment = getTreatmentPayload('edit');
+      } catch (err) {
+        document.getElementById('editAppointmentError').innerHTML = `<div class="form-error">⚠️ ${escapeHtml(err.message)}</div>`;
+        return;
+      }
 
       const [start, end] = slotValue.split('|');
       const btn = document.getElementById('editSubmitBtn');
@@ -11201,7 +11524,7 @@
         const response = await scriptFetch(settings.scriptUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-          body: JSON.stringify({ action: 'editAppointment', eventId: editContext.eventId, name, source, appointmentType, procedure, date, start, end })
+          body: JSON.stringify({ action: 'editAppointment', eventId: editContext.eventId, name, source, appointmentType, procedure, date, start, end, treatment })
         });
         const result = await response.json();
         if (!result.ok) throw new Error(result.error || 'Erro desconhecido');
@@ -11579,6 +11902,14 @@ Confirme com ela pelo WhatsApp da clínica.`);
       }
 
       const [start, end] = slotValue.split('|');
+      let treatment;
+      try {
+        treatment = getTreatmentPayload('ap');
+      } catch (err) {
+        backToForm();
+        showAppointmentError(`⚠️ ${err.message}`);
+        return;
+      }
       const btn = document.getElementById('apSubmitBtn');
       btn.disabled = true;
       btn.textContent = '⏳ Criando...';
@@ -11590,7 +11921,7 @@ Confirme com ela pelo WhatsApp da clínica.`);
         const response = await scriptFetch(settings.scriptUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-          body: JSON.stringify({ action: 'createAppointment', phone, name, source, appointmentType, procedure, date, start, end })
+          body: JSON.stringify({ action: 'createAppointment', phone, name, source, appointmentType, procedure, date, start, end, treatment })
         });
         const result = await response.json();
 
@@ -11604,7 +11935,8 @@ Confirme com ela pelo WhatsApp da clínica.`);
         const savedPhone = result.phone || phone;
 
         closeNewAppointmentModal();
-        showToast(`✅ Agendamento criado para ${name} — ${formatDateBR(date)} às ${start}`);
+        const session = ((result.treatments || [])[0]);
+        showToast(`✅ Agendamento criado para ${name} — ${formatDateBR(date)} às ${start}${session ? ` · ${session.procedure}: ${session.done + session.scheduled} de ${session.total} sessões marcadas` : ''}`);
         refreshAfterAgendaAction();
 
         // Pergunta se quer cobrar um sinal/pagamento já na criação do
