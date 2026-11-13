@@ -3226,9 +3226,13 @@
           <input type="number" id="trTotal" inputmode="numeric" min="1" max="100" step="1">
         </div>
         <div class="form-group">
-          <label for="trRegion">Região</label>
-          <input type="text" id="trRegion" maxlength="40" autocomplete="off" placeholder="ex.: rosto, abdômen">
+          <label for="trPrior">Feitas antes do sistema</label>
+          <input type="number" id="trPrior" inputmode="numeric" min="0" max="99" step="1">
         </div>
+      </div>
+      <div class="form-group">
+        <label for="trRegion">Região</label>
+        <input type="text" id="trRegion" maxlength="40" autocomplete="off" placeholder="ex.: rosto, abdômen">
       </div>
       <div class="form-group">
         <label for="trNote">Observação</label>
@@ -3692,6 +3696,7 @@
           closedAt: col(r, 'Encerrado em'),
           sessions: col(r, 'Sessões'),
           note: col(r, 'Observação'),
+          prior: parseInt(col(r, 'Feitas antes'), 10) || 0,
         })).filter(t => t.id);
       } catch (err) {
         // Aba ainda não existe / script antigo: sem tratamentos, o resto segue.
@@ -3753,6 +3758,7 @@
       const prev = document.getElementById(`${namespace}TreatmentSel`);
       const prevTotal = document.getElementById(`${namespace}TreatmentTotal`);
       const prevRegion = document.getElementById(`${namespace}TreatmentRegion`);
+      const prevPrior = document.getElementById(`${namespace}TreatmentPrior`);
       let selected = prev ? prev.value : (linkedId || (options[0] ? options[0].id : 'new'));
       if (selected !== 'new' && selected !== 'none' && !options.some(t => t.id === selected)) selected = options[0] ? options[0].id : 'new';
       const opt = (value, label) => `<option value="${escapeHtml(value)}"${value === selected ? ' selected' : ''}>${escapeHtml(label)}</option>`;
@@ -3779,19 +3785,37 @@
           <div class="ap-form-row" style="margin-top:10px;">
             <div class="form-group" style="margin-bottom:0;">
               <label for="${namespace}TreatmentTotal">Total de sessões</label>
-              <input type="number" id="${namespace}TreatmentTotal" inputmode="numeric" min="1" max="100" step="1" value="${prevTotal ? escapeHtml(prevTotal.value) : proc.sessions}">
+              <input type="number" id="${namespace}TreatmentTotal" inputmode="numeric" min="1" max="100" step="1" value="${prevTotal ? escapeHtml(prevTotal.value) : proc.sessions}" oninput="updateTreatmentNewHint('${namespace}')">
             </div>
             <div class="form-group" style="margin-bottom:0;">
-              <label for="${namespace}TreatmentRegion">Região (opcional)</label>
-              <input type="text" id="${namespace}TreatmentRegion" maxlength="40" autocomplete="off" placeholder="ex.: rosto, abdômen" value="${prevRegion ? escapeHtml(prevRegion.value) : ''}">
+              <label for="${namespace}TreatmentPrior">Já feitas antes</label>
+              <input type="number" id="${namespace}TreatmentPrior" inputmode="numeric" min="0" max="99" step="1" value="${prevPrior ? escapeHtml(prevPrior.value) : 0}" oninput="updateTreatmentNewHint('${namespace}')">
             </div>
           </div>
-          <div class="tp-hint">Esta será a sessão 1. Use a região para separar dois tratamentos do mesmo procedimento.</div>` : hint}
+          <div class="form-group" style="margin:10px 0 0;">
+            <label for="${namespace}TreatmentRegion">Região (opcional)</label>
+            <input type="text" id="${namespace}TreatmentRegion" maxlength="40" autocomplete="off" placeholder="ex.: rosto, abdômen" value="${prevRegion ? escapeHtml(prevRegion.value) : ''}">
+          </div>
+          <div class="tp-hint" id="${namespace}TreatmentNewHint"></div>` : hint}
       `;
+      updateTreatmentNewHint(namespace);
+    }
+
+    /** Dica do tratamento novo: "Esta será a sessão 3 de 4" conforme as já feitas antes. */
+    function updateTreatmentNewHint(namespace) {
+      const el = document.getElementById(`${namespace}TreatmentNewHint`);
+      if (!el) return;
+      const total = parseInt(document.getElementById(`${namespace}TreatmentTotal`).value, 10) || 0;
+      const prior = parseInt(document.getElementById(`${namespace}TreatmentPrior`).value, 10) || 0;
+      const bad = prior < 0 || (total > 0 && prior >= total);
+      el.className = `tp-hint${bad ? ' tp-warn' : ''}`;
+      el.textContent = bad
+        ? '⚠️ As já feitas antes precisam ser menos que o total.'
+        : `Esta será a sessão ${prior + 1}${total ? ` de ${total}` : ''}. Paciente que já começou o pacote: informe quantas fez antes. Use a região para separar dois tratamentos do mesmo procedimento.`;
     }
 
     /**
-     * O que mandar ao servidor: { id } | { new, procedure, total, region } |
+     * O que mandar ao servidor: { id } | { new, procedure, total, region, prior } |
      * { none } (editar: desligar) | undefined (sem procedimento por sessão).
      * Lança erro de validação em texto pronto para a tela.
      */
@@ -3806,13 +3830,15 @@
       if (value !== 'new') return value === linkedId ? undefined : { id: value };
       const total = parseInt(document.getElementById(`${namespace}TreatmentTotal`).value, 10);
       if (!(total > 0 && total <= 100)) throw new Error('Informe o total de sessões do tratamento (1 a 100).');
-      return { new: true, procedure: proc.name, total, region: document.getElementById(`${namespace}TreatmentRegion`).value.trim() };
+      const prior = parseInt(document.getElementById(`${namespace}TreatmentPrior`).value, 10) || 0;
+      if (prior < 0 || prior >= total) throw new Error('As sessões já feitas antes precisam ser menos que o total.');
+      return { new: true, procedure: proc.name, total, prior, region: document.getElementById(`${namespace}TreatmentRegion`).value.trim() };
     }
 
     /** Linha do resumo "Tratamento" no passo de confirmação do agendamento. */
     function treatmentSummaryText(payload) {
       if (!payload) return '';
-      if (payload.new) return `Novo: ${payload.procedure}${payload.region ? ` · ${payload.region}` : ''} — ${payload.total} sessões (esta é a 1ª)`;
+      if (payload.new) return `Novo: ${payload.procedure}${payload.region ? ` · ${payload.region}` : ''} — ${payload.total} sessões${payload.prior ? `, ${payload.prior} já feita(s) antes` : ''} (esta é a ${(payload.prior || 0) + 1}ª)`;
       const t = allTreatments.find(x => x.id === payload.id);
       return t ? `${treatmentLabel(t)} — sessão ${t.done + t.scheduled + 1} de ${t.total}` : '';
     }
@@ -3853,6 +3879,7 @@
       document.getElementById('trError').innerHTML = '';
       document.getElementById('trInfo').innerHTML = `<strong>${escapeHtml(t.procedure)}</strong> — ${escapeHtml(t.name)}<div class="ap-hint">${t.done} feita(s) · ${t.scheduled} agendada(s) · ${escapeHtml(t.status)}</div>`;
       document.getElementById('trTotal').value = t.total;
+      document.getElementById('trPrior').value = t.prior;
       document.getElementById('trRegion').value = t.region;
       document.getElementById('trNote').value = t.note;
       document.getElementById('trCloseBtn').textContent = t.status === 'Encerrado' ? '↩️ Reabrir' : '⏹️ Encerrar';
@@ -3877,7 +3904,9 @@
       } else {
         const total = parseInt(document.getElementById('trTotal').value, 10);
         if (!(total > 0 && total <= 100)) { errorEl.innerHTML = '<div class="form-error">⚠️ Total de sessões entre 1 e 100.</div>'; return; }
-        Object.assign(body, { total, region: document.getElementById('trRegion').value.trim(), note: document.getElementById('trNote').value.trim() });
+        const prior = parseInt(document.getElementById('trPrior').value, 10) || 0;
+        if (prior < 0 || prior >= total) { errorEl.innerHTML = '<div class="form-error">⚠️ As feitas antes do sistema precisam ser menos que o total.</div>'; return; }
+        Object.assign(body, { total, prior, region: document.getElementById('trRegion').value.trim(), note: document.getElementById('trNote').value.trim() });
       }
       try {
         await payablesPost(body);
