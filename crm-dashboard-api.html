@@ -4239,6 +4239,36 @@
       return `${wa}?text=${encodeURIComponent(message)}`;
     }
 
+    // Lembrete de parcela vencida (pedido do usuário 2026-11-17): abre o
+    // WhatsApp da cliente com a mensagem pronta, juntando TODAS as parcelas
+    // vencidas dela (uma mensagem só, não uma por parcela). Tom cordial,
+    // sem a palavra "atraso"; sem travessão (regra de voz da marca).
+    const PIX_KEY = 'dramarcellabarros@gmail.com';
+
+    function buildCollectionWhatsAppLink(phone) {
+      const wa = whatsappLink(phone);
+      if (!wa) return null;
+      const today = localDateStr(new Date());
+      const digits = phoneDigits(phone);
+      const due = allFinance
+        .filter(f => f.status !== 'Recebido' && f.dueDate && f.dueDate < today && phoneDigits(f.phone) === digits)
+        .sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+      if (!due.length) return null;
+      const firstName = (due[0].name || '').trim().split(/\s+/)[0];
+      const what = (f) => `${f.description || 'atendimento'}${f.installmentLabel && f.installmentLabel !== '1/1' ? ` (parcela ${f.installmentLabel})` : ''}`;
+      const total = due.reduce((s, f) => s + f.value, 0);
+      const body = due.length === 1
+        ? `Passando para lembrar que consta em aberto o pagamento de ${what(due[0])}, no valor de ${formatCurrencyBRL(due[0].value)}, com vencimento em ${formatDateShortBR(due[0].dueDate)}.`
+        : `Passando para lembrar que constam em aberto os pagamentos abaixo:\n${due.map(f => `• ${what(f)}: ${formatCurrencyBRL(f.value)}, venceu em ${formatDateShortBR(f.dueDate)}`).join('\n')}\nTotal: ${formatCurrencyBRL(total)}.`;
+      const message = [
+        `Olá${firstName ? ', ' + firstName : ''}, tudo bem? Aqui é da equipe da Dra. Marcella Barros.`,
+        body,
+        `Se preferir, o pagamento pode ser feito pelo Pix: ${PIX_KEY}`,
+        'Se já tiver pago, por favor desconsidere e nos envie o comprovante para darmos baixa. Qualquer dúvida, estamos à disposição.',
+      ].join('\n\n');
+      return `${wa}?text=${encodeURIComponent(message)}`;
+    }
+
     function translateConversationState(state) {
       if (!state) return '—';
       return CONVERSATION_STATE_LABELS[state] || state.replace(/_/g, ' ');
@@ -9021,7 +9051,10 @@
               <td><a href="#" onclick="openLeadDetail(${jsArg(f.phone)}); return false;" style="color:var(--cor-texto-marca); font-weight:600;">${escapeHtml(f.name)}</a><div class="muted">${escapeHtml(f.paymentMethod || '—')} · ${escapeHtml(f.installmentLabel)}</div></td>
               <td class="hide-mobile muted">${escapeHtml(f.description || '—')}</td>
               <td class="num">${formatCurrencyBRL(f.value)}</td>
-              <td style="text-align:right;"><button class="complete-btn" style="white-space:nowrap; padding:6px 10px; width:auto;" onclick="toggleReceivableStatus(${jsArg(f.id)}, 'Recebido')" title="Marcar como recebido" aria-label="Marcar como recebido">✅<span class="btn-label"> Recebido</span></button></td>
+              <td style="text-align:right;"><span style="display:inline-flex; gap:6px; justify-content:flex-end; flex-wrap:wrap;">${(() => {
+                const link = late ? buildCollectionWhatsAppLink(f.phone) : null;
+                return link ? `<a class="complete-btn" href="${escapeHtml(link)}" target="_blank" rel="noopener" style="white-space:nowrap; padding:6px 10px; width:auto; text-decoration:none;" title="Lembrar a cliente pelo WhatsApp (junta todas as parcelas vencidas dela)" aria-label="Cobrar pelo WhatsApp">💬<span class="btn-label"> Cobrar</span></a>` : '';
+              })()}<button class="complete-btn" style="white-space:nowrap; padding:6px 10px; width:auto;" onclick="toggleReceivableStatus(${jsArg(f.id)}, 'Recebido')" title="Marcar como recebido" aria-label="Marcar como recebido">✅<span class="btn-label"> Recebido</span></button></span></td>
             </tr>`;
           }).join('')}</tbody>
           <tfoot><tr><td colspan="2">Total</td><td class="hide-mobile"></td><td class="num">${formatCurrencyBRL(sum(items))}</td><td></td></tr></tfoot>
