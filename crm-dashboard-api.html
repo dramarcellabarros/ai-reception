@@ -3213,6 +3213,24 @@
     </div>
   </div>
 
+  <!-- Cobrar parcela vencida: pela IA ou pelo WhatsApp do aparelho (2026-11-17). -->
+  <div class="modal" id="collectModal" style="z-index: 1100;">
+    <div class="modal-content">
+      <span class="close-btn" onclick="closeCollectModal()">&times;</span>
+      <h2>💬 Cobrar parcela vencida</h2>
+      <div id="collectError"></div>
+      <div id="collectInfo" style="margin-bottom:14px;"></div>
+      <p style="color: var(--cor-cinza-cacau); font-size: 13px; margin-bottom: 14px;">
+        <strong>Pela IA:</strong> sai na hora pelo número da clínica, com o texto aprovado pela Meta; se a cliente responder, a IA pede o comprovante e a equipe é avisada.<br>
+        <strong>Pelo meu WhatsApp:</strong> abre o WhatsApp deste aparelho com a mensagem pronta para você revisar e enviar.
+      </p>
+      <div style="display:flex; gap:10px; flex-wrap:wrap;">
+        <button class="btn" id="collectIaBtn" onclick="sendCollectViaIA()" style="flex:1; min-width:180px;">🤖 Enviar pela IA</button>
+        <a class="btn secondary" id="collectDeviceBtn" href="#" target="_blank" rel="noopener" onclick="setTimeout(closeCollectModal, 300)" style="flex:1; min-width:180px; text-align:center; text-decoration:none;">📱 Abrir no meu WhatsApp</a>
+      </div>
+    </div>
+  </div>
+
   <!-- Ajustar tratamento por sessão (2026-10-29). -->
   <div class="modal" id="treatmentModal" style="z-index: 1100;">
     <div class="modal-content">
@@ -4245,14 +4263,19 @@
     // sem a palavra "atraso"; sem travessão (regra de voz da marca).
     const PIX_KEY = 'dramarcellabarros@gmail.com';
 
+    /** Parcelas vencidas e não recebidas da cliente, da mais antiga para a mais nova. */
+    function collectionDueItems(phone) {
+      const today = localDateStr(new Date());
+      const digits = phoneDigits(phone);
+      return allFinance
+        .filter(f => f.status !== 'Recebido' && f.dueDate && f.dueDate < today && phoneDigits(f.phone) === digits)
+        .sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+    }
+
     function buildCollectionWhatsAppLink(phone) {
       const wa = whatsappLink(phone);
       if (!wa) return null;
-      const today = localDateStr(new Date());
-      const digits = phoneDigits(phone);
-      const due = allFinance
-        .filter(f => f.status !== 'Recebido' && f.dueDate && f.dueDate < today && phoneDigits(f.phone) === digits)
-        .sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+      const due = collectionDueItems(phone);
       if (!due.length) return null;
       const firstName = (due[0].name || '').trim().split(/\s+/)[0];
       const what = (f) => `${f.description || 'atendimento'}${f.installmentLabel && f.installmentLabel !== '1/1' ? ` (parcela ${f.installmentLabel})` : ''}`;
@@ -4267,6 +4290,66 @@
         'Se já tiver pago, por favor desconsidere e nos envie o comprovante para darmos baixa. Qualquer dúvida, estamos à disposição.',
       ].join('\n\n');
       return `${wa}?text=${encodeURIComponent(message)}`;
+    }
+
+    // Cobrar: a equipe escolhe, cliente a cliente, se o lembrete sai pela IA
+    // (número da clínica, modelo aprovado "lembrete_pagamento", servidor da
+    // IA) ou pelo WhatsApp do próprio aparelho (pedido do usuário 2026-11-17).
+    let collectPhone = '';
+
+    function openCollectModal(phone) {
+      const due = collectionDueItems(phone);
+      if (!due.length) return;
+      collectPhone = phone;
+      const total = due.reduce((s, f) => s + f.value, 0);
+      document.getElementById('collectError').innerHTML = '';
+      document.getElementById('collectInfo').innerHTML = `
+        <div style="font-weight:600; margin-bottom:6px;">${escapeHtml(due[0].name || '')} · ${escapeHtml(formatPhone(phone))}</div>
+        ${due.map(f => `<div class="ld-row"><span class="ld-label">${escapeHtml(f.description || 'Atendimento')}${f.installmentLabel && f.installmentLabel !== '1/1' ? ` (${escapeHtml(f.installmentLabel)})` : ''} · venceu ${formatDateShortBR(f.dueDate)}</span><span class="ld-value">${formatCurrencyBRL(f.value)}</span></div>`).join('')}
+        ${due.length > 1 ? `<div class="ld-row"><span class="ld-label"><strong>Total</strong></span><span class="ld-value"><strong>${formatCurrencyBRL(total)}</strong></span></div>` : ''}`;
+      const link = buildCollectionWhatsAppLink(phone);
+      const deviceBtn = document.getElementById('collectDeviceBtn');
+      deviceBtn.href = link || '#';
+      deviceBtn.style.display = link ? '' : 'none';
+      document.getElementById('collectModal').classList.add('open');
+    }
+
+    function closeCollectModal() {
+      document.getElementById('collectModal').classList.remove('open');
+      collectPhone = '';
+    }
+
+    async function sendCollectViaIA() {
+      const phone = collectPhone;
+      const due = collectionDueItems(phone);
+      const errorEl = document.getElementById('collectError');
+      errorEl.innerHTML = '';
+      if (!due.length) return;
+      if (!confirm(`Enviar agora o lembrete de pagamento para ${due[0].name} pelo número da clínica (IA)?`)) return;
+      const btn = document.getElementById('collectIaBtn');
+      btn.disabled = true;
+      const endBusy = beginBusy('Enviando pela IA');
+      try {
+        if (!(await productsScriptReady()) || !labelServerUrl) throw new Error('O endereço do servidor da IA não veio do Apps Script. Confira a publicação do Apps Script.');
+        const settings = loadSettings() || {};
+        const res = await fetch(`${labelServerUrl}/crm/remind-payment`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({
+            token: settings.accessPassword || '', phone: phoneDigits(phone), name: due[0].name || '',
+            items: due.map(f => ({ description: f.description || '', installment: f.installmentLabel || '', value: f.value, dueDate: f.dueDate })),
+          }),
+        });
+        const body = await res.json().catch(() => ({}));
+        if (!body.ok) throw new Error(body.error || `erro ${res.status}`);
+        closeCollectModal();
+        showToast(body.warning ? `⚠️ ${body.warning}` : `🤖 Lembrete enviado pela IA para ${due[0].name}. Se ela responder, a equipe é avisada.`);
+      } catch (err) {
+        errorEl.innerHTML = `<div class="form-error">❌ ${escapeHtml(err.message || String(err))}</div>`;
+      } finally {
+        endBusy();
+        btn.disabled = false;
+      }
     }
 
     function translateConversationState(state) {
@@ -9052,8 +9135,8 @@
               <td class="hide-mobile muted">${escapeHtml(f.description || '—')}</td>
               <td class="num">${formatCurrencyBRL(f.value)}</td>
               <td style="text-align:right;"><span style="display:inline-flex; gap:6px; justify-content:flex-end; flex-wrap:wrap;">${(() => {
-                const link = late ? buildCollectionWhatsAppLink(f.phone) : null;
-                return link ? `<a class="complete-btn" href="${escapeHtml(link)}" target="_blank" rel="noopener" style="white-space:nowrap; padding:6px 10px; width:auto; text-decoration:none;" title="Lembrar a cliente pelo WhatsApp (junta todas as parcelas vencidas dela)" aria-label="Cobrar pelo WhatsApp">💬<span class="btn-label"> Cobrar</span></a>` : '';
+                const can = late && f.phone && whatsappLink(f.phone);
+                return can ? `<button class="complete-btn" style="white-space:nowrap; padding:6px 10px; width:auto;" onclick="openCollectModal(${jsArg(f.phone)})" title="Lembrar a cliente: pela IA ou pelo seu WhatsApp (junta todas as parcelas vencidas dela)" aria-label="Cobrar">💬<span class="btn-label"> Cobrar</span></button>` : '';
               })()}<button class="complete-btn" style="white-space:nowrap; padding:6px 10px; width:auto;" onclick="toggleReceivableStatus(${jsArg(f.id)}, 'Recebido')" title="Marcar como recebido" aria-label="Marcar como recebido">✅<span class="btn-label"> Recebido</span></button></span></td>
             </tr>`;
           }).join('')}</tbody>
