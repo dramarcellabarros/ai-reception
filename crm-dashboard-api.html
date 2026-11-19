@@ -2523,7 +2523,8 @@
     <div class="kpi-grid" id="estoqueKpis"></div>
     <div class="controls" style="margin-bottom:10px;">
       <div class="search-box search-clear-wrap">
-        <input type="text" id="estoqueSearch" placeholder="Buscar produto ou lote..." autocomplete="off" autocorrect="off" spellcheck="false" oninput="renderEstoque(); toggleSearchClearBtn('estoqueSearch', 'estoqueSearchClearBtn')">
+        <!-- readonly até o toque: o Chrome preenchia esta busca com o endereço do sistema salvo (19/11) -->
+        <input type="search" id="estoqueSearch" name="estoque-busca-produto" placeholder="Buscar produto ou lote..." autocomplete="off" autocorrect="off" spellcheck="false" data-lpignore="true" readonly onfocus="this.removeAttribute('readonly')" oninput="renderEstoque(); toggleSearchClearBtn('estoqueSearch', 'estoqueSearchClearBtn')">
         <button type="button" class="search-clear-btn" id="estoqueSearchClearBtn" onclick="clearSearchField('estoqueSearch', 'estoqueSearchClearBtn'); renderEstoque()" title="Limpar busca" aria-label="Limpar busca">✕</button>
       </div>
     </div>
@@ -10219,13 +10220,26 @@
             qty: nfeNum(prod, 'qCom'),
             unitValue: nfeNum(prod, 'vUnCom'),
             total: nfeNum(prod, 'vProd'),
+            cfop: nfeText(prod, 'CFOP'),
+            // CFOP x910/x911 = bonificação/brinde: vem na nota com preço, mas não é cobrado (nota 144714, 19/11).
+            bonus: /^[1-7]91[01]$/.test(nfeText(prod, 'CFOP')),
             lots: nfeEls(prod, 'rastro').map(r => ({ lot: nfeText(r, 'nLote'), qty: nfeNum(r, 'qLote'), expiry: nfeText(r, 'dVal') })),
           };
         }),
         dups: nfeEls(cobr, 'dup').map(d => ({ number: nfeText(d, 'nDup'), dueDate: nfeText(d, 'dVenc'), value: nfeNum(d, 'vDup') })),
         pags: nfeEls(inf, 'detPag').map(p => ({ t: nfeText(p, 'tPag'), v: nfeNum(p, 'vPag') })),
-        total: nfeNum(totalEl, 'vNF'),
+        invoiceTotal: nfeNum(totalEl, 'vNF'),
       };
+    }
+
+    /** Valor a pagar: total da nota menos bonificação (confere com o pagamento informado na nota). */
+    function nfePayableTotal(nf) {
+      const bonus = Math.round(nf.items.filter(it => it.bonus).reduce((t, it) => t + it.total, 0) * 100) / 100;
+      const paid = Math.round(nf.pags.filter(p => p.t !== '90' && p.v > 0).reduce((t, p) => t + p.v, 0) * 100) / 100;
+      const net = Math.round((nf.invoiceTotal - bonus) * 100) / 100;
+      nf.bonusTotal = bonus;
+      nf.paidInXml = paid;
+      return bonus > 0 ? net : nf.invoiceTotal;
     }
 
     function formatDocBR(doc) {
@@ -10261,6 +10275,7 @@
 
     function openNfeModal(nf) {
       const today = localDateStr(new Date());
+      nf.total = nfePayableTotal(nf);
       const doc = nf.supplier.doc.replace(/\D/g, '');
       const main = nf.pags.filter(p => p.t !== '90').sort((a, b) => b.v - a.v)[0];
       let method = main ? (NFE_PAYMENT_METHODS[main.t] || 'Outro') : '';
@@ -10328,7 +10343,11 @@
         <div class="review-part-title" style="border-top:none; padding-top:0; margin-top:0;">🧾 Nota</div>
         ${row('Número', `${escapeHtml(nf.number)}${nf.series ? ` · série ${escapeHtml(nf.series)}` : ''}${nf.model === '65' ? ' · NFC-e' : ''}`)}
         ${row('Emissão', formatDateBR(nf.issueDate))}
-        ${row('Valor total', `<strong>${formatCurrencyBRL(nf.total)}</strong>`)}
+        ${nf.bonusTotal ? `
+        ${row('Total da nota', formatCurrencyBRL(nf.invoiceTotal))}
+        ${row('🎁 Bonificação', `− ${formatCurrencyBRL(nf.bonusTotal)}<div class="ap-hint">${nf.items.filter(it => it.bonus).length} item(ns) de brinde: entram no estoque com custo zero</div>`)}
+        ${row('A pagar', `<strong>${formatCurrencyBRL(nf.total)}</strong>${nf.paidInXml && Math.abs(nf.paidInXml - nf.total) > 0.01 ? `<div class="ap-hint" style="color:#B3462F;">⚠️ O pagamento informado na nota é ${formatCurrencyBRL(nf.paidInXml)}. Confira.</div>` : nf.paidInXml ? '<div class="ap-hint">confere com o pagamento informado na nota</div>' : ''}`)}`
+        : row('Valor total', `<strong>${formatCurrencyBRL(nf.total)}</strong>`)}
         ${nf.destName ? row('Destinatário', `${escapeHtml(nf.destName)}${nf.destDoc ? `<div class="ap-hint">${escapeHtml(formatDocBR(nf.destDoc))}</div>` : ''}`) : ''}
         ${row('Chave', `<span style="font-size:11px; word-break:break-all;">${escapeHtml(keyGroups)}</span>`)}
 
@@ -10399,7 +10418,7 @@
       ].join('');
       return `
         <div class="pay-part">
-          <div class="pay-part-head" style="align-items:flex-start;"><span>${i + 1}. ${escapeHtml(it.name)}</span></div>
+          <div class="pay-part-head" style="align-items:flex-start;"><span>${i + 1}. ${escapeHtml(it.name)}${it.bonus ? ' <span class="stock-flag warn">🎁 bonificação · custo zero</span>' : ''}</span></div>
           <div class="ap-hint" style="margin:-4px 0 8px;">${[it.code && `cód. ${escapeHtml(it.code)}`, it.ncm && `NCM ${escapeHtml(it.ncm)}`].filter(Boolean).join(' · ')}
             <div>${escapeHtml(formatQty(it.qty))} ${escapeHtml(it.unit)} × ${formatCurrencyBRL(it.unitValue)} = <strong>${formatCurrencyBRL(it.total)}</strong></div></div>
           <div class="form-group" style="margin-bottom:8px;">
@@ -10516,7 +10535,7 @@
           lots.push({ lot: l.lot.trim(), expiry, qty: qty > 0 ? qty : '' });
         }
         items.push({
-          code: it.code, name: it.name, ncm: it.ncm, unit: it.unit, qty: it.qty, unitValue: it.unitValue,
+          code: it.code, name: it.name, ncm: it.ncm, unit: it.unit, qty: it.qty, unitValue: it.bonus ? 0 : it.unitValue,
           productId: it.productId, productName: it.productName.trim(), lots,
         });
       }
@@ -11361,9 +11380,15 @@
       return localDateStr(new Date(+m[1], +m[2], 0));
     }
 
+    // Siglas da nota (UN, FR, SER, CX, AMP) valem o mesmo que o nome por extenso.
+    const UNIT_ALIASES = { un: 'unidade', und: 'unidade', unid: 'unidade', pc: 'unidade', pca: 'unidade', fr: 'frasco', fra: 'frasco', fco: 'frasco', ser: 'seringa', sr: 'seringa', cx: 'caixa', amp: 'ampola', ml: 'ml', u: 'u', ui: 'u' };
+    function unitKey(s) {
+      const k = normalizeText(String(s || '')).replace(/\(s\)$/, '').replace(/[.\s]/g, '');
+      const base = UNIT_ALIASES[k] || k.replace(/s$/, '');
+      return UNIT_ALIASES[base] || base;
+    }
     function sameUnit(a, b) {
-      const n = (s) => normalizeText(String(s || '')).replace(/\(s\)$|s$/, '').trim();
-      return !!a && !!b && n(a) === n(b);
+      return !!a && !!b && unitKey(a) === unitKey(b);
     }
 
     async function fetchStockData(force) {
@@ -11404,7 +11429,7 @@
           useUnit: r['Unidade de Uso'] || r['Unidade'] || '',
           factor: factor > 0 ? factor : 1, factorSet: factor > 0,
           minStock: min >= 0 ? min : null,
-          lots: new Map(), adjustments: [], unconverted: 0,
+          lots: new Map(), adjustments: [], unconverted: 0, unconvertedUnits: new Set(),
         };
         products.set(p.id, p);
         byName.set(normalizeText(p.name), p);
@@ -11416,7 +11441,8 @@
         if (key) lotOwner.set(key, p);
         return p.lots.get(key);
       };
-      const addCost = (l, unitCost, qty) => { if (unitCost > 0 && qty > 0) { l.costSum += unitCost * qty; l.costQty += qty; } };
+      // Custo 0 conta (bonificação dilui o custo); custo em branco (NaN) não conta.
+      const addCost = (l, unitCost, qty) => { if (unitCost >= 0 && qty > 0) { l.costSum += unitCost * qty; l.costQty += qty; } };
 
       entryRows.forEach(r => {
         const p = products.get(r['Produto (ID)']) || byName.get(normalizeText(r['Produto']));
@@ -11452,18 +11478,20 @@
           const m = /^([\d.,]+)\s*(.*)$/.exec(String(r['Quantidade'] || '').trim());
           const n = m ? stockNum(m[1]) : NaN;
           const u = m ? m[2] : '';
+          // Registro antigo em outra unidade (ex.: "150 mg" num produto que a nota traz em UN)
+          // fica FORA do saldo até configurar unidade de uso e fator; contar o número cru
+          // dava saldo negativo absurdo (Elleva −145 UN, 19/11).
           if (n > 0) {
             if (!u || sameUnit(u, p.useUnit)) qty = n;
             else if (sameUnit(u, p.unit)) qty = n * p.factor;
-            else if (!p.factorSet) qty = n;
-            else { qty = NaN; p.unconverted++; }
+            else { qty = NaN; p.unconverted++; p.unconvertedUnits.add(u); }
           }
         }
         if (p && qty > 0) lotOf(p, lot).outQty += qty;
         let cost = stockNum(r['Custo']);
         if (!(cost >= 0) && p && qty > 0) {
           const unit = lotUnitCost(p, lot);
-          if (unit > 0) { cost = unit * qty; estimated = true; }
+          if (unit >= 0 && unit !== null) { cost = unit * qty; estimated = true; }
         }
         return {
           date: r['Data'], phone: r['Telefone'], name: r['Nome'], product: r['Produto'], lot,
@@ -11485,6 +11513,19 @@
           l.expiring = !!l.end && !l.expired && l.end <= warnLimit && l.balance > 0;
         });
         lots.sort((a, b) => (a.end || '9999') < (b.end || '9999') ? -1 : 1);
+        // Uso registrado sem lote sai do lote que vence primeiro (só na conta do saldo;
+        // a ficha da paciente continua sem lote). Sem isso aparecia "sem lote −1".
+        const noLot = lots.find(l => !l.lot);
+        if (noLot && noLot.balance < 0) {
+          let need = -noLot.balance;
+          lots.filter(l => l.lot && l.balance > 0).forEach(l => {
+            const take = Math.min(need, l.balance);
+            l.balance -= take; l.fromNoLot = (l.fromNoLot || 0) + take; need -= take;
+          });
+          noLot.balance = -need;
+          if (Math.abs(noLot.balance) < 1e-9 && !noLot.inQty && !noLot.adjQty) lots.splice(lots.indexOf(noLot), 1);
+        }
+        lots.forEach(l => { l.expired = l.expired && l.balance > 0; l.expiring = l.expiring && l.balance > 0; });
         const balance = lots.reduce((s, l) => s + l.balance, 0);
         const avgCost = productAvgCost(p);
         const value = lots.reduce((s, l) => s + Math.max(0, l.balance) * (l.unitCost || avgCost || 0), 0);
@@ -11506,7 +11547,7 @@
 
     function lotUnitCost(p, lot) {
       const l = p.lots.get(String(lot || '').toUpperCase());
-      return (l && l.costQty ? l.costSum / l.costQty : null) || productAvgCost(p);
+      return l && l.costQty ? l.costSum / l.costQty : productAvgCost(p);
     }
 
     function stockQtyLabel(p, n) {
@@ -11538,7 +11579,9 @@
         kpiHtml('Vencidos com saldo', String(count(p => p.expired)), 'separar/baixar', count(p => p.expired) ? 'kpi-alert' : '', filt('vencidos')),
         kpiHtml('Conferir unidade', String(count(p => p.needsSetup)), 'fator não informado', '', filt('configurar')),
       ].join('');
-      const q = normalizeText(document.getElementById('estoqueSearch').value || '');
+      const searchEl = document.getElementById('estoqueSearch');
+      if (/^https?:\/\//i.test(searchEl.value)) searchEl.value = ''; // sobra de preenchimento automático
+      const q = normalizeText(searchEl.value || '');
       let items = all;
       if (f === 'baixo') items = items.filter(p => p.low);
       if (f === 'vencendo') items = items.filter(p => p.expiring);
@@ -11556,9 +11599,9 @@
         p.expiring ? '<span class="stock-flag warn">vencendo</span>' : '',
         p.low ? '<span class="stock-flag warn">abaixo do mínimo</span>' : '',
         p.needsSetup ? '<span class="stock-flag">conferir unidade</span>' : '',
-        p.unconverted ? `<span class="stock-flag">${p.unconverted} uso(s) sem conversão</span>` : '',
+        p.unconverted ? `<span class="stock-flag warn">${p.unconverted} uso(s) em ${escapeHtml(Array.from(p.unconvertedUnits).join(', '))} fora do saldo</span>` : '',
       ].join('');
-      const lots = p.lotList.filter(l => Math.abs(l.balance) > 0.0001 || l.inQty || l.adjQty);
+      const lots = p.lotList.filter(l => Math.abs(l.balance) > 0.0001 || l.inQty || l.adjQty || l.fromNoLot);
       const body = open ? `
         <div class="stock-body">
           ${lots.length ? `<div class="data-table-wrap"><table class="data-table">
@@ -11567,10 +11610,11 @@
               <tr>
                 <td class="lot-mono">${escapeHtml(l.lot || 'sem lote')}</td>
                 <td>${l.expiry ? escapeHtml(formatExpiryBR(l.expiry)) : '—'}${l.expired ? ' <span class="stock-flag bad">vencido</span>' : l.expiring ? ' <span class="stock-flag warn">vence logo</span>' : ''}</td>
-                <td class="num">${stockQtyLabel(p, l.balance)}</td>
+                <td class="num">${stockQtyLabel(p, l.balance)}${l.fromNoLot ? `<div class="muted" style="font-size:11px;">inclui ${formatQty(l.fromNoLot)} usado(s) sem lote</div>` : ''}</td>
                 <td class="num hide-mobile muted">${l.unitCost ? formatCurrencyBRL(l.unitCost) : '—'}</td>
               </tr>`).join('')}
             </tbody></table></div>` : '<div class="muted" style="padding:6px 0;">Sem lotes com movimento.</div>'}
+          ${p.unconverted ? `<div class="form-warning" style="margin:8px 0;">⚠️ ${p.unconverted} registro(s) de uso em <b>${escapeHtml(Array.from(p.unconvertedUnits).join(', '))}</b> ainda não descontaram do saldo, porque a nota vem em <b>${escapeHtml(p.unit || '—')}</b>. Em ⚙️ Configurar, informe a unidade de uso (ex.: ${escapeHtml(Array.from(p.unconvertedUnits)[0])}) e quantos há em 1 ${escapeHtml(p.unit || 'unidade')}.</div>` : ''}
           <div class="muted" style="font-size:12px; margin:8px 0;">
             Nota em <b>${escapeHtml(p.unit || '—')}</b> · uso em <b>${escapeHtml(p.useUnit || '—')}</b> · 1 ${escapeHtml(p.unit || 'un.')} = ${p.factorSet ? formatQty(p.factor) : '?'} ${escapeHtml(p.useUnit || '')}
             ${p.minStock !== null ? ` · mínimo ${formatQty(p.minStock)} ${escapeHtml(p.useUnit)}` : ''}
