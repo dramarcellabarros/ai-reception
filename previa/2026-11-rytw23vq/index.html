@@ -103,23 +103,34 @@ h1{font-family:var(--serif);font-weight:500;font-size:clamp(28px,5vw,40px);line-
 .side-h img{width:32px;height:32px;border-radius:50%;border:1px solid var(--line);object-fit:contain;padding:2px;background:#fff}
 .side-h .who{flex:1;font-size:14px;font-weight:500}
 .side-h .who small{display:block;font-weight:400;color:var(--text-3);font-size:12px}
-.x{width:32px;height:32px;border-radius:50%;font-size:20px;color:var(--text-2)}
-.x:hover{background:var(--bg)}
+/* Botões do topo com área de toque de 44px (padrão Apple): anterior, próximo, fechar */
+.hbtn{width:44px;height:44px;border-radius:50%;font-size:24px;line-height:1;color:var(--text);display:flex;align-items:center;justify-content:center;border:1px solid var(--line);background:var(--surface);flex:none}
+.hbtn:active{background:var(--line)}
+.hbtn:disabled{opacity:.3}
+.hbtn.x{border-color:transparent;font-size:26px;color:var(--text-2)}
+.pos{font-size:11px;color:var(--text-3);text-align:center;min-width:34px;flex:none}
 .side-b{padding:16px;overflow:auto;flex:1;overscroll-behavior:contain;touch-action:pan-y;-webkit-overflow-scrolling:touch}
 .side-b h3{font-family:var(--serif);font-weight:500;font-size:24px;line-height:1.15;margin-bottom:12px}
 .caption{white-space:pre-wrap;font-size:14px;line-height:1.6;color:var(--text-2)}
-.copy{font-size:12px;color:var(--gold-dark);font-weight:500;margin-top:10px}
+.caption-tools{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+.copy{font-size:13px;color:var(--gold-dark);font-weight:500;padding:10px 14px;border:1px solid var(--line);border-radius:20px;background:var(--surface)}
+.edited{font-size:12px;color:var(--warn);margin-top:8px}
+.discard{display:block;width:100%;margin-top:10px;padding:12px;font-size:14px;color:var(--warn);border-radius:8px}
+.discard:active{background:var(--warn-bg)}
+.confirm{background:var(--warn-bg);border-radius:8px;padding:12px;margin-top:4px}
+.confirm p{font-size:14px;line-height:1.5;margin-bottom:10px;color:var(--text)}
+.btn.danger{background:var(--warn);border-color:var(--warn);color:#fff}
+.s-disc{background:#ECE3DE;color:#7A5A4C;text-decoration:line-through}
+.tile.disc img{filter:grayscale(1) opacity(.45)}
 .side-f{border-top:1px solid var(--line);padding:14px 16px;background:var(--bg)}
 .side-f .row{display:flex;gap:8px;align-items:center;justify-content:space-between;margin-bottom:10px}
 .side-f .lbl{font-size:12px;color:var(--text-3)}
 .btns{display:flex;gap:8px}
-.btn{flex:1;padding:11px 12px;border-radius:8px;font-size:14px;font-weight:500;border:1px solid var(--line);background:var(--surface)}
+.btn{flex:1;min-height:48px;padding:12px;border-radius:10px;font-size:15px;font-weight:500;border:1px solid var(--line);background:var(--surface)}
 .btn.ok{background:var(--ok);border-color:var(--ok);color:#fff}
 .btn:disabled{opacity:.55;cursor:default}
 textarea{width:100%;min-height:80px;margin-top:10px;padding:10px;border:1px solid var(--line);border-radius:8px;font:inherit;font-size:16px;/* 16px: o iPhone não dá zoom ao tocar no campo */color:var(--text);background:var(--surface);resize:vertical}
 .last{font-size:12px;color:var(--text-2);margin-top:8px;line-height:1.5;white-space:pre-wrap}
-.pnav{display:flex;justify-content:space-between;margin-top:10px}
-.pnav button{font-size:12px;color:var(--text-3)}
 .toast{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom));transform:translateX(-50%);background:var(--text);color:#fff;padding:10px 16px;border-radius:8px;font-size:14px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:20}
 .toast.on{opacity:1}
 
@@ -140,6 +151,8 @@ textarea{width:100%;min-height:80px;margin-top:10px;padding:10px;border:1px soli
   .side-f{padding-bottom:calc(24px + env(safe-area-inset-bottom))}
   textarea{min-height:72px}
   .nav{display:none}
+  .side-h{gap:6px;padding:8px 10px 8px 14px}
+  .side-h img{display:none}
 }
 </style>
 </head>
@@ -188,12 +201,14 @@ textarea{width:100%;min-height:80px;margin-top:10px;padding:10px;border:1px soli
       <div class="side-h">
         <img id="avatarSide" alt="">
         <div class="who"><span id="sideHandle"></span><small id="sideMeta"></small></div>
-        <button class="x" id="close" aria-label="Fechar">×</button>
+        <button class="hbtn" id="pPrev" aria-label="Post anterior">‹</button>
+        <span class="pos" id="pPos"></span>
+        <button class="hbtn" id="pNext" aria-label="Próximo post">›</button>
+        <button class="hbtn x" id="close" aria-label="Fechar">×</button>
       </div>
       <div class="side-b">
         <h3 id="mTitle"></h3>
-        <div class="caption" id="mCaption"></div>
-        <button class="copy" id="copyCaption">Copiar legenda</button>
+        <div id="captionBox"></div>
       </div>
       <div class="side-f" id="approval"></div>
     </div>
@@ -202,7 +217,7 @@ textarea{width:100%;min-height:80px;margin-top:10px;padding:10px;border:1px soli
 <div class="toast" id="toast"></div>
 
 <script>
-const DATA = {"mes":"2026-11","slug":"2026-11-rytw23vq","titulo":"Novembro 2026","gerado":"2026-11-19T19:25:55.579Z","aprovacaoUrl":"https://script.google.com/macros/s/AKfycbzedfepmaGM4BoMudRKb39nfc1WjTc7qArPAbpYQYv7Fg5cNfGv5PG6GTK7fAXLJLUN/exec","perfil":{"nome":"Dra. Marcella Barros","instagram":"dramarcella.barros","avatar":"avatar.png"},"posts":[{"id":"01","data":"2026-11-21","horario":"","formato":"Carrossel","titulo":"Carrossel de teste","legenda":"","capa":"","midia":[{"tipo":"img","src":"m/01-1.jpg?v=3888b79d"},{"tipo":"img","src":"m/01-2.jpg?v=78705f3e"},{"tipo":"img","src":"m/01-3.jpg?v=e20b2cb4"},{"tipo":"img","src":"m/01-4.jpg?v=64107be7"},{"tipo":"img","src":"m/01-5.jpg?v=7919fbd8"},{"tipo":"img","src":"m/01-6.jpg?v=02f26275"}]},{"id":"02","data":"2026-11-24","horario":"19h00","formato":"Carrossel","titulo":"Toxina, caso real","legenda":"Repare no sorriso dela, antes e depois.\nÉ o mesmo.\n\nO que mudou foi a força de alguns músculos: ao redor dos olhos, na testa e entre as sobrancelhas.\n\nEssa é a parte que mais me importa na toxina: a expressão continua sendo sua.\nA ideia é que quem olhe perceba que você está bem, não que fez alguma coisa.\n\nResultado natural não é sorte.\nÉ dose pensada para o seu músculo, ponto escolhido pela sua expressão e revisão com calma.\n\nSalva este post para ter à mão na sua próxima avaliação.\nE se ficou alguma dúvida sobre toxina, me manda no direct.\n\n—\nToxina botulínica · registro 15 dias após a aplicação.\nDivulgação autorizada pelo usuário.\nEsta imagem não representa, em hipótese alguma, garantia de resultado. Cada ser humano tem características anatômicas e fisiológicas únicas.\n\nDra. Marcella Barros · Biomédica esteta · CRBM 39621 · Tatuí/SP\n\n#toxinabotulinica #botox #resultadonatural #biomedicinaestetica #esteticafacial #tatui #tatuisp","capa":"","midia":[{"tipo":"img","src":"m/02-1.jpg?v=9a0537de"},{"tipo":"img","src":"m/02-2.jpg?v=ed8ae36c"},{"tipo":"img","src":"m/02-3.jpg?v=1ec40a9d"},{"tipo":"img","src":"m/02-4.jpg?v=455b8639"},{"tipo":"img","src":"m/02-5.jpg?v=e3ee1693"},{"tipo":"img","src":"m/02-6.jpg?v=f0b3ef9d"},{"tipo":"img","src":"m/02-7.jpg?v=25300af9"},{"tipo":"img","src":"m/02-8.jpg?v=25350f5c"}]},{"id":"03","data":"2026-11-26","horario":"","formato":"Carrossel","titulo":"Manutenção custa caro","legenda":"Manutenção não é dinheiro jogado fora. Fechado?\n\n#biomedicinaestetica #esteticafacial #harmonizacaofacial #naturalidade #tatui","capa":"","midia":[{"tipo":"img","src":"m/03-1.jpg?v=19551769"},{"tipo":"img","src":"m/03-2.jpg?v=2ef294a0"},{"tipo":"img","src":"m/03-3.jpg?v=3e9c7d2f"},{"tipo":"img","src":"m/03-4.jpg?v=6cc25fec"},{"tipo":"img","src":"m/03-5.jpg?v=c4da4a34"},{"tipo":"img","src":"m/03-6.jpg?v=7d774b48"},{"tipo":"img","src":"m/03-7.jpg?v=661a7277"}]},{"id":"04","data":"2026-11-28","horario":"12h00","formato":"Reels","titulo":"Reels de teste","legenda":"Legenda de teste do reels.\nSegunda linha.","capa":"","midia":[{"tipo":"video","src":"m/04-1.mp4?v=fb61509c","poster":"m/04-1-poster.jpg?v=1640ecd1"}]}]};
+const DATA = {"mes":"2026-11","slug":"2026-11-rytw23vq","titulo":"Novembro 2026","gerado":"2026-11-19T19:39:50.879Z","aprovacaoUrl":"https://script.google.com/macros/s/AKfycbzedfepmaGM4BoMudRKb39nfc1WjTc7qArPAbpYQYv7Fg5cNfGv5PG6GTK7fAXLJLUN/exec","perfil":{"nome":"Dra. Marcella Barros","instagram":"dramarcella.barros","avatar":"avatar.png"},"posts":[{"id":"01","data":"2026-11-21","horario":"","formato":"Carrossel","titulo":"Carrossel de teste","legenda":"","capa":"","midia":[{"tipo":"img","src":"m/01-1.jpg?v=3888b79d"},{"tipo":"img","src":"m/01-2.jpg?v=78705f3e"},{"tipo":"img","src":"m/01-3.jpg?v=e20b2cb4"},{"tipo":"img","src":"m/01-4.jpg?v=64107be7"},{"tipo":"img","src":"m/01-5.jpg?v=7919fbd8"},{"tipo":"img","src":"m/01-6.jpg?v=02f26275"}]},{"id":"02","data":"2026-11-24","horario":"19h00","formato":"Carrossel","titulo":"Toxina, caso real","legenda":"Repare no sorriso dela, antes e depois.\nÉ o mesmo.\n\nO que mudou foi a força de alguns músculos: ao redor dos olhos, na testa e entre as sobrancelhas.\n\nEssa é a parte que mais me importa na toxina: a expressão continua sendo sua.\nA ideia é que quem olhe perceba que você está bem, não que fez alguma coisa.\n\nResultado natural não é sorte.\nÉ dose pensada para o seu músculo, ponto escolhido pela sua expressão e revisão com calma.\n\nSalva este post para ter à mão na sua próxima avaliação.\nE se ficou alguma dúvida sobre toxina, me manda no direct.\n\n—\nToxina botulínica · registro 15 dias após a aplicação.\nDivulgação autorizada pelo usuário.\nEsta imagem não representa, em hipótese alguma, garantia de resultado. Cada ser humano tem características anatômicas e fisiológicas únicas.\n\nDra. Marcella Barros · Biomédica esteta · CRBM 39621 · Tatuí/SP\n\n#toxinabotulinica #botox #resultadonatural #biomedicinaestetica #esteticafacial #tatui #tatuisp","capa":"","midia":[{"tipo":"img","src":"m/02-1.jpg?v=9a0537de"},{"tipo":"img","src":"m/02-2.jpg?v=ed8ae36c"},{"tipo":"img","src":"m/02-3.jpg?v=1ec40a9d"},{"tipo":"img","src":"m/02-4.jpg?v=455b8639"},{"tipo":"img","src":"m/02-5.jpg?v=e3ee1693"},{"tipo":"img","src":"m/02-6.jpg?v=f0b3ef9d"},{"tipo":"img","src":"m/02-7.jpg?v=25300af9"},{"tipo":"img","src":"m/02-8.jpg?v=25350f5c"}]},{"id":"03","data":"2026-11-26","horario":"","formato":"Carrossel","titulo":"Manutenção custa caro","legenda":"Manutenção não é dinheiro jogado fora. Fechado?\n\n#biomedicinaestetica #esteticafacial #harmonizacaofacial #naturalidade #tatui","capa":"","midia":[{"tipo":"img","src":"m/03-1.jpg?v=19551769"},{"tipo":"img","src":"m/03-2.jpg?v=2ef294a0"},{"tipo":"img","src":"m/03-3.jpg?v=3e9c7d2f"},{"tipo":"img","src":"m/03-4.jpg?v=6cc25fec"},{"tipo":"img","src":"m/03-5.jpg?v=c4da4a34"},{"tipo":"img","src":"m/03-6.jpg?v=7d774b48"},{"tipo":"img","src":"m/03-7.jpg?v=661a7277"}]},{"id":"04","data":"2026-11-28","horario":"12h00","formato":"Reels","titulo":"Reels de teste","legenda":"Legenda de teste do reels.\nSegunda linha.","capa":"","midia":[{"tipo":"video","src":"m/04-1.mp4?v=fb61509c","poster":"m/04-1-poster.jpg?v=1640ecd1"}]}]};
 const FMT_ICON = {
   Carrossel: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 3h11a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zm-5 4h1v12a1 1 0 0 0 1 1h12v1H5a2 2 0 0 1-2-2V7z"/></svg>',
   Reels: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 3h12a3 3 0 0 1 3 3v12a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3V6a3 3 0 0 1 3-3zm4 5.5v7l6-3.5-6-3.5z"/></svg>'
@@ -210,8 +225,10 @@ const FMT_ICON = {
 const STATUS = {
   'Aprovado': {cls: 's-ok', label: '✓ Aprovado'},
   'Ajuste pedido': {cls: 's-warn', label: '✎ Ajuste pedido'},
+  'Descartado': {cls: 's-disc', label: 'Descartado'},
   'Pendente': {cls: 's-pend', label: 'Aguardando'}
 };
+const IG_CAPTION_MAX = 2200; // limite de legenda do Instagram
 const MONTHS = ['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
 const WEEK = ['dom','seg','ter','qua','qui','sex','sáb'];
 const $ = (id) => document.getElementById(id);
@@ -235,11 +252,13 @@ function render() {
   const posts = DATA.posts;
   const ok = posts.filter((p) => statusOf(p.id) === 'Aprovado').length;
   const warn = posts.filter((p) => statusOf(p.id) === 'Ajuste pedido').length;
-  $('progressText').textContent = `${ok} de ${posts.length} aprovados` + (warn ? ` · ${warn} com ajuste` : '');
-  $('barOk').style.width = (ok / posts.length * 100) + '%';
-  $('barWarn').style.width = (warn / posts.length * 100) + '%';
+  const disc = posts.filter((p) => statusOf(p.id) === 'Descartado').length;
+  const valid = posts.length - disc;
+  $('progressText').textContent = `${ok} de ${valid} aprovados` + (warn ? ` · ${warn} com ajuste` : '') + (disc ? ` · ${disc} descartado${disc > 1 ? 's' : ''}` : '');
+  $('barOk').style.width = (ok / Math.max(1, valid) * 100) + '%';
+  $('barWarn').style.width = (warn / Math.max(1, valid) * 100) + '%';
 
-  const byDate = [...posts].sort((a, b) => (a.data || '').localeCompare(b.data || '') || a.id.localeCompare(b.id));
+  const byDate = postsByDate();
   $('list').innerHTML = '<h2>Posts do mês, por data</h2>' + byDate.map((p) => `
     <button class="item" data-id="${esc(p.id)}">
       <img src="${esc(thumb(p))}" alt="" loading="lazy">
@@ -249,7 +268,7 @@ function render() {
 
   // feed: como vai ficar no perfil, o mais recente primeiro
   $('grid').innerHTML = [...byDate].reverse().map((p) => `
-    <button class="tile" data-id="${esc(p.id)}" aria-label="${esc(p.titulo)}">
+    <button class="tile${statusOf(p.id) === 'Descartado' ? ' disc' : ''}" data-id="${esc(p.id)}" aria-label="${esc(p.titulo)}">
       <img src="${esc(thumb(p))}" alt="" loading="lazy">
       <span class="date">${fmtDate(p.data)}</span>
       ${FMT_ICON[p.formato] ? `<span class="ico">${FMT_ICON[p.formato]}</span>` : ''}
@@ -261,9 +280,12 @@ function render() {
 function openPost(id) {
   current = DATA.posts.find((p) => p.id === id); slide = 0;
   $('mTitle').textContent = current.titulo;
-  $('mCaption').textContent = current.legenda || '(sem legenda)';
   $('sideMeta').textContent = [fmtDate(current.data, true), current.horario, current.formato].filter(Boolean).join(' · ');
-  buildTrack(); renderApproval();
+  const list = postsByDate(), i = list.findIndex((p) => p.id === id);
+  $('pPos').textContent = `${i + 1} de ${list.length}`;
+  $('pPrev').disabled = i <= 0; $('pNext').disabled = i >= list.length - 1;
+  buildTrack(); renderCaption(); renderApproval();
+  document.querySelector('.side').scrollTop = 0; document.querySelector('.side-b').scrollTop = 0;
   if (!$('modal').classList.contains('open')) lockPage(true);
   $('modal').classList.add('open');
 }
@@ -305,57 +327,113 @@ $('track').addEventListener('scroll', () => {
   const tr = $('track'), i = Math.round(tr.scrollLeft / Math.max(1, tr.clientWidth));
   if (i !== slide && i >= 0 && i < current.midia.length) { slide = i; pauseVideos(); updateSlideUi(); }
 }, {passive: true});
+function postsByDate() {
+  return [...DATA.posts].sort((a, b) => (a.data || '').localeCompare(b.data || '') || a.id.localeCompare(b.id));
+}
 function goPost(d) {
-  const byDate = [...DATA.posts].sort((a, b) => (a.data || '').localeCompare(b.data || '') || a.id.localeCompare(b.id));
-  const i = byDate.findIndex((p) => p.id === current.id) + d;
-  if (byDate[i]) openPost(byDate[i].id);
+  const list = postsByDate();
+  const i = list.findIndex((p) => p.id === current.id) + d;
+  if (list[i]) openPost(list[i].id);
+}
+// Depois de aprovar ou descartar, vai sozinho para o próximo post ainda sem resposta
+function goNextPending(fromId) {
+  const list = postsByDate(), i = list.findIndex((p) => p.id === fromId);
+  const next = [...list.slice(i + 1), ...list.slice(0, i)].find((p) => statusOf(p.id) === 'Pendente');
+  setTimeout(() => { if (current && current.id === fromId) { if (next) openPost(next.id); else { closePost(); toast('Todos os posts foram respondidos. Obrigada!'); } } }, 700);
+}
+
+// Legenda: a editada na prévia (planilha) vale sobre a original
+function captionOf(p) { const s = state[p.id]; return (s && s.legenda) || p.legenda || ''; }
+function renderCaption(editing) {
+  const box = $('captionBox'), s = state[current.id] || {};
+  if (editing) {
+    box.innerHTML = `
+      <div class="btns"><button class="btn" id="capCancel">Cancelar</button><button class="btn ok" id="capSave">Salvar legenda</button></div>
+      <textarea id="capText" maxlength="${IG_CAPTION_MAX}" style="min-height:240px"></textarea>
+      <div class="lbl" id="capCount" style="text-align:right;margin-top:4px"></div>`;
+    const ta = $('capText'); ta.value = captionOf(current);
+    const count = () => { $('capCount').textContent = `${ta.value.length} / ${IG_CAPTION_MAX}`; };
+    ta.oninput = count; count(); ta.focus();
+    $('capCancel').onclick = () => renderCaption(false);
+    $('capSave').onclick = async () => {
+      const t = ta.value.trim();
+      if (t === captionOf(current).trim()) { renderCaption(false); return; }
+      if (await send({tipo: 'legenda', legenda: t}, 'Legenda salva')) renderCaption(false);
+    };
+    return;
+  }
+  const text = captionOf(current);
+  box.innerHTML = `
+    <div class="caption" id="mCaption"></div>
+    ${s.legenda ? `<div class="edited">✎ Legenda editada na prévia${s.legendaNome ? ' por ' + esc(s.legendaNome) : ''}</div>` : ''}
+    <div class="caption-tools">
+      ${DATA.aprovacaoUrl ? '<button class="copy" id="capEdit">✎ Editar legenda</button>' : ''}
+      <button class="copy" id="copyCaption">Copiar legenda</button>
+    </div>`;
+  $('mCaption').textContent = text || '(sem legenda)';
+  if ($('capEdit')) $('capEdit').onclick = () => renderCaption(true);
+  $('copyCaption').onclick = async () => { try { await navigator.clipboard.writeText(captionOf(current)); toast('Legenda copiada'); } catch (e) { toast('Não foi possível copiar'); } };
 }
 
 function renderApproval() {
   const box = $('approval'), id = current.id, s = state[id];
-  const nav = `<div class="pnav"><button id="pPrev">‹ Post anterior</button><button id="pNext">Próximo post ›</button></div>`;
   if (!DATA.aprovacaoUrl) {
-    box.innerHTML = `<div class="row"><span class="lbl">Aprovação</span></div><p class="lbl">Responda pelo WhatsApp com o número do post (${esc(id)}).</p>${nav}`;
-  } else {
-    const st = statusOf(id);
-    box.innerHTML = `
-      <div class="row"><span class="lbl">Post ${esc(id)}</span>${chip(id)}</div>
-      <div class="btns" id="mainBtns">
+    box.innerHTML = `<div class="row"><span class="lbl">Aprovação</span></div><p class="lbl">Responda pelo WhatsApp com o número do post (${esc(id)}).</p>`;
+    return;
+  }
+  const st = statusOf(id);
+  box.innerHTML = `
+    <div class="row"><span class="lbl">Post ${esc(id)}</span>${chip(id)}</div>
+    <div id="mainBox">
+      <div class="btns">
         <button class="btn ok" id="bOk" ${st === 'Aprovado' ? 'disabled' : ''}>✓ Aprovar</button>
         <button class="btn" id="bAdj">Pedir ajuste</button>
       </div>
-      <div id="adjBox" hidden>
-        <div class="btns"><button class="btn" id="bCancel">Cancelar</button><button class="btn ok" id="bSend">Enviar ajuste</button></div>
-        <textarea id="adjText" placeholder="O que você gostaria de mudar neste post?"></textarea>
-      </div>
-      ${s && s.comentario ? `<div class="last"><b>Último pedido${s.nome ? ' de ' + esc(s.nome) : ''}:</b> ${esc(s.comentario)}</div>` : ''}
-      ${nav}`;
-    $('bOk').onclick = () => send('Aprovado', '');
-    // Enviar fica ACIMA do campo e no lugar dos botões: com o teclado do
-    // iPhone aberto, um botão abaixo do campo ficava escondido (teste 19/11).
-    $('bAdj').onclick = () => { $('mainBtns').hidden = true; $('adjBox').hidden = false; $('adjText').focus(); };
-    $('bCancel').onclick = () => { $('adjBox').hidden = true; $('mainBtns').hidden = false; };
-    $('bSend').onclick = () => { const t = $('adjText').value.trim(); if (!t) { toast('Escreva o que deve mudar'); return; } send('Ajuste pedido', t); };
-  }
-  $('pPrev').onclick = () => goPost(-1); $('pNext').onclick = () => goPost(1);
+      ${st === 'Descartado' ? '' : '<button class="discard" id="bDisc">Descartar este post</button>'}
+    </div>
+    <div id="adjBox" hidden>
+      <div class="btns"><button class="btn" id="bCancel">Cancelar</button><button class="btn ok" id="bSend">Enviar ajuste</button></div>
+      <textarea id="adjText" placeholder="O que você gostaria de mudar neste post?"></textarea>
+    </div>
+    <div id="discBox" class="confirm" hidden>
+      <p><b>Descartar este post?</b><br>Ele sai do planejamento do mês e as artes não serão usadas. Dá para desfazer aprovando de novo.</p>
+      <div class="btns"><button class="btn" id="dCancel">Voltar</button><button class="btn danger" id="dOk">Sim, descartar</button></div>
+      <textarea id="discText" placeholder="Motivo (opcional)" style="min-height:56px"></textarea>
+    </div>
+    ${s && s.comentario && st !== 'Aprovado' ? `<div class="last"><b>${st === 'Descartado' ? 'Motivo' : 'Último pedido'}${s.nome ? ' de ' + esc(s.nome) : ''}:</b> ${esc(s.comentario)}</div>` : ''}`;
+  const show = (which) => ['mainBox', 'adjBox', 'discBox'].forEach((k) => { $(k).hidden = k !== which; });
+  $('bOk').onclick = async () => { if (await send({status: 'Aprovado', comentario: ''}, 'Post aprovado')) goNextPending(id); };
+  // Enviar fica ACIMA do campo: com o teclado do iPhone aberto, um botão abaixo do campo sumia (teste 19/11)
+  $('bAdj').onclick = () => { show('adjBox'); $('adjText').focus(); };
+  $('bCancel').onclick = () => show('mainBox');
+  $('bSend').onclick = () => { const t = $('adjText').value.trim(); if (!t) { toast('Escreva o que deve mudar'); return; } send({status: 'Ajuste pedido', comentario: t}, 'Pedido de ajuste enviado'); };
+  if ($('bDisc')) $('bDisc').onclick = () => show('discBox');
+  $('dCancel').onclick = () => show('mainBox');
+  $('dOk').onclick = async () => { if (await send({status: 'Descartado', comentario: $('discText').value.trim()}, 'Post descartado')) goNextPending(id); };
 }
 
-async function send(status, comentario) {
+// Grava na planilha; devolve true se salvou
+async function send(fields, okMsg) {
   let nome = store('previa_nome');
   if (!nome) { nome = (prompt('Seu nome (fica registrado junto da aprovação):', '') || '').trim(); if (nome) store('previa_nome', nome); }
   const id = current.id;
-  document.querySelectorAll('#approval .btn').forEach((b) => b.disabled = true);
+  document.querySelectorAll('#approval .btn, #captionBox .btn').forEach((b) => b.disabled = true);
   try {
     const r = await fetch(DATA.aprovacaoUrl, {method: 'POST', headers: {'Content-Type': 'text/plain;charset=utf-8'},
-      body: JSON.stringify({mes: DATA.slug, post: id, titulo: current.titulo, status, comentario, nome})});
+      body: JSON.stringify({mes: DATA.slug, post: id, titulo: current.titulo, nome, ...fields})});
     const j = await r.json();
     if (!j.ok) throw new Error(j.error || 'falha');
-    state[id] = {status, comentario, nome, em: new Date().toISOString()};
-    toast(status === 'Aprovado' ? 'Post aprovado' : 'Pedido de ajuste enviado');
+    const prev = state[id] || {};
+    state[id] = fields.tipo === 'legenda'
+      ? {...prev, legenda: fields.legenda, legendaNome: nome}
+      : {...prev, status: fields.status, comentario: fields.comentario, nome, em: new Date().toISOString()};
+    toast(okMsg);
     render(); if (current && current.id === id) renderApproval();
+    return true;
   } catch (e) {
-    toast('Não foi possível salvar. Verifique a internet e tente de novo.');
-    if (current) renderApproval();
+    toast(/status inválido|tipo/.test(String(e.message)) ? 'A planilha de aprovação precisa ser atualizada.' : 'Não foi possível salvar. Verifique a internet e tente de novo.');
+    if (current) { renderApproval(); document.querySelectorAll('#captionBox .btn').forEach((b) => b.disabled = false); }
+    return false;
   }
 }
 
@@ -388,7 +466,7 @@ document.addEventListener('touchend', (e) => {
   lastTouchEnd = now;
 }, {passive: false});
 document.addEventListener('touchmove', (e) => { if (e.touches.length > 1) e.preventDefault(); }, {passive: false});
-$('copyCaption').onclick = async () => { try { await navigator.clipboard.writeText(current.legenda || ''); toast('Legenda copiada'); } catch (e) { toast('Não foi possível copiar'); } };
+$('pPrev').onclick = () => goPost(-1); $('pNext').onclick = () => goPost(1);
 document.querySelectorAll('.tabs button').forEach((b) => b.onclick = () => {
   document.querySelectorAll('.tabs button').forEach((x) => x.classList.toggle('on', x === b));
   $('layout').dataset.view = b.dataset.view;
