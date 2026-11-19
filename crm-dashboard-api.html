@@ -7921,7 +7921,7 @@
       const rules = [
         [/failed to fetch|networkerror|load failed|network request failed/i, 'Sem conexão com o sistema. Confira a internet e tente de novo.'],
         [/unexpected token|json|<!doctype|<html/i, `O sistema respondeu de um jeito inesperado. Tente de novo em alguns instantes. ${SUPPORT_HINT}`],
-        [/too many times|quota|rate limit|timed? ?out|tempo esgotado|obtain lock|lock timeout/i, 'O sistema está sobrecarregado agora. Tente de novo daqui a pouco.'],
+        [/too many times|muitas vezes|quota|cota|rate limit|timed? ?out|tempo esgotado|obtain lock|lock timeout|bloqueio/i, 'O sistema está sobrecarregado agora. Tente de novo daqui a pouco.'],
         [/senha de acesso/i, 'Senha do CRM inválida ou não informada. Abra ⚙️ Config e informe a senha.'],
         [/calendar_id|agenda não encontrada/i, `Não foi possível acessar a agenda. ${SUPPORT_HINT}`],
         [/ação desconhecida/i, `Esta função ainda não está ativa no sistema. ${SUPPORT_HINT}`],
@@ -7933,9 +7933,18 @@
       return raw || `Algo deu errado. Tente de novo. ${SUPPORT_HINT}`;
     }
 
-    /** friendlyError já escapado, pronto pra innerHTML. */
+    /**
+     * friendlyError já escapado, pronto pra innerHTML. Quando a frase é a
+     * genérica ("Algo deu errado"), o texto técnico vai junto em letra
+     * pequena: no celular não tem console, e o print da equipe precisa
+     * mostrar a causa (caso 19/11 no Concluir Atendimento).
+     */
     function errorText(err) {
-      return escapeHtml(friendlyError(err));
+      const msg = friendlyError(err);
+      const raw = String((err && err.message) || err || '').trim();
+      const generic = msg.indexOf('Algo deu errado') === 0 || msg.indexOf('O sistema respondeu de um jeito inesperado') === 0;
+      if (!generic || !raw || raw === msg) return escapeHtml(msg);
+      return `${escapeHtml(msg)}<br><small style="opacity:.7; font-size:11px; word-break:break-word;">Detalhe: ${escapeHtml(raw.slice(0, 200))}</small>`;
     }
 
     function formatDateShortBR(iso) {
