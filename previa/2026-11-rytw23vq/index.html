@@ -2,8 +2,17 @@
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="robots" content="noindex,nofollow">
+<!-- "Adicionar à Tela de Início" no iPhone abre como app, sem barra do Safari -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Prévia">
+<meta name="theme-color" content="#F8F3EC">
+<meta name="format-detection" content="telephone=no">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" href="apple-touch-icon.png">
 <title>Prévia de Conteúdo</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400&family=Roboto:wght@300;400;500&display=swap" rel="stylesheet">
@@ -16,10 +25,18 @@
   --radius:12px;
 }
 *{box-sizing:border-box;margin:0;padding:0}
+[hidden]{display:none!important}
+/* Comportamento de app (mesmo critério do CRM): sem zoom, sem arrastar a
+   tela de lado, sem "elástico", sem destaque azul ao tocar, sem menu de
+   salvar imagem ao segurar o dedo. */
+html{touch-action:pan-x pan-y;overflow-x:hidden;overscroll-behavior:none;-webkit-text-size-adjust:100%;text-size-adjust:100%}
 html,body{background:var(--bg);color:var(--text);font-family:var(--sans);font-weight:400;-webkit-font-smoothing:antialiased}
-button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+body{touch-action:pan-x pan-y;overflow-x:hidden;overscroll-behavior:none;-webkit-tap-highlight-color:transparent}
+body.locked{position:fixed;left:0;right:0;overflow:hidden}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer;touch-action:manipulation;-webkit-user-select:none;user-select:none}
 img,video{display:block;max-width:100%}
-.wrap{max-width:1180px;margin:0 auto;padding:24px 16px 64px}
+img{-webkit-touch-callout:none;-webkit-user-drag:none;user-select:none}
+.wrap{max-width:1180px;margin:0 auto;padding:calc(24px + env(safe-area-inset-top)) calc(16px + env(safe-area-inset-right)) calc(64px + env(safe-area-inset-bottom)) calc(16px + env(safe-area-inset-left))}
 
 /* topo */
 .top{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:24px}
@@ -64,12 +81,16 @@ h1{font-family:var(--serif);font-weight:500;font-size:clamp(28px,5vw,40px);line-
 .note{font-size:13px;color:var(--text-3);padding:12px 16px 16px;line-height:1.5}
 
 /* modal */
-.modal{position:fixed;inset:0;background:rgba(40,32,28,.72);display:none;align-items:center;justify-content:center;padding:16px;z-index:10}
+.modal{position:fixed;inset:0;background:rgba(40,32,28,.72);display:none;align-items:center;justify-content:center;padding:16px;z-index:10;touch-action:pan-y;overscroll-behavior:contain}
 .modal.open{display:flex}
-.sheet{background:var(--surface);border-radius:var(--radius);overflow:hidden;display:grid;grid-template-columns:minmax(0,1fr) 380px;grid-template-rows:minmax(0,1fr);max-width:1080px;width:100%;height:min(900px,calc(100vh - 32px))}
-.stage{position:relative;background:#1E1A18;display:flex;align-items:center;justify-content:center;min-height:0;overflow:hidden}
-.stage img,.stage video{max-height:100%;max-width:100%;width:auto;height:auto;object-fit:contain;margin:auto}
-.stage video{background:#000}
+.sheet{background:var(--surface);border-radius:var(--radius);overflow:hidden;display:grid;grid-template-columns:minmax(0,1fr) 380px;grid-template-rows:minmax(0,1fr);max-width:1080px;width:100%;height:min(900px,calc(100dvh - 32px))}
+.stage{position:relative;background:#1E1A18;min-height:0;overflow:hidden}
+/* Carrossel nativo: a imagem acompanha o dedo e encaixa no slide */
+.track{display:flex;height:100%;overflow-x:auto;overflow-y:hidden;scroll-snap-type:x mandatory;scroll-behavior:smooth;overscroll-behavior:contain;touch-action:pan-x;scrollbar-width:none}
+.track::-webkit-scrollbar{display:none}
+.slide{flex:0 0 100%;height:100%;display:flex;align-items:center;justify-content:center;scroll-snap-align:center;scroll-snap-stop:always}
+.slide img,.slide video{max-height:100%;max-width:100%;width:auto;height:auto;object-fit:contain}
+.slide video{background:#000}
 .nav{position:absolute;top:50%;transform:translateY(-50%);width:36px;height:36px;border-radius:50%;background:rgba(255,253,250,.9);display:flex;align-items:center;justify-content:center;font-size:18px;color:var(--text)}
 .nav.prev{left:10px}.nav.next{right:10px}
 .nav[hidden]{display:none}
@@ -84,7 +105,7 @@ h1{font-family:var(--serif);font-weight:500;font-size:clamp(28px,5vw,40px);line-
 .side-h .who small{display:block;font-weight:400;color:var(--text-3);font-size:12px}
 .x{width:32px;height:32px;border-radius:50%;font-size:20px;color:var(--text-2)}
 .x:hover{background:var(--bg)}
-.side-b{padding:16px;overflow:auto;flex:1}
+.side-b{padding:16px;overflow:auto;flex:1;overscroll-behavior:contain;touch-action:pan-y;-webkit-overflow-scrolling:touch}
 .side-b h3{font-family:var(--serif);font-weight:500;font-size:24px;line-height:1.15;margin-bottom:12px}
 .caption{white-space:pre-wrap;font-size:14px;line-height:1.6;color:var(--text-2)}
 .copy{font-size:12px;color:var(--gold-dark);font-weight:500;margin-top:10px}
@@ -95,11 +116,11 @@ h1{font-family:var(--serif);font-weight:500;font-size:clamp(28px,5vw,40px);line-
 .btn{flex:1;padding:11px 12px;border-radius:8px;font-size:14px;font-weight:500;border:1px solid var(--line);background:var(--surface)}
 .btn.ok{background:var(--ok);border-color:var(--ok);color:#fff}
 .btn:disabled{opacity:.55;cursor:default}
-textarea{width:100%;min-height:80px;margin-top:10px;padding:10px;border:1px solid var(--line);border-radius:8px;font:inherit;font-size:14px;color:var(--text);background:var(--surface);resize:vertical}
+textarea{width:100%;min-height:80px;margin-top:10px;padding:10px;border:1px solid var(--line);border-radius:8px;font:inherit;font-size:16px;/* 16px: o iPhone não dá zoom ao tocar no campo */color:var(--text);background:var(--surface);resize:vertical}
 .last{font-size:12px;color:var(--text-2);margin-top:8px;line-height:1.5;white-space:pre-wrap}
 .pnav{display:flex;justify-content:space-between;margin-top:10px}
 .pnav button{font-size:12px;color:var(--text-3)}
-.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--text);color:#fff;padding:10px 16px;border-radius:8px;font-size:14px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:20}
+.toast{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom));transform:translateX(-50%);background:var(--text);color:#fff;padding:10px 16px;border-radius:8px;font-size:14px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:20}
 .toast.on{opacity:1}
 
 @media (max-width:860px){
@@ -110,9 +131,15 @@ textarea{width:100%;min-height:80px;margin-top:10px;padding:10px;border:1px soli
   .list{position:static;max-height:none}
   .layout[data-view=feed] .list,.layout[data-view=lista] .feed{display:none}
   .modal{padding:0;align-items:stretch}
-  .sheet{grid-template-columns:1fr;grid-template-rows:auto minmax(0,1fr);height:100%;border-radius:0}
-  .stage{height:58vh}
+  .sheet{grid-template-columns:1fr;grid-template-rows:auto minmax(0,1fr);height:100%;border-radius:0;padding-top:env(safe-area-inset-top)}
+  .stage{height:min(58dvh,calc(100vw * 1.25))}
   .side{border-left:0;min-height:0}
+  /* No celular o painel inteiro rola junto (legenda + aprovação): nada fica preso atrás da barra do Safari */
+  .side{overflow-y:auto;overscroll-behavior:contain;touch-action:pan-y}
+  .side-b{flex:none;overflow:visible}
+  .side-f{padding-bottom:calc(24px + env(safe-area-inset-bottom))}
+  textarea{min-height:72px}
+  .nav{display:none}
 }
 </style>
 </head>
@@ -151,6 +178,7 @@ textarea{width:100%;min-height:80px;margin-top:10px;padding:10px;border:1px soli
 <div class="modal" id="modal" role="dialog" aria-modal="true">
   <div class="sheet">
     <div class="stage" id="stage">
+      <div class="track" id="track"></div>
       <button class="nav prev" id="prev" aria-label="Anterior">‹</button>
       <button class="nav next" id="next" aria-label="Próximo">›</button>
       <span class="count" id="count"></span>
@@ -174,7 +202,7 @@ textarea{width:100%;min-height:80px;margin-top:10px;padding:10px;border:1px soli
 <div class="toast" id="toast"></div>
 
 <script>
-const DATA = {"mes":"2026-11","slug":"2026-11-rytw23vq","titulo":"Novembro 2026","gerado":"2026-11-19T18:49:23.354Z","aprovacaoUrl":"https://script.google.com/macros/s/AKfycbzedfepmaGM4BoMudRKb39nfc1WjTc7qArPAbpYQYv7Fg5cNfGv5PG6GTK7fAXLJLUN/exec","perfil":{"nome":"Dra. Marcella Barros","instagram":"dramarcella.barros","avatar":"avatar.png"},"posts":[{"id":"01","data":"","horario":"","formato":"Carrossel","titulo":"Carrossel","legenda":"","capa":"","midia":[{"tipo":"img","src":"m/01-1.jpg"},{"tipo":"img","src":"m/01-2.jpg"},{"tipo":"img","src":"m/01-3.jpg"},{"tipo":"img","src":"m/01-4.jpg"},{"tipo":"img","src":"m/01-5.jpg"},{"tipo":"img","src":"m/01-6.jpg"}]}]};
+const DATA = {"mes":"2026-11","slug":"2026-11-rytw23vq","titulo":"Novembro 2026","gerado":"2026-11-19T19:25:55.579Z","aprovacaoUrl":"https://script.google.com/macros/s/AKfycbzedfepmaGM4BoMudRKb39nfc1WjTc7qArPAbpYQYv7Fg5cNfGv5PG6GTK7fAXLJLUN/exec","perfil":{"nome":"Dra. Marcella Barros","instagram":"dramarcella.barros","avatar":"avatar.png"},"posts":[{"id":"01","data":"2026-11-21","horario":"","formato":"Carrossel","titulo":"Carrossel de teste","legenda":"","capa":"","midia":[{"tipo":"img","src":"m/01-1.jpg?v=3888b79d"},{"tipo":"img","src":"m/01-2.jpg?v=78705f3e"},{"tipo":"img","src":"m/01-3.jpg?v=e20b2cb4"},{"tipo":"img","src":"m/01-4.jpg?v=64107be7"},{"tipo":"img","src":"m/01-5.jpg?v=7919fbd8"},{"tipo":"img","src":"m/01-6.jpg?v=02f26275"}]},{"id":"02","data":"2026-11-24","horario":"19h00","formato":"Carrossel","titulo":"Toxina, caso real","legenda":"Repare no sorriso dela, antes e depois.\nÉ o mesmo.\n\nO que mudou foi a força de alguns músculos: ao redor dos olhos, na testa e entre as sobrancelhas.\n\nEssa é a parte que mais me importa na toxina: a expressão continua sendo sua.\nA ideia é que quem olhe perceba que você está bem, não que fez alguma coisa.\n\nResultado natural não é sorte.\nÉ dose pensada para o seu músculo, ponto escolhido pela sua expressão e revisão com calma.\n\nSalva este post para ter à mão na sua próxima avaliação.\nE se ficou alguma dúvida sobre toxina, me manda no direct.\n\n—\nToxina botulínica · registro 15 dias após a aplicação.\nDivulgação autorizada pelo usuário.\nEsta imagem não representa, em hipótese alguma, garantia de resultado. Cada ser humano tem características anatômicas e fisiológicas únicas.\n\nDra. Marcella Barros · Biomédica esteta · CRBM 39621 · Tatuí/SP\n\n#toxinabotulinica #botox #resultadonatural #biomedicinaestetica #esteticafacial #tatui #tatuisp","capa":"","midia":[{"tipo":"img","src":"m/02-1.jpg?v=9a0537de"},{"tipo":"img","src":"m/02-2.jpg?v=ed8ae36c"},{"tipo":"img","src":"m/02-3.jpg?v=1ec40a9d"},{"tipo":"img","src":"m/02-4.jpg?v=455b8639"},{"tipo":"img","src":"m/02-5.jpg?v=e3ee1693"},{"tipo":"img","src":"m/02-6.jpg?v=f0b3ef9d"},{"tipo":"img","src":"m/02-7.jpg?v=25300af9"},{"tipo":"img","src":"m/02-8.jpg?v=25350f5c"}]},{"id":"03","data":"2026-11-26","horario":"","formato":"Carrossel","titulo":"Manutenção custa caro","legenda":"Manutenção não é dinheiro jogado fora. Fechado?\n\n#biomedicinaestetica #esteticafacial #harmonizacaofacial #naturalidade #tatui","capa":"","midia":[{"tipo":"img","src":"m/03-1.jpg?v=19551769"},{"tipo":"img","src":"m/03-2.jpg?v=2ef294a0"},{"tipo":"img","src":"m/03-3.jpg?v=3e9c7d2f"},{"tipo":"img","src":"m/03-4.jpg?v=6cc25fec"},{"tipo":"img","src":"m/03-5.jpg?v=c4da4a34"},{"tipo":"img","src":"m/03-6.jpg?v=7d774b48"},{"tipo":"img","src":"m/03-7.jpg?v=661a7277"}]},{"id":"04","data":"2026-11-28","horario":"12h00","formato":"Reels","titulo":"Reels de teste","legenda":"Legenda de teste do reels.\nSegunda linha.","capa":"","midia":[{"tipo":"video","src":"m/04-1.mp4?v=fb61509c","poster":"m/04-1-poster.jpg?v=1640ecd1"}]}]};
 const FMT_ICON = {
   Carrossel: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 3h11a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zm-5 4h1v12a1 1 0 0 0 1 1h12v1H5a2 2 0 0 1-2-2V7z"/></svg>',
   Reels: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 3h12a3 3 0 0 1 3 3v12a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3V6a3 3 0 0 1 3-3zm4 5.5v7l6-3.5-6-3.5z"/></svg>'
@@ -235,35 +263,48 @@ function openPost(id) {
   $('mTitle').textContent = current.titulo;
   $('mCaption').textContent = current.legenda || '(sem legenda)';
   $('sideMeta').textContent = [fmtDate(current.data, true), current.horario, current.formato].filter(Boolean).join(' · ');
-  renderSlide(); renderApproval();
-  $('modal').classList.add('open'); document.body.style.overflow = 'hidden';
+  buildTrack(); renderApproval();
+  if (!$('modal').classList.contains('open')) lockPage(true);
+  $('modal').classList.add('open');
 }
 function closePost() {
-  $('modal').classList.remove('open'); document.body.style.overflow = '';
-  const v = $('stage').querySelector('video'); if (v) v.pause();
+  $('modal').classList.remove('open'); lockPage(false);
+  pauseVideos(); $('track').innerHTML = '';
   current = null;
 }
-function renderSlide() {
-  const st = $('stage'); st.querySelectorAll('img,video').forEach((n) => n.remove());
-  const m = current.midia[slide], n = current.midia.length;
-  let el;
-  if (m.tipo === 'video') {
-    el = document.createElement('video');
-    Object.assign(el, {src: m.src, controls: true, playsInline: true, preload: 'metadata'});
-    if (m.poster) el.poster = m.poster;
-  } else { el = document.createElement('img'); el.src = m.src; el.alt = ''; }
-  st.prepend(el);
+// Trava o fundo com o modal aberto sem perder a posição (iPhone ignora overflow:hidden no body)
+let lockedY = 0;
+function lockPage(on) {
+  if (on) { lockedY = window.scrollY; document.body.style.top = `-${lockedY}px`; document.body.classList.add('locked'); }
+  else { document.body.classList.remove('locked'); document.body.style.top = ''; window.scrollTo(0, lockedY); }
+}
+function pauseVideos() { $('track').querySelectorAll('video').forEach((v) => v.pause()); }
+function buildTrack() {
+  const tr = $('track');
+  tr.style.scrollBehavior = 'auto';
+  tr.innerHTML = current.midia.map((m) => m.tipo === 'video'
+    ? `<div class="slide"><video src="${esc(m.src)}" ${m.poster ? `poster="${esc(m.poster)}"` : ''} controls playsinline preload="metadata"></video></div>`
+    : `<div class="slide"><img src="${esc(m.src)}" alt="" draggable="false"></div>`).join('');
+  tr.scrollLeft = 0;
+  requestAnimationFrame(() => { tr.style.scrollBehavior = ''; });
+  slide = 0; updateSlideUi();
+}
+function updateSlideUi() {
+  const n = current.midia.length;
   $('prev').hidden = slide === 0; $('next').hidden = slide >= n - 1;
   $('count').hidden = n < 2; $('count').textContent = `${slide + 1}/${n}`;
   $('dots').innerHTML = n > 1 ? current.midia.map((_, i) => `<i class="${i === slide ? 'on' : ''}"></i>`).join('') : '';
-  if (slide + 1 < n && current.midia[slide + 1].tipo !== 'video') new Image().src = current.midia[slide + 1].src;
 }
 function go(d) {
   if (!current) return;
   const n = slide + d; if (n < 0 || n >= current.midia.length) return;
-  const v = $('stage').querySelector('video'); if (v) v.pause();
-  slide = n; renderSlide();
+  const tr = $('track'); tr.scrollTo({left: n * tr.clientWidth});
 }
+$('track').addEventListener('scroll', () => {
+  if (!current) return;
+  const tr = $('track'), i = Math.round(tr.scrollLeft / Math.max(1, tr.clientWidth));
+  if (i !== slide && i >= 0 && i < current.midia.length) { slide = i; pauseVideos(); updateSlideUi(); }
+}, {passive: true});
 function goPost(d) {
   const byDate = [...DATA.posts].sort((a, b) => (a.data || '').localeCompare(b.data || '') || a.id.localeCompare(b.id));
   const i = byDate.findIndex((p) => p.id === current.id) + d;
@@ -279,18 +320,21 @@ function renderApproval() {
     const st = statusOf(id);
     box.innerHTML = `
       <div class="row"><span class="lbl">Post ${esc(id)}</span>${chip(id)}</div>
-      <div class="btns">
+      <div class="btns" id="mainBtns">
         <button class="btn ok" id="bOk" ${st === 'Aprovado' ? 'disabled' : ''}>✓ Aprovar</button>
         <button class="btn" id="bAdj">Pedir ajuste</button>
       </div>
       <div id="adjBox" hidden>
+        <div class="btns"><button class="btn" id="bCancel">Cancelar</button><button class="btn ok" id="bSend">Enviar ajuste</button></div>
         <textarea id="adjText" placeholder="O que você gostaria de mudar neste post?"></textarea>
-        <div class="btns" style="margin-top:8px"><button class="btn ok" id="bSend">Enviar pedido de ajuste</button></div>
       </div>
       ${s && s.comentario ? `<div class="last"><b>Último pedido${s.nome ? ' de ' + esc(s.nome) : ''}:</b> ${esc(s.comentario)}</div>` : ''}
       ${nav}`;
     $('bOk').onclick = () => send('Aprovado', '');
-    $('bAdj').onclick = () => { $('adjBox').hidden = false; $('adjText').focus(); };
+    // Enviar fica ACIMA do campo e no lugar dos botões: com o teclado do
+    // iPhone aberto, um botão abaixo do campo ficava escondido (teste 19/11).
+    $('bAdj').onclick = () => { $('mainBtns').hidden = true; $('adjBox').hidden = false; $('adjText').focus(); };
+    $('bCancel').onclick = () => { $('adjBox').hidden = true; $('mainBtns').hidden = false; };
     $('bSend').onclick = () => { const t = $('adjText').value.trim(); if (!t) { toast('Escreva o que deve mudar'); return; } send('Ajuste pedido', t); };
   }
   $('pPrev').onclick = () => goPost(-1); $('pNext').onclick = () => goPost(1);
@@ -335,9 +379,15 @@ document.addEventListener('keydown', (e) => {
   if (!current || e.target.tagName === 'TEXTAREA') return;
   if (e.key === 'Escape') closePost(); else if (e.key === 'ArrowLeft') go(-1); else if (e.key === 'ArrowRight') go(1);
 });
-let tx = null;
-$('stage').addEventListener('touchstart', (e) => { tx = e.touches[0].clientX; }, {passive: true});
-$('stage').addEventListener('touchend', (e) => { if (tx == null) return; const dx = e.changedTouches[0].clientX - tx; if (Math.abs(dx) > 40) go(dx < 0 ? 1 : -1); tx = null; });
+// iPhone: o Safari ignora user-scalable=no; bloqueia pinça e toque duplo para não dar zoom
+['gesturestart', 'gesturechange', 'gestureend'].forEach((ev) => document.addEventListener(ev, (e) => e.preventDefault(), {passive: false}));
+let lastTouchEnd = 0;
+document.addEventListener('touchend', (e) => {
+  const now = Date.now();
+  if (now - lastTouchEnd < 300 && !e.target.closest('textarea,video,button')) e.preventDefault();
+  lastTouchEnd = now;
+}, {passive: false});
+document.addEventListener('touchmove', (e) => { if (e.touches.length > 1) e.preventDefault(); }, {passive: false});
 $('copyCaption').onclick = async () => { try { await navigator.clipboard.writeText(current.legenda || ''); toast('Legenda copiada'); } catch (e) { toast('Não foi possível copiar'); } };
 document.querySelectorAll('.tabs button').forEach((b) => b.onclick = () => {
   document.querySelectorAll('.tabs button').forEach((x) => x.classList.toggle('on', x === b));
