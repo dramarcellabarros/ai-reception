@@ -1620,6 +1620,20 @@
     .prod-remove { background: none; border: none; color: var(--cor-cinza-cacau); cursor: pointer; font-size: 15px; padding: 0 4px; }
     .lot-mono { font-family: 'Courier New', monospace; font-weight: 700; letter-spacing: .5px; }
 
+    /* Estoque (2026-11-19) */
+    .stock-item { border-bottom: 1px solid var(--cor-areia-suave); }
+    .stock-item:last-child { border-bottom: 0; }
+    .stock-head { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 2px; background: none; border: 0; text-align: left; cursor: pointer; font: inherit; color: inherit; min-height: 48px; }
+    .stock-name { font-weight: 600; color: var(--cor-texto-marca); display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+    .stock-flags { display: flex; gap: 4px; flex-wrap: wrap; }
+    .stock-flag { font-size: 11px; font-weight: 500; padding: 2px 8px; border-radius: 10px; background: var(--cor-areia-suave); color: var(--cor-cinza-cacau); white-space: nowrap; }
+    .stock-flag.warn { background: #FBEBD9; color: #9A5B1E; }
+    .stock-flag.bad { background: #F8DEDA; color: #A33A2B; }
+    .stock-balance { font-weight: 700; white-space: nowrap; text-align: right; }
+    .stock-balance.neg { color: #A33A2B; }
+    .stock-body { padding: 0 2px 14px; }
+    .stock-pick { background: var(--cor-areia-suave); border-radius: 10px; padding: 10px; margin-bottom: 10px; }
+
     .form-success {
       background: #d4edda;
       border: 1px solid #c3e6cb;
@@ -2319,6 +2333,7 @@
       <button class="module-nav-btn active" data-module="agenda" onclick="switchModule('agenda')">📅 Agenda</button>
       <button class="module-nav-btn" data-module="clientes" onclick="switchModule('clientes')">👥 Clientes</button>
       <button class="module-nav-btn" data-module="vendas" onclick="switchModule('vendas')">💰 Financeiro</button>
+      <button class="module-nav-btn" data-module="estoque" onclick="switchModule('estoque')">📦 Estoque</button>
       <button class="module-nav-btn" data-module="conversas" onclick="switchModule('conversas')">💬 Conversas</button>
       <button class="module-nav-btn" data-module="simulador" onclick="switchModule('simulador')">🧮 Simulador</button>
       <button class="module-nav-btn" onclick="toggleSettings()" title="Configurações">⚙️ Config</button>
@@ -2375,6 +2390,10 @@
     <div class="module-card" id="vendasResumoCard">
       <h3>Recebido por forma de pagamento</h3>
       <div id="vendasResumo"></div>
+    </div>
+    <div class="module-card" id="vendasMargemCard">
+      <h3>💹 Margem sobre produtos</h3>
+      <div id="vendasMargem"></div>
     </div>
     <div class="module-card" id="vendasChartCard">
       <h3 id="vendasChartTitle">Vendido por dia</h3>
@@ -2490,6 +2509,29 @@
       </div>
     </div>
 
+  </div>
+
+  <!-- ===== Módulo Estoque (2026-11-19) ===== -->
+  <div class="container module-view" id="view-estoque" hidden>
+    <div class="module-title">
+      <h2>📦 Estoque</h2>
+      <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        <button class="agenda-toggle-btn" onclick="openLotSearch()">🔎 Buscar lote</button>
+        <button class="btn-primary-soft" onclick="openCatalogModal()">➕ Produto</button>
+      </div>
+    </div>
+    <div class="kpi-grid" id="estoqueKpis"></div>
+    <div class="controls" style="margin-bottom:10px;">
+      <div class="search-box search-clear-wrap">
+        <input type="text" id="estoqueSearch" placeholder="Buscar produto ou lote..." autocomplete="off" autocorrect="off" spellcheck="false" oninput="renderEstoque(); toggleSearchClearBtn('estoqueSearch', 'estoqueSearchClearBtn')">
+        <button type="button" class="search-clear-btn" id="estoqueSearchClearBtn" onclick="clearSearchField('estoqueSearch', 'estoqueSearchClearBtn'); renderEstoque()" title="Limpar busca" aria-label="Limpar busca">✕</button>
+      </div>
+    </div>
+    <div class="module-card">
+      <h3 id="estoqueListTitle">Produtos</h3>
+      <div id="estoqueList"></div>
+    </div>
+    <p class="ap-hint" style="margin-top:4px;">Entra pelo XML de compra (Financeiro → A Pagar) e pelos ajustes; sai pelo que é registrado em "Concluir atendimento". Saldo em unidade de uso (U, ml): configure o fator de cada produto em ⚙️.</p>
   </div>
 
   <!-- ===== Módulo Simulador ===== -->
@@ -3292,6 +3334,99 @@
   </div>
 
   <!-- Movimento de caixa: retirada, aporte e outros (2026-10-28). -->
+  <!-- Estoque: configurar / novo produto -->
+  <div class="modal" id="catalogModal" style="z-index: 1100;">
+    <div class="modal-content">
+      <span class="close-btn" onclick="closeCatalogModal()">&times;</span>
+      <h2 id="catTitle">⚙️ Configurar produto</h2>
+      <div id="catError"></div>
+      <div class="form-group">
+        <label for="catName">Nome *</label>
+        <input type="text" id="catName" maxlength="100" autocomplete="off" placeholder="Como a clínica chama (ex.: Toxina Botox 100U)">
+      </div>
+      <datalist id="catUnitList"></datalist>
+      <div class="ap-form-row">
+        <div class="form-group">
+          <label for="catUnit">Unidade da nota</label>
+          <input type="text" id="catUnit" maxlength="15" list="catUnitList" autocomplete="off" placeholder="frasco" oninput="updateCatalogFactorHint()">
+        </div>
+        <div class="form-group">
+          <label for="catUseUnit">Unidade de uso</label>
+          <input type="text" id="catUseUnit" maxlength="15" list="catUnitList" autocomplete="off" placeholder="U" oninput="updateCatalogFactorHint()">
+        </div>
+      </div>
+      <div class="ap-form-row">
+        <div class="form-group">
+          <label for="catFactor" id="catFactorLabel">Fator</label>
+          <input type="text" id="catFactor" inputmode="decimal" autocomplete="off" placeholder="ex.: 100">
+        </div>
+        <div class="form-group">
+          <label for="catMin" id="catMinLabel">Estoque mínimo</label>
+          <input type="text" id="catMin" inputmode="decimal" autocomplete="off" placeholder="opcional">
+        </div>
+      </div>
+      <p class="ap-hint" style="margin-bottom:14px;">Ex.: toxina vem em frasco e é aplicada em U → 1 frasco = 100 U. Ácido vem em seringa e é aplicado em ml → 1 seringa = 1 ml. Se a nota e o uso são na mesma unidade, o fator é 1.</p>
+      <div style="display:flex; gap:10px;">
+        <button class="btn secondary" onclick="closeCatalogModal()">Cancelar</button>
+        <button class="btn" id="catSubmitBtn" onclick="submitCatalog()" style="flex:1;">💾 Salvar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Estoque: ajuste (estoque inicial, contagem, perda, vencido) -->
+  <div class="modal" id="stockAdjustModal" style="z-index: 1100;">
+    <div class="modal-content">
+      <span class="close-btn" onclick="closeStockAdjustModal()">&times;</span>
+      <h2>± Ajustar estoque</h2>
+      <p style="font-weight:600; margin-bottom:10px;" id="saProduct"></p>
+      <div id="saError"></div>
+      <div class="ap-form-row">
+        <div class="form-group">
+          <label for="saReason">Motivo *</label>
+          <select id="saReason" onchange="updateStockAdjustForm()"></select>
+        </div>
+        <div class="form-group">
+          <label for="saDate">Data *</label>
+          <input type="date" id="saDate">
+        </div>
+      </div>
+      <div class="chip-row" id="saSignRow"><span id="saSignChips"></span></div>
+      <div class="form-group">
+        <label for="saLotSel">Lote</label>
+        <select id="saLotSel" onchange="updateStockAdjustForm()"></select>
+      </div>
+      <div class="ap-form-row" id="saNewLot">
+        <div class="form-group">
+          <label for="saLot">Lote novo</label>
+          <input type="text" id="saLot" maxlength="40" class="lot-mono" autocapitalize="characters" autocorrect="off" spellcheck="false">
+        </div>
+        <div class="form-group">
+          <label for="saExpiry">Validade</label>
+          <input type="text" id="saExpiry" maxlength="10" inputmode="numeric" placeholder="DD/MM/AAAA" oninput="maskExpiryInput(this)" onblur="finishExpiryInput(this)">
+        </div>
+      </div>
+      <div class="ap-form-row">
+        <div class="form-group">
+          <label for="saQty" id="saQtyLabel">Quantidade</label>
+          <input type="text" id="saQty" inputmode="decimal" autocomplete="off">
+        </div>
+        <div class="form-group" id="saCostRow">
+          <label for="saCost">Custo por unidade de uso (R$)</label>
+          <input type="text" id="saCost" inputmode="decimal" autocomplete="off" placeholder="opcional">
+        </div>
+      </div>
+      <div id="saHint" class="ap-hint" style="margin-bottom:10px;"></div>
+      <div class="form-group">
+        <label for="saNote">Observação</label>
+        <input type="text" id="saNote" maxlength="200" autocomplete="off">
+      </div>
+      <div style="display:flex; gap:10px;">
+        <button class="btn secondary" onclick="closeStockAdjustModal()">Cancelar</button>
+        <button class="btn" id="saSubmitBtn" onclick="submitStockAdjust()" style="flex:1;">💾 Salvar</button>
+      </div>
+    </div>
+  </div>
+
   <div class="modal" id="cashMovementModal" style="z-index: 1100;">
     <div class="modal-content">
       <span class="close-btn" onclick="closeCashMovementModal()">&times;</span>
@@ -5101,6 +5236,7 @@
       fetchCarteiraData();
       if (payablesLoaded) fetchPayablesData();
       if (openingBalancesLoaded) fetchOpeningBalances();
+      if (stockData) fetchStockData(true);
       loadProcedureList();
       loadCardFees();
     }
@@ -7385,7 +7521,7 @@
     // allFinance, allCarteira) — nenhuma chamada nova à planilha.
     // ================================================================
 
-    const MODULES = ['agenda', 'clientes', 'vendas', 'receber', 'pagar', 'simulador', 'conversas'];
+    const MODULES = ['agenda', 'clientes', 'vendas', 'estoque', 'receber', 'pagar', 'simulador', 'conversas'];
     let currentModule = 'agenda';
 
     function switchModule(name) {
@@ -7433,6 +7569,7 @@
       else if (currentModule === 'vendas') renderVendas();
       else if (currentModule === 'receber') renderReceber();
       else if (currentModule === 'pagar') renderPagar();
+      else if (currentModule === 'estoque') renderEstoque();
       else if (currentModule === 'simulador') renderSimulador();
     }
 
@@ -8520,6 +8657,7 @@
         </table></div>
         <p style="color: var(--cor-cinza-cacau); font-size: 12px; margin-top: 10px;">ℹ️ Toque numa forma para ver só os recebimentos dela. Toque nos cards acima para abrir Vendas, Recebido ou A Receber.</p>
       ` : '<div class="chart-empty">Nenhum recebimento no período.</div>';
+      renderMarginCard(from, to);
     }
 
     function renderVendas() {
@@ -8543,7 +8681,7 @@
       ['vendasPeriodChips', 'vendasKpis'].forEach(id => { document.getElementById(id).style.display = fluxo ? 'none' : ''; });
       document.querySelector('#view-vendas .period-bar').style.display = fluxo ? 'none' : '';
       if (fluxo) {
-        ['vendasChartCard', 'vendasByMethodCard', 'vendasListCard', 'vendasByProcedureCard', 'vendasResumoCard'].forEach(id => { document.getElementById(id).style.display = 'none'; });
+        ['vendasChartCard', 'vendasByMethodCard', 'vendasListCard', 'vendasByProcedureCard', 'vendasResumoCard', 'vendasMargemCard'].forEach(id => { document.getElementById(id).style.display = 'none'; });
         document.getElementById('vendasMethodChips').innerHTML = '';
         renderFluxo();
         return;
@@ -8553,6 +8691,7 @@
       ['vendasChartCard', 'vendasByMethodCard', 'vendasListCard'].forEach(id => { document.getElementById(id).style.display = resumo ? 'none' : ''; });
       document.getElementById('vendasByProcedureCard').style.display = vendasMode === 'vendido' ? '' : 'none';
       document.getElementById('vendasResumoCard').style.display = resumo ? '' : 'none';
+      document.getElementById('vendasMargemCard').style.display = resumo ? '' : 'none';
       document.getElementById('vendasMethodChips').innerHTML = '';
       if (resumo) { renderFinanceResumo(from, to); return; }
 
@@ -11072,6 +11211,8 @@
       completeContext.products = [];
       productDraft = null;
       renderCompleteProducts();
+      // Produtos do estoque para escolher no formulário (carrega em segundo plano).
+      fetchStockData().then(() => { if (completeContext && productDraft && !productDraft.reading) { syncDraftFromForm(); autoMatchDraft(); renderCompleteProducts(); } });
 
       if (typeKey === 'AVALIACAO') {
         q.innerHTML = `
@@ -11130,6 +11271,7 @@
         const products = completeContext.products.map(p => ({
           product: p.product, manufacturer: p.manufacturer, lot: p.lot, expiry: p.expiry,
           region: p.region, quantity: p.quantity,
+          productId: p.productId || '', qtyUse: p.qtyUse || null, useUnit: p.useUnit || '',
           photo: p.photo ? { data: p.photo.data, mediaType: p.photo.mediaType } : null,
         }));
         // Apps Script antigo ignoraria os produtos sem avisar e concluiria assim mesmo.
@@ -11146,6 +11288,7 @@
         const result = await response.json();
         if (!result.ok) throw new Error(result.error || 'Erro desconhecido');
         appliedProductsCache = null;
+        if (products.length) fetchStockData(true); // baixa no estoque
 
         const { name, phone, source, procedure } = completeContext;
         pendingChainPrefill = chain ? { name, phone, source, type: nextType } : null;
@@ -11167,6 +11310,498 @@
         // Botões de volta: dá para corrigir (ex.: produto) e concluir de novo.
         q.innerHTML = `<div class="form-error">❌ ${errorText(err)}</div>` + questionHtml;
       }
+    }
+
+    // ================================================================
+    // ESTOQUE (pedido do usuário 2026-11-19). Saldo por produto e lote =
+    // entradas (NF-e/compra × fator) + ajustes − aplicados nos atendimentos.
+    // Tudo em UNIDADE DE USO (U, ml): a nota vem em frasco/caixa e o
+    // "Fator de Conversão" do cadastro diz quantas unidades de uso há em 1
+    // unidade da nota (1 frasco de toxina = 100 U). Custo por unidade de uso
+    // = valor unitário da nota ÷ fator; vai para a margem das vendas.
+    // ================================================================
+    let stockData = null;      // { at, products: Map, list, applied, adjustments }
+    let stockLoading = null;   // Promise em andamento
+    let stockLoadError = '';
+    let estoqueFilter = 'todos';
+    const stockOpen = new Set(); // produtos expandidos na lista
+    const STOCK_TTL_MS = 60 * 1000;
+    const STOCK_EXPIRY_WARN_DAYS = 60;
+    const STOCK_ADJUST_REASONS = ['Estoque inicial', 'Contagem', 'Perda', 'Vencido', 'Outro'];
+
+    /** Número de planilha sem arredondar ("1,5" / "0.0125" / "R$ 1.234,56"). */
+    function stockNum(raw) {
+      let s = String(raw == null ? '' : raw).replace(/R\$/i, '').replace(/\s/g, '');
+      if (!s) return NaN;
+      if (s.includes(',')) s = s.replace(/\./g, '').replace(',', '.');
+      else if (/^-?\d{1,3}(\.\d{3})+$/.test(s)) s = s.replace(/\./g, '');
+      const n = Number(s);
+      return isFinite(n) ? n : NaN;
+    }
+
+    function formatQty(n) {
+      if (!isFinite(n)) return '';
+      return (Math.round(n * 100) / 100).toLocaleString('pt-BR', { maximumFractionDigits: 2 });
+    }
+
+    function sheetObjects(values) {
+      const h = (values && values[0]) || [];
+      return (values || []).slice(1).filter(r => r.some(v => v !== '')).map(r => {
+        const o = {};
+        h.forEach((k, i) => { o[k] = String(r[i] == null ? '' : r[i]).trim(); });
+        return o;
+      });
+    }
+
+    /** Validade "2027-05" vale até o último dia do mês. */
+    function expiryEnd(expiry) {
+      const m = /^(\d{4})-(\d{2})(?:-(\d{2}))?$/.exec(String(expiry || ''));
+      if (!m) return '';
+      if (m[3]) return expiry;
+      return localDateStr(new Date(+m[1], +m[2], 0));
+    }
+
+    function sameUnit(a, b) {
+      const n = (s) => normalizeText(String(s || '')).replace(/\(s\)$|s$/, '').trim();
+      return !!a && !!b && n(a) === n(b);
+    }
+
+    async function fetchStockData(force) {
+      if (!force && stockData && Date.now() - stockData.at < STOCK_TTL_MS) return stockData;
+      if (stockLoading) return stockLoading;
+      stockLoading = (async () => {
+        try {
+          const [catalog, entries, applied, adjustments] = await Promise.all([
+            readSheetValues('Cadastro de Produtos').catch(() => []),
+            readSheetValues('Entradas de Produtos').catch(() => []),
+            readSheetValues(PRODUCTS_SHEET).catch(() => []),
+            readSheetValues('Ajustes de Estoque').catch(() => []),
+          ]);
+          stockData = computeStock(sheetObjects(catalog), sheetObjects(entries), sheetObjects(applied), sheetObjects(adjustments));
+          stockLoadError = '';
+        } catch (err) {
+          console.error('Erro ao carregar estoque:', err);
+          stockLoadError = friendlyError(err);
+        } finally {
+          stockLoading = null;
+        }
+        if (currentModule === 'estoque') renderEstoque();
+        if (currentModule === 'vendas' && vendasMode === 'resumo') renderMarginCard();
+        return stockData;
+      })();
+      return stockLoading;
+    }
+
+    function computeStock(catalogRows, entryRows, appliedRows, adjustmentRows) {
+      const products = new Map();
+      const byName = new Map();
+      catalogRows.forEach(r => {
+        if (!r['ID'] || !r['Nome']) return;
+        const factor = stockNum(r['Fator de Conversão']);
+        const min = stockNum(r['Estoque Mínimo']);
+        const p = {
+          id: r['ID'], name: r['Nome'], unit: r['Unidade'] || '',
+          useUnit: r['Unidade de Uso'] || r['Unidade'] || '',
+          factor: factor > 0 ? factor : 1, factorSet: factor > 0,
+          minStock: min >= 0 ? min : null,
+          lots: new Map(), adjustments: [], unconverted: 0,
+        };
+        products.set(p.id, p);
+        byName.set(normalizeText(p.name), p);
+      });
+      const lotOwner = new Map(); // LOTE → produto (para registros antigos sem ID)
+      const lotOf = (p, lot) => {
+        const key = String(lot || '').toUpperCase();
+        if (!p.lots.has(key)) p.lots.set(key, { lot: key, expiry: '', inQty: 0, adjQty: 0, outQty: 0, costSum: 0, costQty: 0 });
+        if (key) lotOwner.set(key, p);
+        return p.lots.get(key);
+      };
+      const addCost = (l, unitCost, qty) => { if (unitCost > 0 && qty > 0) { l.costSum += unitCost * qty; l.costQty += qty; } };
+
+      entryRows.forEach(r => {
+        const p = products.get(r['Produto (ID)']) || byName.get(normalizeText(r['Produto']));
+        if (!p) return;
+        const qty = stockNum(r['Quantidade']);
+        const l = lotOf(p, r['Lote']);
+        const useQty = qty > 0 ? qty * p.factor : 0;
+        l.inQty += useQty;
+        if (r['Validade'] && !l.expiry) l.expiry = r['Validade'];
+        addCost(l, stockNum(r['Valor Unitário']) / p.factor, useQty || 1);
+      });
+      const adjustments = [];
+      adjustmentRows.forEach(r => {
+        const p = products.get(r['Produto (ID)']);
+        if (!p) return;
+        const qty = stockNum(r['Quantidade (uso)']) || 0;
+        const l = lotOf(p, r['Lote']);
+        l.adjQty += qty;
+        if (r['Validade'] && !l.expiry) l.expiry = r['Validade'];
+        addCost(l, stockNum(r['Custo Unitário (uso)']), Math.abs(qty));
+        const a = { id: r['ID'], date: r['Data'], productId: p.id, lot: r['Lote'], qty, reason: r['Motivo'], note: r['Observação'] };
+        p.adjustments.push(a);
+        adjustments.push(a);
+      });
+
+      // Aplicados: ID do produto; registro antigo casa pelo lote ou pelo nome.
+      const applied = appliedRows.map(r => {
+        const lot = String(r['Lote'] || '').toUpperCase();
+        const p = products.get(r['Produto (ID)']) || (lot && lotOwner.get(lot)) || byName.get(normalizeText(r['Produto']));
+        let qty = stockNum(r['Qtd (uso)']);
+        let estimated = false;
+        if (!(qty > 0) && p) {
+          const m = /^([\d.,]+)\s*(.*)$/.exec(String(r['Quantidade'] || '').trim());
+          const n = m ? stockNum(m[1]) : NaN;
+          const u = m ? m[2] : '';
+          if (n > 0) {
+            if (!u || sameUnit(u, p.useUnit)) qty = n;
+            else if (sameUnit(u, p.unit)) qty = n * p.factor;
+            else if (!p.factorSet) qty = n;
+            else { qty = NaN; p.unconverted++; }
+          }
+        }
+        if (p && qty > 0) lotOf(p, lot).outQty += qty;
+        let cost = stockNum(r['Custo']);
+        if (!(cost >= 0) && p && qty > 0) {
+          const unit = lotUnitCost(p, lot);
+          if (unit > 0) { cost = unit * qty; estimated = true; }
+        }
+        return {
+          date: r['Data'], phone: r['Telefone'], name: r['Nome'], product: r['Produto'], lot,
+          productId: p ? p.id : '', qty: qty > 0 ? qty : null, cost: cost >= 0 ? cost : null, estimated,
+        };
+      });
+
+      const today = localDateStr(new Date());
+      const warnLimit = addDays(today, STOCK_EXPIRY_WARN_DAYS);
+      const list = Array.from(products.values()).map(p => {
+        const lots = Array.from(p.lots.values()).map(l => ({
+          ...l,
+          balance: l.inQty + l.adjQty - l.outQty,
+          unitCost: l.costQty ? l.costSum / l.costQty : null,
+          end: expiryEnd(l.expiry),
+        }));
+        lots.forEach(l => {
+          l.expired = !!l.end && l.end < today && l.balance > 0;
+          l.expiring = !!l.end && !l.expired && l.end <= warnLimit && l.balance > 0;
+        });
+        lots.sort((a, b) => (a.end || '9999') < (b.end || '9999') ? -1 : 1);
+        const balance = lots.reduce((s, l) => s + l.balance, 0);
+        const avgCost = productAvgCost(p);
+        const value = lots.reduce((s, l) => s + Math.max(0, l.balance) * (l.unitCost || avgCost || 0), 0);
+        return Object.assign(p, {
+          lotList: lots, balance, avgCost, value,
+          low: p.minStock !== null && balance <= p.minStock,
+          expired: lots.some(l => l.expired), expiring: lots.some(l => l.expiring),
+          needsSetup: !p.factorSet,
+        });
+      }).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+      return { at: Date.now(), products, list, applied, adjustments };
+    }
+
+    function productAvgCost(p) {
+      let s = 0, q = 0;
+      p.lots.forEach(l => { s += l.costSum; q += l.costQty; });
+      return q ? s / q : null;
+    }
+
+    function lotUnitCost(p, lot) {
+      const l = p.lots.get(String(lot || '').toUpperCase());
+      return (l && l.costQty ? l.costSum / l.costQty : null) || productAvgCost(p);
+    }
+
+    function stockQtyLabel(p, n) {
+      const main = `${formatQty(n)} ${p.useUnit || ''}`.trim();
+      return p.factor > 1 && p.unit && !sameUnit(p.unit, p.useUnit) ? `${main} <span class="muted">(≈ ${formatQty(n / p.factor)} ${escapeHtml(p.unit)})</span>` : escapeHtml(main);
+    }
+
+    // ---------- Tela ----------
+    function setEstoqueFilter(f) { estoqueFilter = f === estoqueFilter ? 'todos' : f; renderEstoque(); }
+    function toggleStockItem(id) { if (stockOpen.has(id)) stockOpen.delete(id); else stockOpen.add(id); renderEstoque(); }
+
+    function renderEstoque() {
+      const list = document.getElementById('estoqueList');
+      if (!stockData) {
+        document.getElementById('estoqueKpis').innerHTML = '';
+        list.innerHTML = stockLoadError ? `<div class="form-error">❌ ${escapeHtml(stockLoadError)}</div>` : '<div class="agenda-empty">⏳ Carregando estoque...</div>';
+        if (!stockLoading && !stockLoadError) fetchStockData();
+        return;
+      }
+      const all = stockData.list;
+      const count = (fn) => all.filter(fn).length;
+      const value = all.reduce((s, p) => s + p.value, 0);
+      const f = estoqueFilter;
+      const filt = (key) => ({ onclick: `setEstoqueFilter('${key}')`, active: f === key });
+      document.getElementById('estoqueKpis').innerHTML = [
+        kpiHtml('Valor em estoque', formatCurrencyBRL(value), `${count(p => p.balance > 0)} produto(s) com saldo`, 'kpi-hero'),
+        kpiHtml('Abaixo do mínimo', String(count(p => p.low)), 'repor', count(p => p.low) ? 'kpi-alert' : '', filt('baixo')),
+        kpiHtml('Vencendo', String(count(p => p.expiring)), `em até ${STOCK_EXPIRY_WARN_DAYS} dias`, count(p => p.expiring) ? 'kpi-alert' : '', filt('vencendo')),
+        kpiHtml('Vencidos com saldo', String(count(p => p.expired)), 'separar/baixar', count(p => p.expired) ? 'kpi-alert' : '', filt('vencidos')),
+        kpiHtml('Conferir unidade', String(count(p => p.needsSetup)), 'fator não informado', '', filt('configurar')),
+      ].join('');
+      const q = normalizeText(document.getElementById('estoqueSearch').value || '');
+      let items = all;
+      if (f === 'baixo') items = items.filter(p => p.low);
+      if (f === 'vencendo') items = items.filter(p => p.expiring);
+      if (f === 'vencidos') items = items.filter(p => p.expired);
+      if (f === 'configurar') items = items.filter(p => p.needsSetup);
+      if (q) items = items.filter(p => normalizeText(p.name).includes(q) || p.lotList.some(l => normalizeText(l.lot).includes(q)));
+      document.getElementById('estoqueListTitle').textContent = `Produtos (${items.length})`;
+      list.innerHTML = items.length ? items.map(stockItemHtml).join('') : `<div class="agenda-empty">${all.length ? 'Nenhum produto neste filtro.' : 'Nenhum produto no cadastro ainda. Importe um XML de compra (Financeiro → A Pagar) ou toque em ➕ Produto.'}</div>`;
+    }
+
+    function stockItemHtml(p) {
+      const open = stockOpen.has(p.id);
+      const flags = [
+        p.expired ? '<span class="stock-flag bad">vencido</span>' : '',
+        p.expiring ? '<span class="stock-flag warn">vencendo</span>' : '',
+        p.low ? '<span class="stock-flag warn">abaixo do mínimo</span>' : '',
+        p.needsSetup ? '<span class="stock-flag">conferir unidade</span>' : '',
+        p.unconverted ? `<span class="stock-flag">${p.unconverted} uso(s) sem conversão</span>` : '',
+      ].join('');
+      const lots = p.lotList.filter(l => Math.abs(l.balance) > 0.0001 || l.inQty || l.adjQty);
+      const body = open ? `
+        <div class="stock-body">
+          ${lots.length ? `<div class="data-table-wrap"><table class="data-table">
+            <thead><tr><th>Lote</th><th>Validade</th><th class="num">Saldo</th><th class="num hide-mobile">Custo/${escapeHtml(p.useUnit || 'un.')}</th></tr></thead>
+            <tbody>${lots.map(l => `
+              <tr>
+                <td class="lot-mono">${escapeHtml(l.lot || 'sem lote')}</td>
+                <td>${l.expiry ? escapeHtml(formatExpiryBR(l.expiry)) : '—'}${l.expired ? ' <span class="stock-flag bad">vencido</span>' : l.expiring ? ' <span class="stock-flag warn">vence logo</span>' : ''}</td>
+                <td class="num">${stockQtyLabel(p, l.balance)}</td>
+                <td class="num hide-mobile muted">${l.unitCost ? formatCurrencyBRL(l.unitCost) : '—'}</td>
+              </tr>`).join('')}
+            </tbody></table></div>` : '<div class="muted" style="padding:6px 0;">Sem lotes com movimento.</div>'}
+          <div class="muted" style="font-size:12px; margin:8px 0;">
+            Nota em <b>${escapeHtml(p.unit || '—')}</b> · uso em <b>${escapeHtml(p.useUnit || '—')}</b> · 1 ${escapeHtml(p.unit || 'un.')} = ${p.factorSet ? formatQty(p.factor) : '?'} ${escapeHtml(p.useUnit || '')}
+            ${p.minStock !== null ? ` · mínimo ${formatQty(p.minStock)} ${escapeHtml(p.useUnit)}` : ''}
+            ${p.avgCost ? ` · custo médio ${formatCurrencyBRL(p.avgCost)}/${escapeHtml(p.useUnit || 'un.')}` : ''}
+          </div>
+          ${p.adjustments.length ? `<div class="muted" style="font-size:12px; margin-bottom:6px;">Ajustes:</div>${p.adjustments.slice().reverse().slice(0, 10).map(a => `
+            <div class="finance-row-meta" style="padding:4px 0;">
+              <span>${formatDateBR(a.date)} · ${escapeHtml(a.reason)}${a.lot ? ` · <span class="lot-mono">${escapeHtml(a.lot)}</span>` : ''}${a.note ? ` · ${escapeHtml(a.note)}` : ''}</span>
+              <span>${a.qty > 0 ? '+' : ''}${formatQty(a.qty)} ${escapeHtml(p.useUnit)} <button type="button" class="prod-remove" onclick="deleteStockAdjustmentFromUI(${jsArg(a.id)})" title="Excluir ajuste" aria-label="Excluir ajuste">🗑️</button></span>
+            </div>`).join('')}` : ''}
+          <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;">
+            <button class="btn secondary" style="flex:1;" onclick="openCatalogModal(${jsArg(p.id)})">⚙️ Configurar</button>
+            <button class="btn" style="flex:1;" onclick="openStockAdjustModal(${jsArg(p.id)})">± Ajustar estoque</button>
+          </div>
+        </div>` : '';
+      return `
+        <div class="stock-item${open ? ' open' : ''}">
+          <button type="button" class="stock-head" onclick="toggleStockItem(${jsArg(p.id)})" aria-expanded="${open}">
+            <span class="stock-name">${escapeHtml(p.name)}<span class="stock-flags">${flags}</span></span>
+            <span class="stock-balance${p.balance < 0 ? ' neg' : ''}">${stockQtyLabel(p, p.balance)}</span>
+          </button>
+          ${body}
+        </div>`;
+    }
+
+    // ---------- Cadastro (configurar / novo produto) ----------
+    let catalogEditId = null;
+    function openCatalogModal(id) {
+      catalogEditId = id || null;
+      const p = id && stockData ? stockData.products.get(id) : null;
+      document.getElementById('catTitle').textContent = p ? '⚙️ Configurar produto' : '➕ Novo produto';
+      document.getElementById('catError').innerHTML = '';
+      document.getElementById('catName').value = p ? p.name : '';
+      document.getElementById('catUnit').value = p ? p.unit : '';
+      document.getElementById('catUseUnit').value = p ? p.useUnit : '';
+      document.getElementById('catFactor').value = p && p.factorSet ? formatQty(p.factor) : '';
+      document.getElementById('catMin').value = p && p.minStock !== null ? formatQty(p.minStock) : '';
+      document.getElementById('catUnitList').innerHTML = PRODUCT_UNITS.concat(['frasco', 'caixa', 'seringa', 'ampola', 'unidade']).map(u => `<option value="${escapeHtml(u)}"></option>`).join('');
+      updateCatalogFactorHint();
+      document.getElementById('catalogModal').classList.add('open');
+    }
+    function closeCatalogModal() { document.getElementById('catalogModal').classList.remove('open'); }
+    function updateCatalogFactorHint() {
+      const unit = document.getElementById('catUnit').value.trim() || 'unidade da nota';
+      const use = document.getElementById('catUseUnit').value.trim() || 'unidade de uso';
+      document.getElementById('catFactorLabel').textContent = `Quantos ${use} há em 1 ${unit}?`;
+      document.getElementById('catMinLabel').textContent = `Estoque mínimo (em ${use})`;
+    }
+    async function submitCatalog() {
+      const err = document.getElementById('catError');
+      err.innerHTML = '';
+      const name = document.getElementById('catName').value.replace(/\s+/g, ' ').trim();
+      const factorRaw = document.getElementById('catFactor').value.trim();
+      const minRaw = document.getElementById('catMin').value.trim();
+      if (!name) { err.innerHTML = '<div class="form-error">⚠️ Informe o nome do produto.</div>'; return; }
+      if (factorRaw && !(stockNum(factorRaw) > 0)) { err.innerHTML = '<div class="form-error">⚠️ Fator: use um número maior que zero (ex.: 100).</div>'; return; }
+      if (minRaw && !(stockNum(minRaw) >= 0)) { err.innerHTML = '<div class="form-error">⚠️ Estoque mínimo: use um número.</div>'; return; }
+      const body = {
+        action: catalogEditId ? 'updateCatalogProduct' : 'createCatalogProduct', id: catalogEditId || undefined, name,
+        unit: document.getElementById('catUnit').value.trim(), useUnit: document.getElementById('catUseUnit').value.trim(),
+        factor: factorRaw ? String(stockNum(factorRaw)) : '', minStock: minRaw ? String(stockNum(minRaw)) : '',
+      };
+      const btn = document.getElementById('catSubmitBtn');
+      btn.disabled = true;
+      try {
+        await payablesPost(body);
+        closeCatalogModal();
+        showToast(catalogEditId ? `💾 ${name} atualizado` : `💾 ${name} cadastrado`);
+        payablesLoaded && fetchPayablesData();
+        await fetchStockData(true);
+      } catch (e) {
+        err.innerHTML = `<div class="form-error">❌ ${/desconhecida/i.test(String(e && e.message)) ? 'Falta publicar o Apps Script novo (Nova versão).' : errorText(e)}</div>`;
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    // ---------- Ajuste de estoque ----------
+    let adjustProductId = null;
+    let adjustSign = 1;
+    function openStockAdjustModal(id) {
+      const p = stockData && stockData.products.get(id);
+      if (!p) return;
+      adjustProductId = id;
+      adjustSign = 1;
+      document.getElementById('saProduct').textContent = p.name;
+      document.getElementById('saError').innerHTML = '';
+      document.getElementById('saReason').innerHTML = STOCK_ADJUST_REASONS.map(r => `<option>${r}</option>`).join('');
+      document.getElementById('saReason').value = p.lotList.some(l => l.inQty || l.adjQty) ? 'Contagem' : 'Estoque inicial';
+      const lots = p.lotList.filter(l => l.lot);
+      document.getElementById('saLotSel').innerHTML = lots.map(l => `<option value="${escapeHtml(l.lot)}">${escapeHtml(l.lot)} · saldo ${formatQty(l.balance)} ${escapeHtml(p.useUnit)}</option>`).join('')
+        + '<option value="__new">➕ Lote novo</option><option value="">Sem lote</option>';
+      document.getElementById('saLotSel').value = lots.length ? lots[0].lot : '__new';
+      ['saLot', 'saExpiry', 'saQty', 'saCost', 'saNote'].forEach(k => { document.getElementById(k).value = ''; });
+      document.getElementById('saDate').value = localDateStr(new Date());
+      updateStockAdjustForm();
+      document.getElementById('stockAdjustModal').classList.add('open');
+    }
+    function closeStockAdjustModal() { document.getElementById('stockAdjustModal').classList.remove('open'); }
+    function setAdjustSign(s) { adjustSign = s; updateStockAdjustForm(); }
+    function updateStockAdjustForm() {
+      const p = stockData.products.get(adjustProductId);
+      const reason = document.getElementById('saReason').value;
+      const counting = reason === 'Contagem';
+      if (reason === 'Estoque inicial') adjustSign = 1;
+      if (reason === 'Perda' || reason === 'Vencido') adjustSign = -1;
+      const lotSel = document.getElementById('saLotSel').value;
+      document.getElementById('saNewLot').hidden = lotSel !== '__new';
+      document.getElementById('saSignRow').hidden = counting || reason !== 'Outro';
+      document.getElementById('saSignChips').innerHTML = chipsHtml([['1', '➕ Entrada'], ['-1', '➖ Saída']], String(adjustSign), 'setAdjustSignStr');
+      document.getElementById('saCostRow').hidden = counting || adjustSign < 0;
+      const lot = lotSel === '__new' ? null : p.lotList.find(l => l.lot === lotSel);
+      document.getElementById('saQtyLabel').textContent = counting
+        ? `Quantidade contada no lote (${p.useUnit || 'un.'})`
+        : `Quantidade ${adjustSign < 0 ? 'que saiu' : 'que entrou'} (${p.useUnit || 'un.'})`;
+      document.getElementById('saHint').textContent = counting
+        ? `Hoje o sistema mostra ${formatQty(lot ? lot.balance : 0)} ${p.useUnit}. Informe o que tem de fato; a diferença vira o ajuste.`
+        : reason === 'Estoque inicial' ? 'Para produto que já estava na clínica antes de começar a usar o estoque do CRM.' : '';
+    }
+    function setAdjustSignStr(s) { setAdjustSign(Number(s)); }
+    async function submitStockAdjust() {
+      const p = stockData.products.get(adjustProductId);
+      const err = document.getElementById('saError');
+      err.innerHTML = '';
+      const reason = document.getElementById('saReason').value;
+      const lotSel = document.getElementById('saLotSel').value;
+      const lot = lotSel === '__new' ? document.getElementById('saLot').value.toUpperCase().replace(/\s+/g, '') : lotSel;
+      const expiry = lotSel === '__new' ? expiryFromBR(document.getElementById('saExpiry').value) : '';
+      const qtyIn = stockNum(document.getElementById('saQty').value);
+      if (!(qtyIn >= 0) || (reason !== 'Contagem' && !(qtyIn > 0))) { err.innerHTML = '<div class="form-error">⚠️ Informe a quantidade.</div>'; return; }
+      if (expiry && !isValidExpiry(expiry)) { err.innerHTML = '<div class="form-error">⚠️ Validade: DD/MM/AAAA ou MM/AAAA.</div>'; return; }
+      let qty = adjustSign * qtyIn;
+      if (reason === 'Contagem') {
+        const cur = p.lotList.find(l => l.lot === lot);
+        qty = Math.round((qtyIn - (cur ? cur.balance : 0)) * 10000) / 10000;
+        if (!qty) { err.innerHTML = '<div class="form-error">ℹ️ A contagem bate com o sistema: nada a ajustar.</div>'; return; }
+      }
+      const costRaw = document.getElementById('saCost').value.trim();
+      const btn = document.getElementById('saSubmitBtn');
+      btn.disabled = true;
+      try {
+        await payablesPost({
+          action: 'createStockAdjustment', productId: p.id, lot, expiry, quantity: String(qty), reason,
+          unitCost: costRaw && qty > 0 ? String(stockNum(costRaw)) : '', date: document.getElementById('saDate').value,
+          note: document.getElementById('saNote').value.trim(),
+        });
+        closeStockAdjustModal();
+        showToast(`💾 ${p.name}: ${qty > 0 ? '+' : ''}${formatQty(qty)} ${p.useUnit}`);
+        stockOpen.add(p.id);
+        await fetchStockData(true);
+      } catch (e) {
+        err.innerHTML = `<div class="form-error">❌ ${/desconhecida/i.test(String(e && e.message)) ? 'Falta publicar o Apps Script novo (Nova versão).' : errorText(e)}</div>`;
+      } finally {
+        btn.disabled = false;
+      }
+    }
+    async function deleteStockAdjustmentFromUI(id) {
+      const a = stockData && stockData.adjustments.find(x => x.id === id);
+      if (!a || !confirm(`Excluir o ajuste de ${formatQty(a.qty)} (${a.reason}) de ${formatDateBR(a.date)}?`)) return;
+      try {
+        await payablesPost({ action: 'deleteStockAdjustment', id });
+        showToast('🗑️ Ajuste excluído');
+        await fetchStockData(true);
+      } catch (e) {
+        alert(`❌ ${errorText(e)}`);
+      }
+    }
+
+    // ---------- Margem (Financeiro → Resumo) ----------
+    // Venda = cliente + dia (buildSales). Custo = produtos aplicados na mesma
+    // cliente no mesmo dia. Margem sobre produtos: não desconta taxa do
+    // cartão, aluguel nem comissão (isso é o Fluxo / A Pagar).
+    let marginRange = null;
+    function renderMarginCard(from, to) {
+      if (from) marginRange = { from, to };
+      const el = document.getElementById('vendasMargem');
+      if (!el || !marginRange) return;
+      if (!stockData) {
+        el.innerHTML = stockLoadError ? `<div class="form-error">❌ ${escapeHtml(stockLoadError)}</div>` : '<div class="agenda-empty">⏳ Calculando custos...</div>';
+        if (!stockLoading && !stockLoadError) fetchStockData();
+        return;
+      }
+      ({ from, to } = marginRange);
+      const applied = stockData.applied.filter(a => a.date >= from && a.date <= to);
+      const costByDay = new Map();
+      applied.forEach(a => {
+        const key = `${phoneDigits(a.phone)}|${a.date}`;
+        const c = costByDay.get(key) || { cost: 0, missing: 0, estimated: false };
+        if (a.cost !== null) c.cost += a.cost; else c.missing++;
+        if (a.estimated) c.estimated = true;
+        costByDay.set(key, c);
+      });
+      const sales = buildSales().filter(x => x.date >= from && x.date <= to);
+      const used = new Set();
+      const rows = sales.map(s => {
+        const key = `${phoneDigits(s.phone)}|${s.date}`;
+        const c = costByDay.get(key);
+        if (c) used.add(key);
+        return { s, cost: c ? c.cost : 0, missing: c ? c.missing : 0, estimated: c ? c.estimated : false, hasProducts: !!c };
+      });
+      const sold = sales.reduce((t, s) => t + s.gross, 0);
+      const salesCost = rows.reduce((t, r) => t + r.cost, 0);
+      const orphan = Array.from(costByDay.entries()).filter(([k]) => !used.has(k));
+      const orphanCost = orphan.reduce((t, [, c]) => t + c.cost, 0);
+      const totalCost = salesCost + orphanCost;
+      const margin = sold - totalCost;
+      const missing = applied.filter(a => a.cost === null).length;
+      const pct = (v, base) => (base ? `${(v / base * 100).toFixed(1).replace('.', ',')}%` : '—');
+      const withProducts = rows.filter(r => r.hasProducts).sort((a, b) => (a.s.date < b.s.date ? 1 : -1));
+      el.innerHTML = `
+        <div class="kpi-grid" style="margin-bottom:12px;">
+          ${kpiHtml('Vendido', formatCurrencyBRL(sold), `${sales.length} venda(s)`)}
+          ${kpiHtml('Custo dos produtos', `− ${formatCurrencyBRL(totalCost)}`, `${applied.length} aplicação(ões)`)}
+          ${kpiHtml('Margem sobre produtos', formatCurrencyBRL(margin), pct(margin, sold) + ' do vendido', margin >= 0 ? 'kpi-good' : 'kpi-alert')}
+        </div>
+        ${withProducts.length ? `<div class="data-table-wrap"><table class="data-table">
+          <thead><tr><th>Venda</th><th class="num">Vendido</th><th class="num">Custo</th><th class="num">Margem</th></tr></thead>
+          <tbody>${withProducts.slice(0, 50).map(r => `
+            <tr>
+              <td>${escapeHtml(r.s.name || leadNameByPhone(r.s.phone, r.s.phone))}<div class="muted">${formatDateBR(r.s.date)}${r.estimated ? ' · custo estimado' : ''}${r.missing ? ` · ${r.missing} sem custo` : ''}</div></td>
+              <td class="num">${formatCurrencyBRL(r.s.gross)}</td>
+              <td class="num muted">− ${formatCurrencyBRL(r.cost)}</td>
+              <td class="num"><strong>${pct(r.s.gross - r.cost, r.s.gross)}</strong></td>
+            </tr>`).join('')}
+          </tbody></table></div>` : '<div class="chart-empty">Nenhuma venda com produto aplicado no período.</div>'}
+        <p style="color: var(--cor-cinza-cacau); font-size: 12px; margin-top: 10px; line-height:1.5;">
+          ℹ️ Custo = produtos registrados em "Concluir atendimento" na mesma cliente e no mesmo dia da venda, pelo custo da nota (lote usado ou custo médio).
+          Não desconta taxa do cartão nem despesas fixas.
+          ${orphan.length ? `<br>⚠️ ${orphan.length} atendimento(s) com produto e sem venda lançada no mesmo dia (${formatCurrencyBRL(orphanCost)} de custo, já descontado acima).` : ''}
+          ${missing ? `<br>⚠️ ${missing} produto(s) aplicado(s) sem custo conhecido (sem nota de entrada ou fora do cadastro): não entraram no custo.` : ''}
+        </p>`;
     }
 
     // --- Produtos aplicados (pedido do usuário 2026-10-23: rastreabilidade
@@ -11269,10 +11904,105 @@
         ${actions}`;
     }
 
+    // Estoque (2026-11-19): produto do cadastro + lote com saldo (vence
+    // primeiro, sai primeiro). "Outro" mantém o registro livre de antes.
+    function stockPickHtml(d) {
+      if (!stockData) {
+        return stockLoading ? '<div class="stock-pick muted">⏳ Carregando produtos do estoque...</div>' : '';
+      }
+      if (!stockData.list.length) return '';
+      const opts = stockData.list.map(p => `<option value="${escapeHtml(p.id)}"${p.id === d.productId ? ' selected' : ''}>${escapeHtml(p.name)} · ${escapeHtml(formatQty(p.balance))} ${escapeHtml(p.useUnit)}</option>`).join('');
+      const p = d.productId ? stockData.products.get(d.productId) : null;
+      let lotSel = '';
+      if (p) {
+        const lots = p.lotList.filter(l => l.lot && l.balance > 0);
+        lotSel = `
+          <div class="form-group" style="margin:8px 0 0;"><label for="pfLotSel">Lote do estoque</label>
+            <select id="pfLotSel" onchange="pickDraftLot(this.value)">
+              ${lots.map(l => `<option value="${escapeHtml(l.lot)}"${l.lot === d.lot ? ' selected' : ''}>${escapeHtml(l.lot)}${l.expiry ? ` · val. ${escapeHtml(formatExpiryBR(l.expiry))}` : ''} · ${escapeHtml(formatQty(l.balance))} ${escapeHtml(p.useUnit)}${l.expired ? ' · VENCIDO' : ''}</option>`).join('')}
+              <option value="__other"${d.lot && !lots.some(l => l.lot === d.lot) ? ' selected' : ''}>Outro lote (digitar abaixo)</option>
+            </select>
+          </div>`;
+      }
+      return `
+        <div class="stock-pick">
+          <div class="form-group" style="margin:0;"><label for="pfCatalog">Produto do estoque</label>
+            <select id="pfCatalog" onchange="pickDraftProduct(this.value)">
+              <option value="">Escolha…</option>${opts}
+              <option value="__free"${d.free ? ' selected' : ''}>✍️ Outro (fora do estoque)</option>
+            </select>
+          </div>
+          ${lotSel}
+        </div>`;
+    }
+
+    /** Guarda o que já foi digitado antes de redesenhar o formulário. */
+    function syncDraftFromForm() {
+      if (!productDraft || productDraft.reading) return;
+      const v = (id) => { const el = document.getElementById(id); return el ? el.value : undefined; };
+      const map = { pfProduct: 'product', pfManufacturer: 'manufacturer', pfLot: 'lot', pfRegion: 'region', pfQty: 'qty', pfUnit: 'unit' };
+      Object.keys(map).forEach(id => { const x = v(id); if (x !== undefined) productDraft[map[id]] = x; });
+      const e = v('pfExpiry');
+      if (e !== undefined) productDraft.expiry = expiryFromBR(e);
+    }
+
+    function pickDraftProduct(id) {
+      syncDraftFromForm();
+      const d = productDraft;
+      d.free = id === '__free';
+      if (id === '__free' || !id) { d.productId = ''; renderCompleteProducts(); return; }
+      const p = stockData && stockData.products.get(id);
+      if (!p) return;
+      d.productId = p.id;
+      d.product = p.name;
+      if (p.useUnit) d.unit = p.useUnit;
+      const lots = p.lotList.filter(l => l.lot && l.balance > 0);
+      const keep = lots.find(l => l.lot === String(d.lot || '').toUpperCase());
+      const lot = keep || lots.find(l => !l.expired) || lots[0];
+      if (lot) { d.lot = lot.lot; d.expiry = lot.expiry || d.expiry; }
+      renderCompleteProducts();
+    }
+
+    function pickDraftLot(value) {
+      syncDraftFromForm();
+      const d = productDraft;
+      const p = stockData && stockData.products.get(d.productId);
+      if (value === '__other') { d.lot = ''; d.expiry = ''; renderCompleteProducts(); document.getElementById('pfLot').focus(); return; }
+      const l = p && p.lotList.find(x => x.lot === value);
+      if (l) { d.lot = l.lot; d.expiry = l.expiry || ''; }
+      renderCompleteProducts();
+    }
+
+    /** Etiqueta lida: o lote (ou o nome) aponta o produto do estoque. */
+    function autoMatchDraft() {
+      const d = productDraft;
+      if (!d || !stockData || d.productId) return;
+      const lot = String(d.lot || '').toUpperCase().replace(/\s+/g, '');
+      const byLot = lot && stockData.list.find(p => p.lotList.some(l => l.lot === lot));
+      const byName = !byLot && d.product && stockData.list.find(p => normalizeText(p.name) === normalizeText(d.product));
+      const p = byLot || byName;
+      if (!p) return;
+      d.productId = p.id;
+      d.product = p.name;
+      if (p.useUnit) d.unit = p.useUnit;
+      if (byLot) {
+        const l = p.lotList.find(x => x.lot === lot);
+        d.lot = lot;
+        if (l && l.expiry && !d.expiry) d.expiry = l.expiry;
+      }
+      if (byName) {
+        const l = p.lotList.find(x => x.lot && x.balance > 0 && !x.expired);
+        if (l && !lot) { d.lot = l.lot; d.expiry = l.expiry || d.expiry; }
+      }
+    }
+
     function productFormHtml() {
       const d = productDraft;
       const warnings = (d.warnings || []).map(w => `<div>⚠️ ${escapeHtml(w)}</div>`).join('');
-      const unitOptions = PRODUCT_UNITS.map(u => `<option value="${escapeHtml(u)}"${u === d.unit ? ' selected' : ''}>${escapeHtml(u)}</option>`).join('');
+      const pp = d.productId && stockData ? stockData.products.get(d.productId) : null;
+      const units = PRODUCT_UNITS.slice();
+      [pp && pp.useUnit, pp && pp.unit, d.unit].forEach(u => { if (u && !units.includes(u)) units.unshift(u); });
+      const unitOptions = units.map(u => `<option value="${escapeHtml(u)}"${u === d.unit ? ' selected' : ''}>${escapeHtml(u)}</option>`).join('');
       document.getElementById('prodRegionList').innerHTML = productRegions().map(r => `<option value="${escapeHtml(r)}"></option>`).join('');
       if (d.reading) {
         return `<div class="prod-form">${d.photo ? `<img class="prod-photo" src="${escapeHtml(d.photo.preview)}" alt="Foto da etiqueta">` : ''}<p>⏳ Lendo a etiqueta…</p></div>`;
@@ -11281,6 +12011,7 @@
         <div class="prod-form">
           ${d.photo ? `<img class="prod-photo" src="${escapeHtml(d.photo.preview)}" alt="Foto da etiqueta">` : ''}
           ${warnings ? `<div class="form-warning">${warnings}</div>` : ''}
+          ${stockPickHtml(d)}
           <div class="form-group"><label for="pfProduct">Produto *</label><input type="text" id="pfProduct" maxlength="120" value="${escapeHtml(d.product)}" placeholder="Ex.: Rennova Lift Plus"></div>
           <div class="form-group"><label for="pfManufacturer">Fabricante</label><input type="text" id="pfManufacturer" maxlength="120" value="${escapeHtml(d.manufacturer)}" placeholder="Ex.: Humedix Co., Ltd"></div>
           <div class="prod-form-row">
@@ -11307,7 +12038,7 @@
     }
 
     function emptyDraft() {
-      return { product: '', manufacturer: '', lot: '', expiry: '', region: '', qty: '', unit: PRODUCT_UNITS[0], photo: null, warnings: [] };
+      return { product: '', manufacturer: '', lot: '', expiry: '', region: '', qty: '', unit: PRODUCT_UNITS[0], photo: null, warnings: [], productId: '', free: false };
     }
 
     function startManualProduct() {
@@ -11401,6 +12132,7 @@
           expiry: result.expiry || '',
           warnings: result.warnings || [],
         });
+        autoMatchDraft();
       }
       renderCompleteProducts();
       const firstEmpty = ['pfProduct', 'pfLot', 'pfRegion', 'pfQty'].find(id => !document.getElementById(id).value.trim());
@@ -11427,9 +12159,17 @@
       if (draft.qty && !(Number(draft.qty) > 0)) return showProductMessage('Quantidade: use um número (ex.: 1 ou 0.5).', 'error');
 
       if (draft.region) rememberProductRegion(draft.region);
+      // Estoque: quantidade na unidade de uso do produto (converte se veio na unidade da nota).
+      const sp = draft.productId && stockData ? stockData.products.get(draft.productId) : null;
+      let qtyUse = null;
+      if (sp && Number(draft.qty) > 0) {
+        if (!draft.unit || sameUnit(draft.unit, sp.useUnit)) qtyUse = Number(draft.qty);
+        else if (sameUnit(draft.unit, sp.unit)) qtyUse = Number(draft.qty) * sp.factor;
+      }
       completeContext.products.push({
         product: draft.product, manufacturer: draft.manufacturer, lot: draft.lot, expiry: draft.expiry,
         region: draft.region, quantity: draft.qty ? `${draft.qty.replace('.', ',')} ${draft.unit}` : '', photo: draft.photo,
+        productId: sp ? sp.id : '', qtyUse, useUnit: sp ? sp.useUnit : '',
       });
       productDraft = null;
       renderCompleteProducts();
