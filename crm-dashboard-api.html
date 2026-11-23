@@ -10366,6 +10366,7 @@
             productId: match ? match.id : '',
             matchedBy: byCode ? 'código' : (byName ? 'nome' : ''),
             productName: it.name,
+            ...(() => { const g = guessPackFactor(it.name); return { useUnit: g ? 'un' : it.unit, factor: g ? String(g) : '', factorGuessed: !!g }; })(),
             fromXml: it.lots.length > 0,
             lots: it.lots.length
               ? it.lots.map(l => ({ lot: l.lot, expiry: formatExpiryBR(l.expiry), qty: formatQty(l.qty) }))
@@ -10471,6 +10472,24 @@
         </div>`).join('') + '<div id="nfeSumCheck" style="font-size:13px; margin:4px 0 6px;"></div>';
     }
 
+    // Embalagem com várias unidades (pedido do usuário 2026-11-23): "AGULHA
+    // 30G - 100 UNIDADES", "CX C/ 100", "100UN" → 100. Só sugere: a equipe
+    // confere antes de importar. Número seguido de ml/mg/mm não conta.
+    function guessPackFactor(name) {
+      const t = String(name || '').toUpperCase();
+      const pats = [
+        /\b(\d{1,5})\s*(?:UNIDADES|UNIDADE|UNIDS?|UNDS?|UN|PCS|PÇS|PECAS|PEÇAS|PE[CÇ]AS)\b/,
+        /\bC\s*\/\s*(\d{1,5})\b(?!\s*(?:ML|MG|MM|G|CM|L)\b)/,
+        /\b(?:CX|CAIXA|PCT|PACOTE)\s*(?:C\/|COM)?\s*(\d{1,5})\b(?!\s*(?:ML|MG|MM|G|CM|L)\b)/,
+      ];
+      for (const re of pats) {
+        const m = t.match(re);
+        const n = m ? parseInt(m[1], 10) : 0;
+        if (n > 1 && n <= 10000) return n;
+      }
+      return 0;
+    }
+
     function nfeItemHtml(i) {
       const it = nfeImport.items[i];
       const skip = it.productId === 'skip';
@@ -10491,7 +10510,12 @@
             <select onchange="setNfeItemProduct(${i}, this.value)">${options}</select>
           </div>
           ${isNew ? `<div class="form-group" style="margin-bottom:8px;"><label>Nome do produto novo *</label>
-            <input type="text" maxlength="100" value="${escapeHtml(it.productName)}" oninput="nfeImport.items[${i}].productName = this.value"></div>` : ''}
+            <input type="text" maxlength="100" value="${escapeHtml(it.productName)}" oninput="nfeImport.items[${i}].productName = this.value"></div>
+          <div class="pay-part-grid" style="grid-template-columns: 1fr 1fr; margin-bottom:4px;">
+            <label>Unidade de uso<input type="text" maxlength="15" value="${escapeHtml(it.useUnit)}" placeholder="${escapeHtml(it.unit)}" oninput="nfeImport.items[${i}].useUnit = this.value"></label>
+            <label>Quantas em 1 ${escapeHtml(it.unit || 'UN')}<input type="text" maxlength="8" inputmode="decimal" value="${escapeHtml(it.factor)}" placeholder="1" oninput="nfeImport.items[${i}].factor = this.value; nfeImport.items[${i}].factorGuessed = false"></label>
+          </div>
+          <div class="ap-hint" style="margin:0 0 8px;">${it.factorGuessed ? `💡 Sugerido pelo nome: 1 ${escapeHtml(it.unit || 'UN')} = ${escapeHtml(it.factor)} ${escapeHtml(it.useUnit)}. Confira.` : `Ex.: caixa com 100 agulhas → unidade de uso "un", 100. Em branco = conta por ${escapeHtml(it.unit || 'unidade')}.`}</div>` : ''}
           ${skip ? '' : `
           <div class="pay-part-grid" style="grid-template-columns: 1.2fr 1.2fr 0.8fr; margin-bottom:4px;">
             ${it.lots.map((l, j) => `
@@ -10602,6 +10626,7 @@
         items.push({
           code: it.code, name: it.name, ncm: it.ncm, unit: it.unit, qty: it.qty, unitValue: it.bonus ? 0 : it.unitValue,
           productId: it.productId, productName: it.productName.trim(), lots,
+          useUnit: String(it.useUnit || '').trim(), factor: String(it.factor || '').trim().replace(',', '.'),
         });
       }
       const competence = (st.nf.issueDate || today).slice(0, 7);
