@@ -9409,6 +9409,16 @@
       return `${MONTH_LABELS_PT[+ym.slice(5, 7) - 1]}/${ym.slice(0, 4)}`;
     }
 
+    // Compra no cartão de crédito da clínica nasce baixada (pedido do usuário
+    // 2026-11-23): o fornecedor foi pago na compra; todas as parcelas entram
+    // como Pago na data da compra (data de hoje se a compra for futura).
+    function settleCreditCardInstallments(list, method, purchaseDate) {
+      if (method !== 'Cartão de crédito') return list;
+      const today = localDateStr(new Date());
+      const date = purchaseDate && purchaseDate <= today ? purchaseDate : today;
+      return list.map(x => ({ ...x, paid: true, paidValue: x.value, paidDate: date }));
+    }
+
     function payableValue(p) {
       return p.status === 'Pago' && p.paid !== null ? p.paid : p.estimated;
     }
@@ -9844,6 +9854,7 @@
         ${row('Categoria', escapeHtml(ctx.category))}
         ${ctx.supplier ? row('Fornecedor', escapeHtml(ctx.supplier)) : ''}
         ${row('Forma de pagamento', escapeHtml(ctx.paymentMethod))}
+        ${ctx.paymentMethod === 'Cartão de crédito' ? `<p class="ap-hint" style="margin:6px 0;">💳 Cartão de crédito: ${n > 1 ? `as ${n} parcelas já nascem` : 'a conta já nasce'} <strong>paga${n > 1 ? 's' : ''}</strong> em ${formatDateBR(ctx.installments[0].paid && ctx.type === 'Avulsa' ? ctx.installments[0].paidDate : (ctx.purchaseDate || today))}.</p>` : ''}
         ${ctx.type === 'Parcelada' ? row('Data da compra', formatDateBR(ctx.purchaseDate)) : ''}
         ${ctx.note ? row('Observação', escapeHtml(ctx.note)) : ''}
         <div class="review-part-title">${n === 1 ? 'Conta' : `${n} contas${ctx.type === 'Recorrente' ? ' (valor previsto — na baixa você informa o valor pago)' : ''}`}</div>
@@ -9920,7 +9931,8 @@
       btn.disabled = true;
       btn.textContent = '⏳ Lançando...';
       try {
-        const result = await payablesPost({ action: 'createPayables', ...ctx, target: undefined });
+        const installments = settleCreditCardInstallments(ctx.installments, ctx.paymentMethod, ctx.type === 'Avulsa' ? (ctx.installments[0].paid ? ctx.installments[0].paidDate : ctx.purchaseDate) : ctx.purchaseDate);
+        const result = await payablesPost({ action: 'createPayables', ...ctx, installments, target: undefined });
         closePayableModal();
         showToast(`✅ ${result.count} conta${result.count > 1 ? 's lançadas' : ' lançada'}${result.products ? ` · ${result.products} produto(s) registrado(s)` : ''}`);
         await fetchPayablesData();
@@ -10412,8 +10424,9 @@
           <div class="form-group"><label for="nfeCategory">Categoria *</label>
             <select id="nfeCategory" onchange="nfeImport.category = this.value">${expenseCategoryOptions().map(c => `<option value="${escapeHtml(c)}"${c === st.category ? ' selected' : ''}>${escapeHtml(c)}</option>`).join('')}</select></div>
           <div class="form-group"><label for="nfeMethod">Forma de pagamento</label>
-            <select id="nfeMethod" onchange="nfeImport.method = this.value">${Array.from(new Set([st.method, ...PAYABLE_METHODS])).map(m => `<option value="${escapeHtml(m)}"${m === st.method ? ' selected' : ''}>${escapeHtml(m)}</option>`).join('')}</select></div>
+            <select id="nfeMethod" onchange="nfeImport.method = this.value; document.getElementById('nfeCardHint').hidden = this.value !== 'Cartão de crédito'">${Array.from(new Set([st.method, ...PAYABLE_METHODS])).map(m => `<option value="${escapeHtml(m)}"${m === st.method ? ' selected' : ''}>${escapeHtml(m)}</option>`).join('')}</select></div>
         </div>
+        <p id="nfeCardHint" class="ap-hint" style="margin:0 0 8px;"${st.method === 'Cartão de crédito' ? '' : ' hidden'}>💳 Cartão de crédito: as parcelas já nascem pagas, na data de emissão da nota.</p>
         <p class="ap-hint">${st.fromDups
           ? `${nf.dups.length} duplicata${nf.dups.length > 1 ? 's' : ''} na nota: uma conta por parcela.`
           : 'A nota não traz duplicatas: uma conta com o valor total. Se foi parcelado (ex.: no cartão), divida abaixo.'}</p>
@@ -10600,7 +10613,7 @@
           description,
           category: st.category,
           paymentMethod: st.method,
-          installments: st.installments.map(x => ({
+          installments: settleCreditCardInstallments(st.installments, st.method, st.nf.issueDate || today).map(x => ({
             label: x.label, dueDate: x.dueDate, value: x.value, competence,
             paid: !!x.paid, paidValue: x.paid ? x.value : '', paidDate: x.paid ? x.paidDate : '',
           })),
