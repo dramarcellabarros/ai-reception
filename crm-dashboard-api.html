@@ -1633,6 +1633,8 @@
     .stock-balance.neg { color: #A33A2B; }
     .stock-body { padding: 0 2px 14px; }
     .stock-pick { background: var(--cor-areia-suave); border-radius: 10px; padding: 10px; margin-bottom: 10px; }
+    .qty-step { display: inline-flex; align-items: center; gap: 8px; }
+    .qty-step button { width: 34px; height: 34px; border-radius: 50%; border: 1px solid var(--cor-areia-suave); background: var(--cor-branco-perola); font-size: 18px; line-height: 1; cursor: pointer; color: var(--cor-texto-marca); }
 
     .form-success {
       background: #d4edda;
@@ -2392,7 +2394,7 @@
       <div id="vendasResumo"></div>
     </div>
     <div class="module-card" id="vendasMargemCard">
-      <h3>💹 Margem sobre produtos</h3>
+      <h3>💹 Margem de contribuição</h3>
       <div id="vendasMargem"></div>
     </div>
     <div class="module-card" id="vendasChartCard">
@@ -2517,6 +2519,7 @@
       <h2>📦 Estoque</h2>
       <div style="display:flex; gap:8px; flex-wrap:wrap;">
         <button class="agenda-toggle-btn" onclick="openLotSearch()">🔎 Buscar lote</button>
+        <button class="agenda-toggle-btn" onclick="openKitModal()">🧰 Kits por procedimento</button>
         <button class="btn-primary-soft" onclick="openCatalogModal()">➕ Produto</button>
       </div>
     </div>
@@ -3370,6 +3373,27 @@
       <div style="display:flex; gap:10px;">
         <button class="btn secondary" onclick="closeCatalogModal()">Cancelar</button>
         <button class="btn" id="catSubmitBtn" onclick="submitCatalog()" style="flex:1;">💾 Salvar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Estoque: kit de produtos por procedimento (2026-11-23) -->
+  <div class="modal" id="kitModal" style="z-index: 1100;">
+    <div class="modal-content">
+      <span class="close-btn" onclick="closeKitModal()">&times;</span>
+      <h2>🧰 Kit do procedimento</h2>
+      <p class="ap-hint" style="margin-bottom:12px;">Produtos que todo atendimento deste procedimento usa. Ao concluir o atendimento eles já vêm na lista, no lote que vence primeiro; a equipe ajusta a quantidade (ex.: 2 cânulas) e acrescenta o produto principal.</p>
+      <div id="kitError"></div>
+      <div class="form-group">
+        <label for="kitProcedure">Procedimento</label>
+        <select id="kitProcedure" onchange="loadKitDraft()"></select>
+      </div>
+      <div id="kitItems"></div>
+      <button type="button" class="agenda-toggle-btn" onclick="addKitItem()" style="margin:6px 0 10px;">➕ Produto no kit</button>
+      <div id="kitCost" class="ap-hint" style="margin-bottom:12px;"></div>
+      <div style="display:flex; gap:10px;">
+        <button class="btn secondary" onclick="closeKitModal()">Cancelar</button>
+        <button class="btn" id="kitSubmitBtn" onclick="submitKit()" style="flex:1;">💾 Salvar kit</button>
       </div>
     </div>
   </div>
@@ -11230,8 +11254,22 @@
       completeContext.products = [];
       productDraft = null;
       renderCompleteProducts();
-      // Produtos do estoque para escolher no formulário (carrega em segundo plano).
-      fetchStockData().then(() => { if (completeContext && productDraft && !productDraft.reading) { syncDraftFromForm(); autoMatchDraft(); renderCompleteProducts(); } });
+      // Procedimentos do atendimento ("Procedimento: A + B." na descrição).
+      const procMatch = description.match(/Procedimento:\s*([^.]+)\./);
+      completeContext.procedures = procMatch ? procMatch[1].split(PROCEDURE_JOIN_SEPARATOR).map(x => x.trim()).filter(x => x && x !== '—') : [];
+      // Produtos do estoque para escolher no formulário (carrega em segundo plano)
+      // e kit do procedimento já na lista (2026-11-23).
+      const ctxRef = completeContext;
+      fetchStockData().then(() => {
+        if (completeContext !== ctxRef) return;
+        if (!ctxRef.kitApplied && !ctxRef.products.length) {
+          ctxRef.kitApplied = true;
+          const kit = kitProductsFor(ctxRef.procedures);
+          if (kit.length) { ctxRef.products.push(...kit); ctxRef.kitNote = true; }
+        }
+        if (productDraft && !productDraft.reading) { syncDraftFromForm(); autoMatchDraft(); }
+        renderCompleteProducts();
+      });
 
       if (typeKey === 'AVALIACAO') {
         q.innerHTML = `
@@ -11396,13 +11434,22 @@
       if (stockLoading) return stockLoading;
       stockLoading = (async () => {
         try {
-          const [catalog, entries, applied, adjustments] = await Promise.all([
+          const [catalog, entries, applied, adjustments, kits] = await Promise.all([
             readSheetValues('Cadastro de Produtos').catch(() => []),
             readSheetValues('Entradas de Produtos').catch(() => []),
             readSheetValues(PRODUCTS_SHEET).catch(() => []),
             readSheetValues('Ajustes de Estoque').catch(() => []),
+            readSheetValues('Kits de Procedimento').catch(() => []),
           ]);
           stockData = computeStock(sheetObjects(catalog), sheetObjects(entries), sheetObjects(applied), sheetObjects(adjustments));
+          stockData.kits = new Map();
+          sheetObjects(kits).forEach(r => {
+            const key = normalizeText(r['Procedimento']);
+            const qty = stockNum(r['Quantidade (uso)']);
+            if (!key || !r['Produto (ID)'] || !(qty > 0)) return;
+            if (!stockData.kits.has(key)) stockData.kits.set(key, { procedure: r['Procedimento'], items: [] });
+            stockData.kits.get(key).items.push({ productId: r['Produto (ID)'], qty });
+          });
           stockLoadError = '';
         } catch (err) {
           console.error('Erro ao carregar estoque:', err);
@@ -11783,6 +11830,111 @@
       }
     }
 
+    // ---------- Kits por procedimento (2026-11-23) ----------
+    // Ex.: Preenchimento e Bioestimuladores → Cânula 22; Harmonização Glútea → Cânula 18.
+    let kitDraft = [];
+    function kitOf(procedure) {
+      return stockData && stockData.kits ? stockData.kits.get(normalizeText(procedure)) : null;
+    }
+    async function openKitModal(procedure) {
+      if (!stockData) await fetchStockData();
+      if (!stockData) return;
+      const sel = document.getElementById('kitProcedure');
+      const names = PROCEDURE_OPTIONS.slice();
+      stockData.kits.forEach(k => { if (!names.some(n => normalizeText(n) === normalizeText(k.procedure))) names.push(k.procedure); });
+      sel.innerHTML = names.map(n => `<option value="${escapeHtml(n)}">${escapeHtml(n)}${kitOf(n) ? ` · ${kitOf(n).items.length} item(ns)` : ''}</option>`).join('');
+      if (procedure) sel.value = procedure;
+      document.getElementById('kitError').innerHTML = '';
+      loadKitDraft();
+      document.getElementById('kitModal').classList.add('open');
+    }
+    function closeKitModal() { document.getElementById('kitModal').classList.remove('open'); }
+    function loadKitDraft() {
+      const k = kitOf(document.getElementById('kitProcedure').value);
+      kitDraft = k ? k.items.map(x => ({ ...x })) : [];
+      renderKitItems();
+    }
+    function addKitItem() { kitDraft.push({ productId: '', qty: 1 }); renderKitItems(); }
+    function removeKitItem(i) { kitDraft.splice(i, 1); renderKitItems(); }
+    function setKitItem(i, field, value) {
+      kitDraft[i][field] = field === 'qty' ? stockNum(value) : value;
+      if (field === 'productId') renderKitItems(); else renderKitCost();
+    }
+    function renderKitItems() {
+      const opts = (sel) => '<option value="">Escolha o produto…</option>' + stockData.list.map(p => `<option value="${escapeHtml(p.id)}"${p.id === sel ? ' selected' : ''}>${escapeHtml(p.name)}</option>`).join('');
+      document.getElementById('kitItems').innerHTML = kitDraft.length ? kitDraft.map((it, i) => {
+        const p = stockData.products.get(it.productId);
+        return `
+          <div class="ap-form-row" style="align-items:flex-end;">
+            <div class="form-group" style="flex:2;"><label>Produto</label><select onchange="setKitItem(${i}, 'productId', this.value)">${opts(it.productId)}</select></div>
+            <div class="form-group" style="flex:1;"><label>Qtd.${p && p.useUnit ? ` (${escapeHtml(p.useUnit)})` : ''}</label><input type="text" inputmode="decimal" value="${escapeHtml(formatQty(it.qty))}" oninput="setKitItem(${i}, 'qty', this.value)"></div>
+            <button type="button" class="prod-remove" style="margin-bottom:14px;" onclick="removeKitItem(${i})" title="Tirar do kit" aria-label="Tirar do kit">✕</button>
+          </div>`;
+      }).join('') : '<div class="ap-hint" style="margin-bottom:6px;">Sem kit: nada vem preenchido ao concluir este procedimento.</div>';
+      renderKitCost();
+    }
+    function renderKitCost() {
+      let total = 0, unknown = 0;
+      kitDraft.forEach(it => {
+        const p = stockData.products.get(it.productId);
+        if (!p || !(it.qty > 0)) return;
+        if (p.avgCost !== null && p.avgCost !== undefined) total += p.avgCost * it.qty; else unknown++;
+      });
+      document.getElementById('kitCost').textContent = kitDraft.length
+        ? `Custo do kit pelo custo médio: ${formatCurrencyBRL(total)}${unknown ? ` (${unknown} produto(s) ainda sem custo)` : ''}.`
+        : '';
+    }
+    async function submitKit() {
+      const err = document.getElementById('kitError');
+      err.innerHTML = '';
+      const procedure = document.getElementById('kitProcedure').value;
+      const items = kitDraft.filter(it => it.productId);
+      if (items.some(it => !(it.qty > 0))) { err.innerHTML = '<div class="form-error">⚠️ Informe a quantidade de cada produto.</div>'; return; }
+      const btn = document.getElementById('kitSubmitBtn');
+      btn.disabled = true;
+      try {
+        await payablesPost({ action: 'saveProcedureKit', procedure, items: items.map(it => ({ productId: it.productId, qty: String(it.qty) })) });
+        closeKitModal();
+        showToast(items.length ? `💾 Kit de ${procedure}: ${items.length} produto(s)` : `💾 ${procedure} ficou sem kit`);
+        await fetchStockData(true);
+      } catch (e) {
+        err.innerHTML = `<div class="form-error">❌ ${/desconhecida/i.test(String(e && e.message)) ? 'Falta publicar o Apps Script novo (Nova versão).' : errorText(e)}</div>`;
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    /** Produtos do kit para os procedimentos do atendimento (somados), no lote que vence primeiro. */
+    function kitProductsFor(procedures) {
+      const sum = new Map();
+      procedures.forEach(name => {
+        const k = kitOf(name);
+        if (k) k.items.forEach(it => sum.set(it.productId, (sum.get(it.productId) || 0) + it.qty));
+      });
+      const out = [];
+      sum.forEach((qty, id) => {
+        const p = stockData.products.get(id);
+        if (!p) return;
+        const lot = p.lotList.find(l => l.lot && l.balance > 0 && !l.expired) || p.lotList.find(l => l.lot && l.balance > 0);
+        out.push({
+          product: p.name, manufacturer: '', lot: lot ? lot.lot : '', expiry: lot ? (lot.expiry || '') : '', region: '',
+          quantity: `${formatQty(qty)} ${p.useUnit}`.trim(), photo: null, productId: p.id, qtyUse: qty, useUnit: p.useUnit, fromKit: true,
+        });
+      });
+      return out;
+    }
+
+    function changeCompleteQty(i, dir) {
+      const p = completeContext && completeContext.products[i];
+      if (!p || !p.productId) return;
+      const step = unitKey(p.useUnit) === 'ml' ? 0.1 : 1;
+      const next = Math.round(((p.qtyUse || 0) + dir * step) * 100) / 100;
+      if (next <= 0) return;
+      p.qtyUse = next;
+      p.quantity = `${formatQty(next)} ${p.useUnit || ''}`.trim();
+      renderCompleteProducts();
+    }
+
     // ---------- Margem (Financeiro → Resumo) ----------
     // Venda = cliente + dia (buildSales). Custo = produtos aplicados na mesma
     // cliente no mesmo dia. Margem sobre produtos: não desconta taxa do
@@ -11816,33 +11968,38 @@
         return { s, cost: c ? c.cost : 0, missing: c ? c.missing : 0, estimated: c ? c.estimated : false, hasProducts: !!c };
       });
       const sold = sales.reduce((t, s) => t + s.gross, 0);
+      // Taxa do cartão sai da margem (pedido do usuário 2026-11-23): é custo da venda.
+      const fees = sales.reduce((t, s) => t + (s.fee || 0), 0);
       const salesCost = rows.reduce((t, r) => t + r.cost, 0);
       const orphan = Array.from(costByDay.entries()).filter(([k]) => !used.has(k));
       const orphanCost = orphan.reduce((t, [, c]) => t + c.cost, 0);
       const totalCost = salesCost + orphanCost;
-      const margin = sold - totalCost;
+      const margin = sold - fees - totalCost;
       const missing = applied.filter(a => a.cost === null).length;
       const pct = (v, base) => (base ? `${(v / base * 100).toFixed(1).replace('.', ',')}%` : '—');
       const withProducts = rows.filter(r => r.hasProducts).sort((a, b) => (a.s.date < b.s.date ? 1 : -1));
       el.innerHTML = `
         <div class="kpi-grid" style="margin-bottom:12px;">
           ${kpiHtml('Vendido', formatCurrencyBRL(sold), `${sales.length} venda(s)`)}
+          ${kpiHtml('Taxas do cartão', `− ${formatCurrencyBRL(fees)}`, sold ? pct(fees, sold) + ' do vendido' : '')}
           ${kpiHtml('Custo dos produtos', `− ${formatCurrencyBRL(totalCost)}`, `${applied.length} aplicação(ões)`)}
-          ${kpiHtml('Margem sobre produtos', formatCurrencyBRL(margin), pct(margin, sold) + ' do vendido', margin >= 0 ? 'kpi-good' : 'kpi-alert')}
+          ${kpiHtml('Margem de contribuição', formatCurrencyBRL(margin), pct(margin, sold) + ' do vendido · antes das despesas fixas', margin >= 0 ? 'kpi-good' : 'kpi-alert')}
         </div>
         ${withProducts.length ? `<div class="data-table-wrap"><table class="data-table">
-          <thead><tr><th>Venda</th><th class="num">Vendido</th><th class="num">Custo</th><th class="num">Margem</th></tr></thead>
+          <thead><tr><th>Venda</th><th class="num">Vendido</th><th class="num hide-mobile">Taxa</th><th class="num">Produtos</th><th class="num">Margem</th></tr></thead>
           <tbody>${withProducts.slice(0, 50).map(r => `
             <tr>
               <td>${escapeHtml(r.s.name || leadNameByPhone(r.s.phone, r.s.phone))}<div class="muted">${formatDateBR(r.s.date)}${r.estimated ? ' · custo estimado' : ''}${r.missing ? ` · ${r.missing} sem custo` : ''}</div></td>
               <td class="num">${formatCurrencyBRL(r.s.gross)}</td>
+              <td class="num muted hide-mobile">${r.s.fee ? `− ${formatCurrencyBRL(r.s.fee)}` : '—'}</td>
               <td class="num muted">− ${formatCurrencyBRL(r.cost)}</td>
-              <td class="num"><strong>${pct(r.s.gross - r.cost, r.s.gross)}</strong></td>
+              <td class="num"><strong>${pct(r.s.gross - (r.s.fee || 0) - r.cost, r.s.gross)}</strong><div class="muted">${formatCurrencyBRL(r.s.gross - (r.s.fee || 0) - r.cost)}</div></td>
             </tr>`).join('')}
           </tbody></table></div>` : '<div class="chart-empty">Nenhuma venda com produto aplicado no período.</div>'}
         <p style="color: var(--cor-cinza-cacau); font-size: 12px; margin-top: 10px; line-height:1.5;">
           ℹ️ Custo = produtos registrados em "Concluir atendimento" na mesma cliente e no mesmo dia da venda, pelo custo da nota (lote usado ou custo médio).
-          Não desconta taxa do cartão nem despesas fixas.
+          Margem = vendido − taxa do cartão − produtos. Ainda não desconta despesas fixas (aluguel, salários).
+          Taxa de venda parcelada no carnê/Pix é zero; no cartão, a taxa gravada no lançamento.
           ${orphan.length ? `<br>⚠️ ${orphan.length} atendimento(s) com produto e sem venda lançada no mesmo dia (${formatCurrencyBRL(orphanCost)} de custo, já descontado acima).` : ''}
           ${missing ? `<br>⚠️ ${missing} produto(s) aplicado(s) sem custo conhecido (sem nota de entrada ou fora do cadastro): não entraram no custo.` : ''}
         </p>`;
@@ -11930,8 +12087,8 @@
             <button type="button" class="prod-remove" onclick="removeCompleteProduct(${i})" title="Remover" aria-label="Remover produto">✕</button>
           </div>
           <div class="finance-row-meta">
-            <span>${productLotHtml(p) || '—'}</span>
-            <span>${productUseHtml(p)}${p.photo ? ' · 📷' : ''}</span>
+            <span>${productLotHtml(p) || '—'}${p.fromKit ? ' · 🧰 kit' : ''}</span>
+            <span>${p.productId && p.qtyUse ? `<span class="qty-step"><button type="button" onclick="changeCompleteQty(${i}, -1)" aria-label="Menos">−</button><b>${escapeHtml(p.quantity)}</b><button type="button" onclick="changeCompleteQty(${i}, 1)" aria-label="Mais">+</button></span>${p.region ? ` · ${escapeHtml(p.region)}` : ''}` : productUseHtml(p)}${p.photo ? ' · 📷' : ''}</span>
           </div>
         </div>`).join('');
       const req = 'opcional';
@@ -11943,6 +12100,7 @@
       box.innerHTML = `
         <h3>💉 Produtos aplicados <span class="prod-req">(${req})</span></h3>
         <div id="cmProductMsg"></div>
+        ${completeContext.kitNote ? `<div class="ap-hint" style="margin-bottom:6px;">🧰 Kit de ${escapeHtml(completeContext.procedures.filter(n => kitOf(n)).join(' + '))}: confira a quantidade (− / +) e acrescente o produto principal.</div>` : ''}
         ${items}
         ${productDraft ? productFormHtml() : ''}
         ${actions}`;
