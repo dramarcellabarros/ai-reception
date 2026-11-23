@@ -9409,14 +9409,16 @@
       return `${MONTH_LABELS_PT[+ym.slice(5, 7) - 1]}/${ym.slice(0, 4)}`;
     }
 
-    // Compra no cartão de crédito da clínica nasce baixada (pedido do usuário
-    // 2026-11-23): o fornecedor foi pago na compra; todas as parcelas entram
-    // como Pago na data da compra (data de hoje se a compra for futura).
-    function settleCreditCardInstallments(list, method, purchaseDate) {
-      if (method !== 'Cartão de crédito') return list;
-      const today = localDateStr(new Date());
-      const date = purchaseDate && purchaseDate <= today ? purchaseDate : today;
-      return list.map(x => ({ ...x, paid: true, paidValue: x.value, paidDate: date }));
+    // Cartão de crédito = baixa automática (pedido do usuário 2026-11-23):
+    // as parcelas ficam lançadas em cada mês (o Fluxo e o A Pagar mostram o
+    // que vem pela frente), mas ninguém precisa dar baixa: no dia do
+    // vencimento o CRM passa a tratar a parcela como paga, pelo valor
+    // lançado. Baixa manual continua valendo (ex.: valor diferente).
+    const AUTO_SETTLE_METHOD = 'Cartão de crédito';
+    function autoSettlePayable(p, today) {
+      if (p.method !== AUTO_SETTLE_METHOD || p.status === 'Pago') return p;
+      if (p.dueDate && p.dueDate <= today) return { ...p, status: 'Pago', paid: p.estimated, paidDate: p.dueDate, autoPaid: true };
+      return { ...p, autoPending: true };
     }
 
     function payableValue(p) {
@@ -9464,7 +9466,7 @@
             nfeKey: col(row, 'NF-e (chave)'),
             nfeNumber: col(row, 'NF-e (número)'),
           };
-        }).filter(p => p.id);
+        }).filter(p => p.id).map(p => autoSettlePayable(p, localDateStr(new Date())));
         const ch = (catalog && catalog[0]) || [];
         productCatalog = (catalog || []).slice(1).map(r => ({
           id: r[ch.indexOf('ID')] || '',
@@ -9611,7 +9613,8 @@
       const diff = isPaid && p.paid !== null ? Math.round((p.paid - p.estimated) * 100) / 100 : 0;
       const meta = [
         isPaid
-          ? `<span class="finance-status-badge finance-status-paid">Pago ${formatDateShortBR(p.paidDate)}</span>`
+          ? `<span class="finance-status-badge finance-status-paid">Pago ${formatDateShortBR(p.paidDate)}${p.autoPaid ? ' · automático' : ''}</span>`
+          : p.autoPending ? `<span>💳 Baixa automática ${formatDateShortBR(p.dueDate)}</span>`
           : `<span>Vence ${formatDateShortBR(p.dueDate)}</span>${late ? `<span class="ap-late">há ${late} dia${late > 1 ? 's' : ''}</span>` : (p.dueDate === today ? '<span class="ap-late" style="color:var(--cor-texto-marca);">hoje</span>' : '')}`,
         `<span>🏷️ ${escapeHtml(p.category || '—')}</span>`,
         p.supplier ? `<span>${escapeHtml(p.supplier)}</span>` : '',
@@ -9630,7 +9633,9 @@
           </div>
           <div class="finance-row-meta">${meta}</div>
           <div style="display:flex; gap:6px;">
-            ${isPaid
+            ${p.autoPaid || p.autoPending
+              ? `<span class="ap-hint" style="flex:1; align-self:center; margin:0;">💳 Baixa automática · ✏️ muda o valor</span>`
+              : isPaid
               ? `<button class="complete-btn" style="flex:1;" onclick="unpayPayableFromUI(${jsArg(p.id)})">↩️ Desfazer baixa</button>`
               : `<button class="complete-btn" style="flex:1;" onclick="openPayPayableModal(${jsArg(p.id)})">✅ Dar baixa</button>`}
             <button class="complete-btn" onclick="openEditPayableModal(${jsArg(p.id)})" title="Editar" aria-label="Editar conta">✏️</button>
@@ -9854,7 +9859,7 @@
         ${row('Categoria', escapeHtml(ctx.category))}
         ${ctx.supplier ? row('Fornecedor', escapeHtml(ctx.supplier)) : ''}
         ${row('Forma de pagamento', escapeHtml(ctx.paymentMethod))}
-        ${ctx.paymentMethod === 'Cartão de crédito' ? `<p class="ap-hint" style="margin:6px 0;">💳 Cartão de crédito: ${n > 1 ? `as ${n} parcelas já nascem` : 'a conta já nasce'} <strong>paga${n > 1 ? 's' : ''}</strong> em ${formatDateBR(ctx.installments[0].paid && ctx.type === 'Avulsa' ? ctx.installments[0].paidDate : (ctx.purchaseDate || today))}.</p>` : ''}
+        ${ctx.paymentMethod === AUTO_SETTLE_METHOD && !(ctx.type === 'Avulsa' && ctx.installments[0].paid) ? `<p class="ap-hint" style="margin:6px 0;">💳 Cartão de crédito: ${n > 1 ? 'cada parcela fica lançada no seu mês e dá' : 'a conta dá'} <strong>baixa sozinha no vencimento</strong>. Não precisa dar baixa.</p>` : ''}
         ${ctx.type === 'Parcelada' ? row('Data da compra', formatDateBR(ctx.purchaseDate)) : ''}
         ${ctx.note ? row('Observação', escapeHtml(ctx.note)) : ''}
         <div class="review-part-title">${n === 1 ? 'Conta' : `${n} contas${ctx.type === 'Recorrente' ? ' (valor previsto — na baixa você informa o valor pago)' : ''}`}</div>
@@ -9931,8 +9936,7 @@
       btn.disabled = true;
       btn.textContent = '⏳ Lançando...';
       try {
-        const installments = settleCreditCardInstallments(ctx.installments, ctx.paymentMethod, ctx.type === 'Avulsa' ? (ctx.installments[0].paid ? ctx.installments[0].paidDate : ctx.purchaseDate) : ctx.purchaseDate);
-        const result = await payablesPost({ action: 'createPayables', ...ctx, installments, target: undefined });
+        const result = await payablesPost({ action: 'createPayables', ...ctx, target: undefined });
         closePayableModal();
         showToast(`✅ ${result.count} conta${result.count > 1 ? 's lançadas' : ' lançada'}${result.products ? ` · ${result.products} produto(s) registrado(s)` : ''}`);
         await fetchPayablesData();
@@ -10028,7 +10032,7 @@
       const p = allPayables.find(x => x.id === id);
       if (!p) return;
       editPayableId = id;
-      const isPaid = p.status === 'Pago';
+      const isPaid = p.status === 'Pago' && !p.autoPaid; // automática: só o valor lançado muda
       document.getElementById('epError').innerHTML = '';
       document.getElementById('epInfo').textContent = `${PAYABLE_TYPE_INFO[p.type] ? PAYABLE_TYPE_INFO[p.type].label : p.type}${p.type !== 'Avulsa' && p.label ? ` · ${p.label}` : ''} — muda só esta conta.`;
       document.getElementById('epDescription').value = p.description;
@@ -10073,7 +10077,7 @@
       if (!body.dueDate) return fail('Informe o vencimento.');
       // Avulsa e recorrente: competência acompanha o vencimento; parcelada fica no mês da compra.
       if (p.type !== 'Parcelada') body.competence = body.dueDate.slice(0, 7);
-      if (p.status === 'Pago') {
+      if (p.status === 'Pago' && !p.autoPaid) {
         body.paidValue = parseMoneyInput(document.getElementById('epPaidValue').value);
         body.paidDate = document.getElementById('epPaidDate').value;
         if (!(body.paidValue > 0)) return fail('Informe o valor pago.');
@@ -10426,7 +10430,7 @@
           <div class="form-group"><label for="nfeMethod">Forma de pagamento</label>
             <select id="nfeMethod" onchange="nfeImport.method = this.value; document.getElementById('nfeCardHint').hidden = this.value !== 'Cartão de crédito'">${Array.from(new Set([st.method, ...PAYABLE_METHODS])).map(m => `<option value="${escapeHtml(m)}"${m === st.method ? ' selected' : ''}>${escapeHtml(m)}</option>`).join('')}</select></div>
         </div>
-        <p id="nfeCardHint" class="ap-hint" style="margin:0 0 8px;"${st.method === 'Cartão de crédito' ? '' : ' hidden'}>💳 Cartão de crédito: as parcelas já nascem pagas, na data de emissão da nota.</p>
+        <p id="nfeCardHint" class="ap-hint" style="margin:0 0 8px;"${st.method === 'Cartão de crédito' ? '' : ' hidden'}>💳 Cartão de crédito: cada parcela fica lançada no seu mês e dá baixa sozinha no vencimento.</p>
         <p class="ap-hint">${st.fromDups
           ? `${nf.dups.length} duplicata${nf.dups.length > 1 ? 's' : ''} na nota: uma conta por parcela.`
           : 'A nota não traz duplicatas: uma conta com o valor total. Se foi parcelado (ex.: no cartão), divida abaixo.'}</p>
@@ -10613,7 +10617,7 @@
           description,
           category: st.category,
           paymentMethod: st.method,
-          installments: settleCreditCardInstallments(st.installments, st.method, st.nf.issueDate || today).map(x => ({
+          installments: st.installments.map(x => ({
             label: x.label, dueDate: x.dueDate, value: x.value, competence,
             paid: !!x.paid, paidValue: x.paid ? x.value : '', paidDate: x.paid ? x.paidDate : '',
           })),
