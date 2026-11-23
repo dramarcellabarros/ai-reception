@@ -2241,6 +2241,7 @@
     .ap-label { font-weight: 400; font-size: 12px; color: var(--cor-cinza-cacau); }
     .ap-parcel-hint { background: var(--cor-rosa-sereno); border-radius: 8px; padding: 10px 12px; font-size: 13px; color: var(--cor-texto-marca); margin-bottom: 12px; }
     .ap-parcel-hint .agenda-toggle-btn { display: block; margin-top: 6px; }
+    .ec-group { width: auto; min-width: 96px; padding: 6px 8px; font-size: 16px; }
     .ap-cat-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--cor-creme-avela); font-size: 14px; }
     @media (max-width: 400px) { .ap-form-row { grid-template-columns: 1fr; gap: 0; } }
 
@@ -3561,7 +3562,8 @@
         <button class="btn" onclick="addExpenseCategoryFromUI()" style="width:auto; white-space:nowrap;">➕ Adicionar</button>
       </div>
       <div id="ecList"></div>
-      <p class="ap-hint" style="margin-top:10px;">Renomear leva o nome novo às contas já lançadas. Excluir só tira da lista: as contas já lançadas continuam com a categoria antiga.</p>
+      <p class="ap-hint" style="margin-top:10px;"><strong>Fixa</strong>: paga igual todo mês (aluguel, energia, água, alarme). <strong>Variável</strong>: acompanha o movimento (impostos, insumos). As duas saem do lucro do mês no Resumo; compra que entrou no estoque fica de fora (o custo entra quando o produto é aplicado).</p>
+      <p class="ap-hint" style="margin-top:6px;">Renomear leva o nome novo às contas já lançadas. Excluir só tira da lista: as contas já lançadas continuam com a categoria antiga.</p>
     </div>
   </div>
 
@@ -9359,6 +9361,17 @@
     let pagarFilter = 'abertas';
 
     const DEFAULT_EXPENSE_CATEGORIES = ['Produtos', 'Insumos', 'Aluguel', 'Internet', 'Energia', 'Água', 'Telefone', 'Contabilidade', 'Marketing', 'Impostos', 'Outros'];
+    // Grupo da categoria (2026-11-23) para o lucro do mês. Fixa = paga igual
+    // com 5 ou 50 atendimentos; Variável = acompanha o movimento. Categoria
+    // sem grupo gravado usa este padrão (nova categoria = Fixa).
+    const EXPENSE_GROUPS = ['Fixa', 'Variável'];
+    const DEFAULT_VARIABLE_CATEGORIES = ['produtos', 'insumos', 'impostos', 'outros'];
+    let expenseCategoryGroups = {};
+    function expenseGroupOf(cat) {
+      const g = expenseCategoryGroups[String(cat || '').trim().toLowerCase()];
+      if (EXPENSE_GROUPS.includes(g)) return g;
+      return DEFAULT_VARIABLE_CATEGORIES.includes(String(cat || '').trim().toLowerCase()) ? 'Variável' : 'Fixa';
+    }
     const PAYABLE_METHODS = ['Pix', 'Boleto', 'Cartão de crédito', 'Cartão de débito', 'Débito automático', 'Transferência', 'Dinheiro', 'Outro'];
     const PAYABLE_TYPE_INFO = {
       Avulsa: { label: 'Avulsa', method: 'Pix', hint: 'Uma conta só (ex.: manutenção, compra à vista).' },
@@ -9454,6 +9467,9 @@
           name: r[sh0.indexOf('Razão Social')] || '',
         })).filter(x => x.doc);
         const catNames = (cats || []).slice(1).map(r => String(r[0] || '').trim()).filter(Boolean);
+        const gIdx = ((cats && cats[0]) || []).indexOf('Grupo');
+        expenseCategoryGroups = {};
+        if (gIdx >= 0) (cats || []).slice(1).forEach(r => { const n = String(r[0] || '').trim().toLowerCase(); if (n && r[gIdx]) expenseCategoryGroups[n] = String(r[gIdx]).trim(); });
         expenseCategories = catNames.length ? catNames : DEFAULT_EXPENSE_CATEGORIES.slice();
         stockEntryCountByGroup = {};
         const sh = (stock && stock[0]) || [];
@@ -9472,6 +9488,7 @@
       refreshOpenCategorySelects();
       if (currentModule === 'pagar') renderPagar();
       if (currentModule === 'vendas' && vendasMode === 'fluxo') renderFluxo();
+      if (currentModule === 'vendas' && vendasMode === 'resumo') renderMarginCard();
     }
 
     /** Atualiza a lista de categorias nos formulários abertos, mantendo o que já foi escolhido. */
@@ -10124,7 +10141,10 @@
         return `
         <div class="ap-cat-row">
           <span>${escapeHtml(c)}${used ? ` <span class="ap-hint">· ${used} conta${used > 1 ? 's' : ''}</span>` : ''}</span>
-          <span style="display:flex; gap:6px;">
+          <span style="display:flex; gap:6px; align-items:center;">
+            <select class="ec-group" onchange="setExpenseCategoryGroupFromUI(${jsArg(c)}, this.value)" aria-label="Grupo da categoria" title="Fixa: paga igual todo mês. Variável: acompanha o movimento.">
+              ${EXPENSE_GROUPS.map(g => `<option value="${g}"${expenseGroupOf(c) === g ? ' selected' : ''}>${g}</option>`).join('')}
+            </select>
             <button class="complete-btn" onclick="renameExpenseCategoryFromUI(${jsArg(c)})" title="Renomear" aria-label="Renomear categoria">✏️</button>
             <button class="complete-btn complete-btn-danger" onclick="deleteExpenseCategoryFromUI(${jsArg(c)})" title="Excluir" aria-label="Excluir categoria">🗑️</button>
           </span>
@@ -10152,6 +10172,10 @@
       const name = input.value.trim().replace(/\s+/g, ' ');
       if (!name) return;
       if (await runCategoryAction({ action: 'addExpenseCategory', name }, `🏷️ Categoria "${name}" criada`)) input.value = '';
+    }
+
+    async function setExpenseCategoryGroupFromUI(name, group) {
+      await runCategoryAction({ action: 'setExpenseCategoryGroup', name, group }, `🏷️ "${name}" agora é despesa ${group.toLowerCase()}`);
     }
 
     async function renameExpenseCategoryFromUI(oldName) {
@@ -11935,6 +11959,68 @@
       renderCompleteProducts();
     }
 
+    // ---------- Lucro do mês (pedido do usuário 2026-11-23) ----------
+    // Margem de contribuição − despesas do Contas a Pagar pela Competência
+    // (mês a que a despesa pertence), pelo valor pago ou, se ainda em aberto,
+    // pelo previsto. Compra com itens no estoque fica de fora: o custo já
+    // entra na margem quando o produto é aplicado (não conta duas vezes).
+    function monthResultHtml(from, to, sold, margin) {
+      if (!/-01$/.test(from) || vendasPeriod === 'hoje' || vendasPeriod === '7dias') {
+        return '<p class="ap-hint" style="margin:0 0 12px;">📅 O lucro do mês (margem − despesas) aparece em <strong>Este mês</strong>, <strong>Mês passado</strong> ou <strong>Este ano</strong>.</p>';
+      }
+      if (!payablesLoaded) {
+        if (!payablesLoading) fetchPayablesData();
+        return '<div class="agenda-empty">⏳ Buscando as despesas do Contas a Pagar...</div>';
+      }
+      if (payablesLoadError) return `<div class="form-error">❌ Despesas: ${escapeHtml(payablesLoadError)}</div>`;
+      const m0 = from.slice(0, 7), m1 = to.slice(0, 7);
+      const inPeriod = allPayables.filter(p => {
+        const comp = p.competence || String(p.dueDate || '').slice(0, 7);
+        return comp >= m0 && comp <= m1;
+      });
+      const stockBuys = inPeriod.filter(p => stockEntryCountByGroup[p.group] > 0);
+      const expenses = inPeriod.filter(p => !(stockEntryCountByGroup[p.group] > 0));
+      const byCat = new Map();
+      expenses.forEach(p => {
+        const cat = p.category || 'Sem categoria';
+        const c = byCat.get(cat) || { cat, group: expenseGroupOf(cat), value: 0, open: 0 };
+        c.value += payableValue(p);
+        if (p.status !== 'Pago') c.open++;
+        byCat.set(cat, c);
+      });
+      const cats = Array.from(byCat.values()).sort((a, b) => b.value - a.value);
+      const fixed = cats.filter(c => c.group === 'Fixa').reduce((t, c) => t + c.value, 0);
+      const variable = cats.filter(c => c.group !== 'Fixa').reduce((t, c) => t + c.value, 0);
+      const openCount = expenses.filter(p => p.status !== 'Pago').length;
+      const profit = margin - variable - fixed;
+      const pct = (v) => (sold ? `${(v / sold * 100).toFixed(1).replace('.', ',')}% do vendido` : '');
+      // Ponto de equilíbrio: quanto vender para a margem (já sem as variáveis) pagar os fixos.
+      const contribRate = sold > 0 ? (margin - variable) / sold : 0;
+      const breakEven = contribRate > 0 ? fixed / contribRate : null;
+      const catRows = (group) => cats.filter(c => (group === 'Fixa') === (c.group === 'Fixa')).map(c => `
+            <tr><td>${escapeHtml(c.cat)}${c.open ? `<div class="muted">${c.open} em aberto · valor previsto</div>` : ''}</td><td class="num">− ${formatCurrencyBRL(c.value)}</td></tr>`).join('');
+      const label = m0 === m1 ? monthLabelPT(m0) : `${monthLabelPT(m0)} a ${monthLabelPT(m1)}`;
+      return `
+        <h4 style="margin:4px 0 8px;">📊 Lucro do período · ${escapeHtml(label)}</h4>
+        <div class="kpi-grid" style="margin-bottom:12px;">
+          ${kpiHtml('Despesas variáveis', `− ${formatCurrencyBRL(variable)}`, pct(variable))}
+          ${kpiHtml('Despesas fixas', `− ${formatCurrencyBRL(fixed)}`, pct(fixed))}
+          ${kpiHtml('Lucro operacional', formatCurrencyBRL(profit), pct(profit) || 'margem − despesas', profit >= 0 ? 'kpi-good kpi-hero' : 'kpi-alert kpi-hero')}
+          ${kpiHtml('Ponto de equilíbrio', breakEven === null ? '—' : formatCurrencyBRL(breakEven), breakEven === null ? 'sem margem no período' : 'vendas para pagar as fixas')}
+        </div>
+        ${cats.length ? `<div class="data-table-wrap"><table class="data-table">
+          <thead><tr><th>Despesa (por competência)</th><th class="num">Valor</th></tr></thead>
+          <tbody>
+            ${cats.some(c => c.group !== 'Fixa') ? `<tr><td colspan="2"><strong>Variáveis</strong></td></tr>${catRows('Variável')}` : ''}
+            ${cats.some(c => c.group === 'Fixa') ? `<tr><td colspan="2"><strong>Fixas</strong></td></tr>${catRows('Fixa')}` : ''}
+          </tbody></table></div>` : '<div class="chart-empty">Nenhuma despesa lançada no Contas a Pagar com competência no período.</div>'}
+        <p style="color: var(--cor-cinza-cacau); font-size: 12px; margin: 8px 0 16px; line-height:1.5;">
+          ℹ️ Despesas pela Competência (mês a que pertencem), pelo valor pago ou, se ainda em aberto, pelo previsto${openCount ? ` (${openCount} conta(s) em aberto)` : ''}.
+          Fixa ou Variável se define em 🏷️ Categorias, no Contas a Pagar.
+          ${stockBuys.length ? `<br>📦 ${stockBuys.length} conta(s) de compra que entrou no estoque (${formatCurrencyBRL(stockBuys.reduce((t, p) => t + payableValue(p), 0))}) ficam fora: o custo entra na margem quando o produto é aplicado.` : ''}
+        </p>`;
+    }
+
     // ---------- Margem (Financeiro → Resumo) ----------
     // Venda = cliente + dia (buildSales). Custo = produtos aplicados na mesma
     // cliente no mesmo dia. Margem sobre produtos: não desconta taxa do
@@ -11983,8 +12069,9 @@
           ${kpiHtml('Vendido', formatCurrencyBRL(sold), `${sales.length} venda(s)`)}
           ${kpiHtml('Taxas do cartão', `− ${formatCurrencyBRL(fees)}`, sold ? pct(fees, sold) + ' do vendido' : '')}
           ${kpiHtml('Custo dos produtos', `− ${formatCurrencyBRL(totalCost)}`, `${applied.length} aplicação(ões)`)}
-          ${kpiHtml('Margem de contribuição', formatCurrencyBRL(margin), pct(margin, sold) + ' do vendido · antes das despesas fixas', margin >= 0 ? 'kpi-good' : 'kpi-alert')}
+          ${kpiHtml('Margem de contribuição', formatCurrencyBRL(margin), pct(margin, sold) + ' do vendido · antes das despesas', margin >= 0 ? 'kpi-good' : 'kpi-alert')}
         </div>
+        ${monthResultHtml(from, to, sold, margin)}
         ${withProducts.length ? `<div class="data-table-wrap"><table class="data-table">
           <thead><tr><th>Venda</th><th class="num">Vendido</th><th class="num hide-mobile">Taxa</th><th class="num">Produtos</th><th class="num">Margem</th></tr></thead>
           <tbody>${withProducts.slice(0, 50).map(r => `
@@ -11998,7 +12085,7 @@
           </tbody></table></div>` : '<div class="chart-empty">Nenhuma venda com produto aplicado no período.</div>'}
         <p style="color: var(--cor-cinza-cacau); font-size: 12px; margin-top: 10px; line-height:1.5;">
           ℹ️ Custo = produtos registrados em "Concluir atendimento" na mesma cliente e no mesmo dia da venda, pelo custo da nota (lote usado ou custo médio).
-          Margem = vendido − taxa do cartão − produtos. Ainda não desconta despesas fixas (aluguel, salários).
+          Margem = vendido − taxa do cartão − produtos.
           Taxa de venda parcelada no carnê/Pix é zero; no cartão, a taxa gravada no lançamento.
           ${orphan.length ? `<br>⚠️ ${orphan.length} atendimento(s) com produto e sem venda lançada no mesmo dia (${formatCurrencyBRL(orphanCost)} de custo, já descontado acima).` : ''}
           ${missing ? `<br>⚠️ ${missing} produto(s) aplicado(s) sem custo conhecido (sem nota de entrada ou fora do cadastro): não entraram no custo.` : ''}
