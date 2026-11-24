@@ -11897,6 +11897,25 @@
       list.innerHTML = items.length ? items.map(stockItemHtml).join('') : `<div class="agenda-empty">${all.length ? 'Nenhum produto neste filtro.' : 'Nenhum produto no cadastro ainda. Importe um XML de compra (Financeiro → A Pagar) ou toque em ➕ Produto.'}</div>`;
     }
 
+    // De onde vem o saldo (pedido do usuário 2026-11-24: "lancei 2, apareceu só 1").
+    function stockLotMovesLabel(l) {
+      return [
+        `entrou ${formatQty(l.inQty)}`,
+        l.adjQty ? `ajuste ${l.adjQty > 0 ? '+' : ''}${formatQty(l.adjQty)}` : '',
+        l.outQty ? `usado ${formatQty(l.outQty)}` : '',
+      ].filter(Boolean).join(' · ');
+    }
+
+    function stockUsesHtml(p) {
+      const uses = ((stockData && stockData.applied) || []).filter(a => a.productId === p.id && a.qty > 0);
+      if (!uses.length) return '';
+      return `<div class="muted" style="font-size:12px; margin-bottom:6px;">Usos nos atendimentos (${uses.length}):</div>${uses.slice().reverse().slice(0, 10).map(a => `
+            <div class="finance-row-meta" style="padding:4px 0;">
+              <span>${escapeHtml(formatDateBR(String(a.date || '').slice(0, 10)))} · ${escapeHtml(a.name || a.phone || '—')}${a.lot ? ` · <span class="lot-mono">${escapeHtml(a.lot)}</span>` : ' · sem lote'}</span>
+              <span>−${formatQty(a.qty)} ${escapeHtml(p.useUnit)}</span>
+            </div>`).join('')}`;
+    }
+
     function stockItemHtml(p) {
       const open = stockOpen.has(p.id);
       const flags = [
@@ -11915,7 +11934,7 @@
               <tr>
                 <td class="lot-mono">${escapeHtml(l.lot || 'sem lote')}</td>
                 <td>${l.expiry ? escapeHtml(formatExpiryBR(l.expiry)) : '—'}${l.expired ? ' <span class="stock-flag bad">vencido</span>' : l.expiring ? ' <span class="stock-flag warn">vence logo</span>' : ''}</td>
-                <td class="num">${stockQtyLabel(p, l.balance)}${l.fromNoLot ? `<div class="muted" style="font-size:11px;">inclui ${formatQty(l.fromNoLot)} usado(s) sem lote</div>` : ''}</td>
+                <td class="num">${stockQtyLabel(p, l.balance)}<div class="muted" style="font-size:11px;">${stockLotMovesLabel(l)}</div>${l.fromNoLot ? `<div class="muted" style="font-size:11px;">inclui ${formatQty(l.fromNoLot)} usado(s) sem lote</div>` : ''}</td>
                 <td class="num hide-mobile muted">${l.unitCost ? formatCurrencyBRL(l.unitCost) : '—'}</td>
               </tr>`).join('')}
             </tbody></table></div>` : '<div class="muted" style="padding:6px 0;">Sem lotes com movimento.</div>'}
@@ -11925,6 +11944,7 @@
             ${p.minStock !== null ? ` · mínimo ${formatQty(p.minStock)} ${escapeHtml(p.useUnit)}` : ''}
             ${p.avgCost ? ` · custo médio ${formatCurrencyBRL(p.avgCost)}/${escapeHtml(p.useUnit || 'un.')}` : ''}
           </div>
+          ${stockUsesHtml(p)}
           ${p.adjustments.length ? `<div class="muted" style="font-size:12px; margin-bottom:6px;">Ajustes:</div>${p.adjustments.slice().reverse().slice(0, 10).map(a => `
             <div class="finance-row-meta" style="padding:4px 0;">
               <span>${formatDateBR(a.date)} · ${escapeHtml(a.reason)}${a.lot ? ` · <span class="lot-mono">${escapeHtml(a.lot)}</span>` : ''}${a.note ? ` · ${escapeHtml(a.note)}` : ''}</span>
