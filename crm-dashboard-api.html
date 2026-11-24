@@ -1889,6 +1889,9 @@
     .conv-status.paused { background: var(--cor-creme-avela); color: var(--cor-texto-marca); }
     .conv-messages { flex: 1; overflow-y: auto; padding: 14px; background: var(--cor-areia-suave); display: flex; flex-direction: column; gap: 8px; }
     .conv-msg { max-width: 78%; padding: 8px 11px; border-radius: 10px; font-size: 13.5px; line-height: 1.4; white-space: pre-wrap; overflow-wrap: anywhere; box-shadow: 0 1px 2px rgba(0,0,0,0.06); }
+    .msg-tick { font-weight: 700; letter-spacing: -2px; margin-left: 4px; color: var(--cor-cinza-cacau); }
+    .msg-tick.read { color: #2f8fd8; }
+    .msg-tick.fail { letter-spacing: 0; color: #b3261e; font-weight: 600; }
     .conv-msg .conv-msg-meta { display: block; font-size: 10.5px; color: var(--cor-cinza-cacau); margin-top: 3px; white-space: nowrap; }
     .conv-msg.from-patient { align-self: flex-start; background: #fff; }
     .conv-msg.from-ia { align-self: flex-end; background: var(--cor-rosa-sereno); }
@@ -3266,7 +3269,8 @@
       <span class="close-btn" onclick="closeCollectModal()">&times;</span>
       <h2>💬 Cobrar parcela vencida</h2>
       <div id="collectError"></div>
-      <div id="collectInfo" style="margin-bottom:14px;"></div>
+      <div id="collectInfo" style="margin-bottom:8px;"></div>
+      <div id="collectReminderInfo" class="ap-hint" style="margin:0 0 14px;"></div>
       <p style="color: var(--cor-cinza-cacau); font-size: 13px; margin-bottom: 14px;">
         <strong>Pela IA:</strong> sai na hora pelo número da clínica, com o texto aprovado pela Meta; se a cliente responder, a IA pede o comprovante e a equipe é avisada.<br>
         <strong>Pelo meu WhatsApp:</strong> abre o WhatsApp deste aparelho com a mensagem pronta para você revisar e enviar.
@@ -4474,6 +4478,34 @@
       deviceBtn.href = link || '#';
       deviceBtn.style.display = link ? '' : 'none';
       document.getElementById('collectModal').classList.add('open');
+      renderCollectReminderInfo(phone, !convListLoaded);
+    }
+
+    /** Último lembrete enviado pela IA para esta cliente e se foi entregue/lido (2026-11-24). */
+    async function renderCollectReminderInfo(phone, fetchFirst) {
+      const el = document.getElementById('collectReminderInfo');
+      const digits = phoneDigits(phone);
+      const show = () => {
+        if (collectPhone !== phone) return;
+        const c = convList.find(x => x.digits === digits);
+        const r = c && c.lastReminder;
+        if (!r) { el.innerHTML = 'Nenhum lembrete enviado pela IA para esta cliente.'; return; }
+        const st = r.status === 'Lida' ? `${msgStatusHtml('Lida')} lido${r.statusAt ? ' em ' + escapeHtml(r.statusAt.slice(0, 16)) : ''}`
+          : r.status === 'Entregue' ? `${msgStatusHtml('Entregue')} entregue, sem confirmação de leitura`
+          : r.status === 'Falhou' ? msgStatusHtml('Falhou')
+          : 'sem aviso de entrega';
+        const replied = c.lastPatientMs && r.ms && c.lastPatientMs > r.ms ? ' · ela respondeu' : ' · sem resposta';
+        el.innerHTML = `📨 Último lembrete pela IA: ${escapeHtml(String(r.at).slice(0, 16))} · ${st}${replied}`;
+      };
+      if (!fetchFirst) { show(); return; }
+      el.innerHTML = '⏳ Conferindo o último lembrete...';
+      try {
+        const body = await convGet({ action: 'conversations' });
+        convList = body.conversations || [];
+        show();
+      } catch (err) {
+        if (collectPhone === phone) el.innerHTML = '';
+      }
     }
 
     function closeCollectModal() {
@@ -7731,7 +7763,7 @@
                 <span class="conv-item-name">${escapeHtml(c.name || formatPhoneShort('+' + c.digits))}</span>
                 <span class="conv-item-time">${convTimeLabel(c.lastAt)}</span>
               </div>
-              <div class="conv-item-preview">${escapeHtml(who)}: ${escapeHtml(c.lastText || '')}</div>
+              <div class="conv-item-preview">${c.lastWho !== 'Paciente' && c.lastStatus ? msgStatusHtml(c.lastStatus) + ' ' : ''}${escapeHtml(who)}: ${escapeHtml(c.lastText || '')}</div>
               ${tags ? `<div class="conv-tags">${tags}</div>` : ''}
             </button>
             <button type="button" class="conv-row-action" onclick="toggleConvHidden(${jsArg(c.digits)})" title="${actionLabel} esta conversa">${actionLabel}</button>
@@ -7880,11 +7912,20 @@
         ${pauseBtn}`;
     }
 
+    // Entregue/lido (2026-11-24): avisos da Meta gravados pelo servidor da IA
+    // (aba "Status Mensagens"). Sem aviso (mensagem antiga ou só "enviada"): nada.
+    function msgStatusHtml(status, at, error) {
+      if (status === 'Lida') return `<span class="msg-tick read" title="Lida${at ? ' em ' + escapeHtml(at) : ''}">✓✓</span>`;
+      if (status === 'Entregue') return `<span class="msg-tick" title="Entregue${at ? ' em ' + escapeHtml(at) : ''} (não lida ainda, ou a paciente desligou a confirmação de leitura)">✓✓</span>`;
+      if (status === 'Falhou') return `<span class="msg-tick fail" title="${escapeHtml(error || 'Não entregue')}">⚠️ não entregue</span>`;
+      return '';
+    }
+
     function renderConvMessages() {
       const c = convCurrent;
       const msgs = c.messages || [];
       const last = msgs[msgs.length - 1];
-      const key = `${c.total}|${last ? last.at + last.who + String(last.text || '').length : ''}|${c.name}`;
+      const key = `${c.total}|${last ? last.at + last.who + String(last.text || '').length : ''}|${c.name}|${msgs.map(m => m.status || '').join(',')}`;
       if (key === convRenderedKey) return; // nada novo: não mexe na rolagem
       const box = document.getElementById('convMessages');
       const firstRender = !convRenderedKey;
@@ -7894,7 +7935,7 @@
       box.innerHTML = older + (msgs.length ? msgs.map(m => {
         const w = CONV_WHO[m.who] || { cls: 'from-system', label: m.who || '' };
         const label = m.who === 'Paciente' ? (c.name || 'Paciente') : w.label;
-        return `<div class="conv-msg ${w.cls}">${escapeHtml(m.text || '')}<span class="conv-msg-meta">${escapeHtml(label)} · ${convTimeLabel(m.at)}</span></div>`;
+        return `<div class="conv-msg ${w.cls}">${escapeHtml(m.text || '')}<span class="conv-msg-meta">${escapeHtml(label)} · ${convTimeLabel(m.at)}${m.who !== 'Paciente' ? msgStatusHtml(m.status, m.statusAt, m.statusError) : ''}</span></div>`;
       }).join('') : '<div class="empty-state" style="margin:auto;">Sem mensagens.</div>');
       if (firstRender || nearBottom) box.scrollTop = box.scrollHeight;
     }
