@@ -9513,6 +9513,9 @@
           id: r[ch.indexOf('ID')] || '',
           name: r[ch.indexOf('Nome')] || '',
           codes: String(r[ch.indexOf('Códigos do Fornecedor')] || '').split('; ').filter(Boolean),
+          unit: r[ch.indexOf('Unidade')] || '',
+          useUnit: r[ch.indexOf('Unidade de Uso')] || '',
+          factor: stockNum(r[ch.indexOf('Fator de Conversão')]) || 1,
         })).filter(p => p.id && p.name);
         const sh0 = (suppliers && suppliers[0]) || [];
         supplierRegistry = (suppliers || []).slice(1).map(r => ({
@@ -9785,9 +9788,48 @@
       if (d) document.getElementById('pfFirstDue').value = addMonthsClamped(d, 1);
     }
 
+    // Lançamento manual (pedido do usuário 2026-11-24): o produto vem do
+    // Cadastro (mesmo produto que o estoque soma) ou é cadastrado aqui, com
+    // unidade de uso e fator, igual à importação da NF-e. Valor unitário =
+    // custo do lote, que vai para a margem dos atendimentos.
     function addPayableProduct() {
-      payableProducts.push({ product: '', lot: '', expiry: '', quantity: '', unit: '' });
+      payableProducts.push({ productId: '', product: '', lot: '', expiry: '', quantity: '', unit: '', unitValue: '', useUnit: '', factor: '', factorGuessed: false });
       renderPayableProducts();
+    }
+
+    function catalogProductById(id) {
+      return productCatalog.find(p => p.id === id) || null;
+    }
+
+    function setPayableProductCatalog(i, id) {
+      const p = payableProducts[i];
+      p.productId = id;
+      const c = catalogProductById(id);
+      if (c) { p.product = c.name; p.unit = c.unit; }
+      renderPayableProducts();
+    }
+
+    function onPayableProductNameBlur(i) {
+      const p = payableProducts[i];
+      if (p.productId) return;
+      const same = productCatalog.find(c => normalizeText(c.name) === normalizeText(p.product));
+      if (same) { setPayableProductCatalog(i, same.id); return; }
+      if (!p.factor) {
+        const g = guessPackFactor(p.product);
+        if (g) { p.factor = String(g); p.useUnit = p.useUnit || 'un'; p.factorGuessed = true; renderPayableProducts(); }
+      }
+    }
+
+    function payableProductTotalHtml(p) {
+      const q = parseMoneyInput(p.quantity);
+      const v = parseMoneyInput(p.unitValue);
+      return q > 0 && v > 0 ? `${escapeHtml(p.quantity)} × ${formatCurrencyBRL(v)} = <strong>${formatCurrencyBRL(q * v)}</strong>` : '';
+    }
+
+    function updatePayableProductMoney(i, field, value) {
+      payableProducts[i][field] = value;
+      const el = document.getElementById(`pfProdTotal${i}`);
+      if (el) el.innerHTML = payableProductTotalHtml(payableProducts[i]);
     }
 
     function removePayableProduct(i) {
@@ -9800,17 +9842,42 @@
     }
 
     function renderPayableProducts() {
-      document.getElementById('pfProducts').innerHTML = payableProducts.map((p, i) => `
+      const sorted = productCatalog.slice().sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+      document.getElementById('pfProducts').innerHTML = payableProducts.map((p, i) => {
+        const c = catalogProductById(p.productId);
+        const isNew = !c;
+        const options = [
+          `<option value=""${isNew ? ' selected' : ''}>➕ Cadastrar produto novo</option>`,
+          ...sorted.map(x => `<option value="${escapeHtml(x.id)}"${c && x.id === c.id ? ' selected' : ''}>${escapeHtml(x.name)}</option>`),
+        ].join('');
+        const unitLabel = (c ? c.unit : p.unit) || 'unidade da compra';
+        const conv = c && c.factor !== 1 && c.useUnit ? `1 ${escapeHtml(c.unit || 'UN')} = ${escapeHtml(formatQty(c.factor))} ${escapeHtml(c.useUnit)} no estoque.` : '';
+        return `
         <div class="pay-part">
           <div class="pay-part-head"><span>Produto ${i + 1}</span><button type="button" class="pay-part-remove" onclick="removePayableProduct(${i})">remover</button></div>
+          <div class="form-group" style="margin-bottom:8px;">
+            <label>Produto no cadastro</label>
+            <select onchange="setPayableProductCatalog(${i}, this.value)">${options}</select>
+            ${conv ? `<div class="ap-hint" style="margin-top:4px;">${conv}</div>` : ''}
+          </div>
+          ${isNew ? `
+          <div class="form-group" style="margin-bottom:8px;"><label>Nome do produto novo *</label>
+            <input type="text" maxlength="100" value="${escapeHtml(p.product)}" placeholder="Ex.: Agulha 30G 13 mm cx 100" oninput="updatePayableProduct(${i}, 'product', this.value)" onblur="onPayableProductNameBlur(${i})"></div>
           <div class="pay-part-grid">
-            <label style="grid-column: 1 / -1;">Produto<input type="text" maxlength="100" value="${escapeHtml(p.product)}" placeholder="Ex.: Rennova Lift Plus 1 ml" oninput="updatePayableProduct(${i}, 'product', this.value)"></label>
+            <label>Unidade da compra<input type="text" maxlength="15" value="${escapeHtml(p.unit)}" placeholder="cx, frasco, seringa" oninput="updatePayableProduct(${i}, 'unit', this.value)" onblur="renderPayableProducts()"></label>
+            <label>Unidade de uso<input type="text" maxlength="15" value="${escapeHtml(p.useUnit)}" placeholder="${escapeHtml(p.unit || 'igual à da compra')}" oninput="updatePayableProduct(${i}, 'useUnit', this.value)"></label>
+            <label>Quantas em 1 ${escapeHtml(p.unit || 'unidade')}<input type="text" maxlength="8" inputmode="decimal" value="${escapeHtml(p.factor)}" placeholder="1" oninput="updatePayableProduct(${i}, 'factor', this.value); payableProducts[${i}].factorGuessed = false"></label>
+          </div>
+          <div class="ap-hint" style="margin:0 0 8px;">${p.factorGuessed ? `💡 Sugerido pelo nome: 1 ${escapeHtml(p.unit || 'unidade')} = ${escapeHtml(p.factor)} ${escapeHtml(p.useUnit)}. Confira.` : 'Ex.: caixa com 100 agulhas → unidade de uso "un", 100 em 1 cx. Vazio = 1 (usa na mesma unidade da compra).'}</div>` : ''}
+          <div class="pay-part-grid">
+            <label>Quantidade (${escapeHtml(unitLabel)})<input type="text" maxlength="10" inputmode="decimal" value="${escapeHtml(p.quantity)}" placeholder="Ex.: 2" oninput="updatePayableProductMoney(${i}, 'quantity', this.value)"></label>
+            <label>Valor unitário (R$)<input type="text" maxlength="12" inputmode="decimal" value="${escapeHtml(p.unitValue)}" placeholder="0,00" oninput="updatePayableProductMoney(${i}, 'unitValue', this.value)"></label>
             <label>Lote<input type="text" maxlength="40" value="${escapeHtml(p.lot)}" autocapitalize="characters" oninput="updatePayableProduct(${i}, 'lot', this.value)"></label>
             <label>Validade<input type="text" maxlength="10" inputmode="numeric" placeholder="DD/MM/AAAA" value="${escapeHtml(p.expiry)}" oninput="maskExpiryInput(this); updatePayableProduct(${i}, 'expiry', this.value)" onblur="finishExpiryInput(this); updatePayableProduct(${i}, 'expiry', this.value)"></label>
-            <label>Quantidade<input type="text" maxlength="10" inputmode="decimal" value="${escapeHtml(p.quantity)}" placeholder="Ex.: 10" oninput="updatePayableProduct(${i}, 'quantity', this.value)"></label>
-            <label>Unidade<input type="text" maxlength="15" value="${escapeHtml(p.unit)}" placeholder="seringa, frasco, cx" oninput="updatePayableProduct(${i}, 'unit', this.value)"></label>
           </div>
-        </div>`).join('');
+          <div class="ap-hint" id="pfProdTotal${i}" style="margin-top:4px;">${payableProductTotalHtml(p)}</div>
+        </div>`;
+      }).join('');
     }
 
     function reviewPayable() {
@@ -9862,13 +9929,21 @@
       if (!document.getElementById('pfProductsBlock').hidden) {
         for (let i = 0; i < payableProducts.length; i++) {
           const p = payableProducts[i];
-          const filled = [p.product, p.lot, p.expiry, p.quantity, p.unit].some(v => String(v || '').trim());
+          const filled = p.productId || [p.product, p.lot, p.expiry, p.quantity, p.unitValue].some(v => String(v || '').trim());
           if (!filled) continue;
-          if (!p.product.trim()) return fail(`Produto ${i + 1}: informe o nome do produto (ou remova a linha).`);
+          const c = catalogProductById(p.productId);
+          if (!c && !p.product.trim()) return fail(`Produto ${i + 1}: escolha no cadastro ou informe o nome do produto novo (ou remova a linha).`);
           const expiry = expiryFromBR(p.expiry);
           if (expiry && !isValidExpiry(expiry)) return fail(`Produto ${i + 1}: validade inválida (use DD/MM/AAAA ou MM/AAAA).`);
-          if (p.quantity && !(parseMoneyInput(p.quantity) > 0)) return fail(`Produto ${i + 1}: quantidade inválida.`);
-          products.push({ product: p.product.trim(), lot: p.lot.trim().toUpperCase(), expiry, quantity: p.quantity.trim(), unit: p.unit.trim() });
+          if (!(parseMoneyInput(p.quantity) > 0)) return fail(`Produto ${i + 1}: informe a quantidade.`);
+          if (p.unitValue && !(parseMoneyInput(p.unitValue) > 0)) return fail(`Produto ${i + 1}: valor unitário inválido.`);
+          if (!c && p.factor && !(parseMoneyInput(p.factor) > 0)) return fail(`Produto ${i + 1}: "Quantas em 1" inválido.`);
+          products.push({
+            productId: c ? c.id : '', product: c ? c.name : p.product.trim(),
+            lot: p.lot.trim().toUpperCase(), expiry, quantity: p.quantity.trim(), unit: c ? c.unit : p.unit.trim(),
+            unitValue: parseMoneyInput(p.unitValue) || '',
+            useUnit: c ? '' : p.useUnit.trim(), factor: c ? '' : (parseMoneyInput(p.factor) || ''),
+          });
         }
       }
 
@@ -9921,7 +9996,7 @@
             </label>` : ''}
           </div>`).join('')}
         <div id="pfSumCheck" style="font-size:13px; margin-top:4px;"></div>
-        ${ctx.products.length ? `<div class="review-part-title">📦 Produtos (${ctx.products.length})</div>${ctx.products.map(p => row(escapeHtml(p.product), escapeHtml([p.lot && `lote ${p.lot}`, p.expiry && `val. ${formatExpiryBR(p.expiry)}`, p.quantity && `${p.quantity} ${p.unit}`.trim()].filter(Boolean).join(' · ') || '—'))).join('')}` : ''}
+        ${ctx.products.length ? `<div class="review-part-title">📦 Produtos (${ctx.products.length})</div>${ctx.products.map(p => row(escapeHtml(p.product) + (p.productId ? '' : ' <span class="stock-flag warn">novo no cadastro</span>'), escapeHtml([p.quantity && (`${p.quantity} ${p.unit}`.trim() + (p.unitValue ? ` × ${formatCurrencyBRL(p.unitValue)} = ${formatCurrencyBRL(parseMoneyInput(p.quantity) * p.unitValue)}` : '')), p.lot && `lote ${p.lot}`, p.expiry && `val. ${formatExpiryBR(p.expiry)}`].filter(Boolean).join(' · ') || '—'))).join('')}${ctx.products.some(p => !p.unitValue) ? '<p class="ap-hint" style="margin:6px 0;">Item sem valor unitário entra no estoque, mas sem custo para a margem.</p>' : ''}` : ''}
       `;
       updatePayableSumCheck();
     }
