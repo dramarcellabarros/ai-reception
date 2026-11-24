@@ -3199,6 +3199,11 @@
         <div id="pfProductsBlock" hidden>
           <label style="display:block; font-weight:600; margin:4px 0 8px;">Produtos desta compra <span style="font-weight:400; color:var(--cor-cinza-cacau); font-size:12px;">(opcional — entra na aba Entradas de Produtos)</span></label>
           <div id="pfProducts"></div>
+          <div class="form-group" style="margin-bottom:8px;">
+            <label for="pfFreight">🚚 Frete (R$)</label>
+            <input type="text" id="pfFreight" inputmode="decimal" placeholder="0,00" autocomplete="off">
+            <p class="ap-hint" style="margin:4px 0 0;">Rateado no custo de cada produto, pelo valor (vai para a margem). O valor da conta acima já deve incluir o frete.</p>
+          </div>
           <button type="button" class="agenda-toggle-btn" onclick="addPayableProduct()" style="margin:2px 0 12px;">➕ Adicionar produto</button>
         </div>
 
@@ -9711,7 +9716,7 @@
       const today = localDateStr(new Date());
       payableProducts = [];
       payableContext = null;
-      ['pfDescription', 'pfSupplier', 'pfValue', 'pfTotal', 'pfMonthly', 'pfNote', 'pfRecFirstDue'].forEach(id => { document.getElementById(id).value = ''; });
+      ['pfDescription', 'pfSupplier', 'pfValue', 'pfTotal', 'pfMonthly', 'pfNote', 'pfRecFirstDue', 'pfFreight'].forEach(id => { document.getElementById(id).value = ''; });
       document.getElementById('pfCount').value = 2;
       document.getElementById('pfMonths').value = 12;
       document.getElementById('pfDueDate').value = today;
@@ -9787,6 +9792,24 @@
       const d = document.getElementById('pfPurchaseDate').value;
       if (d) document.getElementById('pfFirstDue').value = addMonthsClamped(d, 1);
     }
+
+    /**
+     * Frete (pedido do usuário 2026-11-24): divide o frete entre os itens
+     * pelo valor de cada um; o último leva o arredondamento. → [R$ por item]
+     */
+    function freightShares(totals, freight) {
+      const sum = totals.reduce((t, x) => t + x, 0);
+      if (!(freight > 0) || !(sum > 0)) return totals.map(() => 0);
+      let left = Math.round(freight * 100) / 100;
+      return totals.map((x, i) => {
+        if (i === totals.length - 1) return Math.round(left * 100) / 100;
+        const share = Math.round(freight * x / sum * 100) / 100;
+        left -= share;
+        return share;
+      });
+    }
+
+    const roundUnit = (v) => Math.round(v * 10000) / 10000;
 
     // Lançamento manual (pedido do usuário 2026-11-24): o produto vem do
     // Cadastro (mesmo produto que o estoque soma) ou é cadastrado aqui, com
@@ -9947,7 +9970,22 @@
         }
       }
 
+      const freight = document.getElementById('pfProductsBlock').hidden ? 0 : parseMoneyInput(document.getElementById('pfFreight').value);
+      if (document.getElementById('pfFreight').value.trim() && !(freight > 0) && !document.getElementById('pfProductsBlock').hidden) return fail('Frete inválido.');
+      if (freight > 0) {
+        const valued = products.filter(p => p.unitValue > 0);
+        if (!valued.length) return fail('Para ratear o frete, informe o valor unitário dos produtos.');
+        const shares = freightShares(valued.map(p => parseMoneyInput(p.quantity) * p.unitValue), freight);
+        valued.forEach((p, k) => {
+          const q = parseMoneyInput(p.quantity);
+          p.baseUnitValue = p.unitValue;
+          p.freight = shares[k];
+          p.unitValue = roundUnit((q * p.unitValue + shares[k]) / q);
+        });
+      }
+
       payableContext = {
+        freight: freight > 0 ? freight : 0,
         type: payableType,
         description,
         category,
@@ -9962,6 +10000,18 @@
       renderPayableReview();
       document.getElementById('payableFormStep').style.display = 'none';
       document.getElementById('payableConfirmStep').style.display = 'block';
+    }
+
+    /** Produtos + frete × total das contas (só avisa; a conta pode ter outros itens). */
+    function payableGoodsCheckHtml(ctx) {
+      if (!ctx.products.length || ctx.products.some(p => !p.unitValue)) return '';
+      const goods = ctx.products.reduce((t, p) => t + parseMoneyInput(p.quantity) * (p.baseUnitValue || p.unitValue), 0);
+      const expected = Math.round((goods + (ctx.freight || 0)) * 100) / 100;
+      const bill = Math.round(ctx.installments.reduce((t, x) => t + x.value, 0) * 100) / 100;
+      const label = `Produtos ${formatCurrencyBRL(goods)}${ctx.freight ? ` + frete ${formatCurrencyBRL(ctx.freight)}` : ''} = ${formatCurrencyBRL(expected)}`;
+      return Math.abs(expected - bill) < 0.01
+        ? `<p class="ap-hint" style="margin:6px 0; color:#4A7A3B;">✓ ${label}, igual ao valor da conta.</p>`
+        : `<p class="ap-hint" style="margin:6px 0; color:#B3462F;">⚠️ ${label}, mas a conta soma ${formatCurrencyBRL(bill)}. Confira (desconto, taxa ou frete fora do valor).</p>`;
     }
 
     function renderPayableReview() {
@@ -9996,7 +10046,9 @@
             </label>` : ''}
           </div>`).join('')}
         <div id="pfSumCheck" style="font-size:13px; margin-top:4px;"></div>
-        ${ctx.products.length ? `<div class="review-part-title">📦 Produtos (${ctx.products.length})</div>${ctx.products.map(p => row(escapeHtml(p.product) + (p.productId ? '' : ' <span class="stock-flag warn">novo no cadastro</span>'), escapeHtml([p.quantity && (`${p.quantity} ${p.unit}`.trim() + (p.unitValue ? ` × ${formatCurrencyBRL(p.unitValue)} = ${formatCurrencyBRL(parseMoneyInput(p.quantity) * p.unitValue)}` : '')), p.lot && `lote ${p.lot}`, p.expiry && `val. ${formatExpiryBR(p.expiry)}`].filter(Boolean).join(' · ') || '—'))).join('')}${ctx.products.some(p => !p.unitValue) ? '<p class="ap-hint" style="margin:6px 0;">Item sem valor unitário entra no estoque, mas sem custo para a margem.</p>' : ''}` : ''}
+        ${ctx.products.length ? `<div class="review-part-title">📦 Produtos (${ctx.products.length})</div>${ctx.products.map(p => row(escapeHtml(p.product) + (p.productId ? '' : ' <span class="stock-flag warn">novo no cadastro</span>'), escapeHtml([p.quantity && (`${p.quantity} ${p.unit}`.trim() + (p.freight
+              ? ` × ${formatCurrencyBRL(p.baseUnitValue)} + frete ${formatCurrencyBRL(p.freight)} = ${formatCurrencyBRL(parseMoneyInput(p.quantity) * p.baseUnitValue + p.freight)} (custo ${formatCurrencyBRL(p.unitValue)} cada)`
+              : p.unitValue ? ` × ${formatCurrencyBRL(p.unitValue)} = ${formatCurrencyBRL(parseMoneyInput(p.quantity) * p.unitValue)}` : '')), p.lot && `lote ${p.lot}`, p.expiry && `val. ${formatExpiryBR(p.expiry)}`].filter(Boolean).join(' · ') || '—'))).join('')}${ctx.freight ? row('🚚 Frete', `${formatCurrencyBRL(ctx.freight)}<div class="ap-hint">rateado no custo dos produtos</div>`) : ''}${payableGoodsCheckHtml(ctx)}${ctx.products.some(p => !p.unitValue) ? `<p class="ap-hint" style="margin:6px 0;">Item sem valor unitário entra no estoque, mas sem custo para a margem${ctx.freight ? ' e fora do rateio do frete' : ''}.</p>` : ''}` : ''}
       `;
       updatePayableSumCheck();
     }
@@ -10400,6 +10452,7 @@
             qty: nfeNum(prod, 'qCom'),
             unitValue: nfeNum(prod, 'vUnCom'),
             total: nfeNum(prod, 'vProd'),
+            freight: nfeNum(prod, 'vFrete'),
             cfop: nfeText(prod, 'CFOP'),
             // CFOP x910/x911 = bonificação/brinde: vem na nota com preço, mas não é cobrado (nota 144714, 19/11).
             bonus: /^[1-7]91[01]$/.test(nfeText(prod, 'CFOP')),
@@ -10409,6 +10462,7 @@
         dups: nfeEls(cobr, 'dup').map(d => ({ number: nfeText(d, 'nDup'), dueDate: nfeText(d, 'dVenc'), value: nfeNum(d, 'vDup') })),
         pags: nfeEls(inf, 'detPag').map(p => ({ t: nfeText(p, 'tPag'), v: nfeNum(p, 'vPag') })),
         invoiceTotal: nfeNum(totalEl, 'vNF'),
+        freight: nfeNum(totalEl, 'vFrete'),
       };
     }
 
@@ -10529,6 +10583,7 @@
         ${row('🎁 Bonificação', `− ${formatCurrencyBRL(nf.bonusTotal)}<div class="ap-hint">${nf.items.filter(it => it.bonus).length} item(ns) de brinde: entram no estoque com custo zero</div>`)}
         ${row('A pagar', `<strong>${formatCurrencyBRL(nf.total)}</strong>${nf.paidInXml && Math.abs(nf.paidInXml - nf.total) > 0.01 ? `<div class="ap-hint" style="color:#B3462F;">⚠️ O pagamento informado na nota é ${formatCurrencyBRL(nf.paidInXml)}. Confira.</div>` : nf.paidInXml ? '<div class="ap-hint">confere com o pagamento informado na nota</div>' : ''}`)}`
         : row('Valor total', `<strong>${formatCurrencyBRL(nf.total)}</strong>`)}
+        ${nf.freight > 0 ? row('🚚 Frete', `${formatCurrencyBRL(nf.freight)}<div class="ap-hint">já está no total; rateado no custo dos itens do estoque</div>`) : ''}
         ${nf.destName ? row('Destinatário', `${escapeHtml(nf.destName)}${nf.destDoc ? `<div class="ap-hint">${escapeHtml(formatDocBR(nf.destDoc))}</div>` : ''}`) : ''}
         ${row('Chave', `<span style="font-size:11px; word-break:break-all;">${escapeHtml(keyGroups)}</span>`)}
 
@@ -10606,6 +10661,23 @@
       return 0;
     }
 
+    /**
+     * Frete da nota no custo dos itens que entram no estoque (sem brinde e
+     * sem "não entra no estoque"): o rateio do próprio XML (vFrete do item)
+     * quando existe, senão o frete total dividido pelo valor. → [R$ por item]
+     */
+    function nfeFreightShares() {
+      const st = nfeImport;
+      const eligible = st.items.map(it => !it.bonus && it.productId !== 'skip' && it.qty > 0);
+      const perItem = st.items.reduce((t, it, i) => t + (eligible[i] ? it.freight || 0 : 0), 0);
+      if (perItem > 0) return st.items.map((it, i) => (eligible[i] ? it.freight || 0 : 0));
+      const idx = st.items.map((_, i) => i).filter(i => eligible[i]);
+      const shares = freightShares(idx.map(i => st.items[i].total), st.nf.freight || 0);
+      const out = st.items.map(() => 0);
+      idx.forEach((i, k) => { out[i] = shares[k]; });
+      return out;
+    }
+
     function nfeItemHtml(i) {
       const it = nfeImport.items[i];
       const skip = it.productId === 'skip';
@@ -10620,7 +10692,7 @@
         <div class="pay-part">
           <div class="pay-part-head" style="align-items:flex-start;"><span>${i + 1}. ${escapeHtml(it.name)}${it.bonus ? ' <span class="stock-flag warn">🎁 bonificação · custo zero</span>' : ''}</span></div>
           <div class="ap-hint" style="margin:-4px 0 8px;">${[it.code && `cód. ${escapeHtml(it.code)}`, it.ncm && `NCM ${escapeHtml(it.ncm)}`].filter(Boolean).join(' · ')}
-            <div>${escapeHtml(formatQty(it.qty))} ${escapeHtml(it.unit)} × ${formatCurrencyBRL(it.unitValue)} = <strong>${formatCurrencyBRL(it.total)}</strong></div></div>
+            <div>${escapeHtml(formatQty(it.qty))} ${escapeHtml(it.unit)} × ${formatCurrencyBRL(it.unitValue)} = <strong>${formatCurrencyBRL(it.total)}</strong></div>${(() => { const f = nfeFreightShares()[i]; return f > 0 ? `<div>🚚 + frete ${formatCurrencyBRL(f)} → custo ${formatCurrencyBRL((it.total + f) / it.qty)} por ${escapeHtml(it.unit || 'UN')}</div>` : ''; })()}</div>
           <div class="form-group" style="margin-bottom:8px;">
             <label>Produto no cadastro${it.matchedBy && !isNew && !skip ? ` <span class="ap-label">(achado pelo ${it.matchedBy})</span>` : ''}</label>
             <select onchange="setNfeItemProduct(${i}, this.value)">${options}</select>
@@ -10649,9 +10721,12 @@
     }
 
     function setNfeItemProduct(i, value) {
+      const wasSkip = nfeImport.items[i].productId === 'skip';
       nfeImport.items[i].productId = value;
       nfeImport.items[i].matchedBy = '';
-      rerenderNfeItem(i);
+      // Frete rateado: entrar/sair do estoque muda a parte de todos os itens.
+      if (nfeImport.nf.freight > 0 && (wasSkip || value === 'skip')) nfeImport.items.forEach((_, j) => rerenderNfeItem(j));
+      else rerenderNfeItem(i);
     }
 
     function addNfeLot(i) {
@@ -10727,6 +10802,7 @@
         if (x.paid && (!x.paidDate || x.paidDate > today)) return fail('Data do pagamento inválida (não pode ser no futuro).');
       }
       const items = [];
+      const freight = nfeFreightShares();
       for (let i = 0; i < st.items.length; i++) {
         const it = st.items[i];
         if (!it.productId && !it.productName.trim()) return fail(`Item ${i + 1}: informe o nome do produto novo.`);
@@ -10740,7 +10816,7 @@
           lots.push({ lot: l.lot.trim(), expiry, qty: qty > 0 ? qty : '' });
         }
         items.push({
-          code: it.code, name: it.name, ncm: it.ncm, unit: it.unit, qty: it.qty, unitValue: it.bonus ? 0 : it.unitValue,
+          code: it.code, name: it.name, ncm: it.ncm, unit: it.unit, qty: it.qty, unitValue: it.bonus ? 0 : (freight[i] > 0 ? roundUnit((it.total + freight[i]) / it.qty) : it.unitValue),
           productId: it.productId, productName: it.productName.trim(), lots,
           useUnit: String(it.useUnit || '').trim(), factor: String(it.factor || '').trim().replace(',', '.'),
         });
