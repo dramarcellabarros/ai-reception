@@ -8920,6 +8920,9 @@
     const CASH_MOVEMENT_TYPES = {
       Retirada: { sign: -1, icon: '🙋‍♀️', hint: 'Dinheiro que a sócia tira da conta (pró-labore, distribuição de lucro). Não é despesa da clínica.' },
       Aporte: { sign: 1, icon: '💼', hint: 'Dinheiro que a sócia coloca na conta da clínica.' },
+      // Aluguel do aparelho (Axcel) para outra profissional (pedido 2026-11-26):
+      // entra no caixa e soma no Lucro do período como outra receita.
+      'Aluguel de aparelho': { sign: 1, icon: '🔌', hint: 'Aluguel do aparelho para outra profissional. Entra no caixa e soma no Lucro do período. Na descrição: aparelho e quem alugou.', placeholder: 'ex.: Axcel, aluguel para Dra. Fulana' },
       'Outra entrada': { sign: 1, icon: '⬇️', hint: 'Entrada que não é venda: empréstimo recebido, rendimento, reembolso.' },
       'Outra saída': { sign: -1, icon: '⬆️', hint: 'Saída que não é conta a pagar: tarifa do banco, parcela de empréstimo.' },
     };
@@ -9212,6 +9215,7 @@
       cashMovementType = t;
       document.getElementById('cmTypeChips').innerHTML = chipsHtml(Object.keys(CASH_MOVEMENT_TYPES).map(k => [k, `${CASH_MOVEMENT_TYPES[k].icon} ${k}`]), t, 'setCashMovementType');
       document.getElementById('cmTypeHint').textContent = CASH_MOVEMENT_TYPES[t].hint;
+      document.getElementById('cmDescription').placeholder = CASH_MOVEMENT_TYPES[t].placeholder || 'ex.: pró-labore de novembro';
     }
 
     function openCashMovementModal() {
@@ -12246,7 +12250,10 @@
       const fixed = cats.filter(c => c.group === 'Fixa').reduce((t, c) => t + c.value, 0);
       const variable = cats.filter(c => c.group !== 'Fixa').reduce((t, c) => t + c.value, 0);
       const openCount = expenses.filter(p => p.status !== 'Pago').length;
-      const profit = margin - variable - fixed;
+      const rentals = cashMovements.filter(x => x.type === 'Aluguel de aparelho' && x.date >= from && x.date <= to);
+      const rental = rentals.reduce((t, x) => t + x.value, 0);
+      if (!openingBalancesLoaded && !openingBalancesLoading && hasDataConfig(loadSettings())) fetchOpeningBalances().then(() => renderMarginCard()).catch(() => {});
+      const profit = margin + rental - variable - fixed;
       const pct = (v) => (sold ? `${(v / sold * 100).toFixed(1).replace('.', ',')}% do vendido` : '');
       // Ponto de equilíbrio: quanto vender para a margem (já sem as variáveis) pagar os fixos.
       const contribRate = sold > 0 ? (margin - variable) / sold : 0;
@@ -12257,9 +12264,10 @@
       return `
         <h4 style="margin:4px 0 8px;">📊 Lucro do período · ${escapeHtml(label)}</h4>
         <div class="kpi-grid" style="margin-bottom:12px;">
+          ${rental ? kpiHtml('Aluguel de aparelho', `+ ${formatCurrencyBRL(rental)}`, `${rentals.length} ${rentals.length > 1 ? 'aluguéis' : 'aluguel'} · outra receita`) : ''}
           ${kpiHtml('Despesas variáveis', `− ${formatCurrencyBRL(variable)}`, pct(variable))}
           ${kpiHtml('Despesas fixas', `− ${formatCurrencyBRL(fixed)}`, pct(fixed))}
-          ${kpiHtml('Lucro operacional', formatCurrencyBRL(profit), pct(profit) || 'margem − despesas', profit >= 0 ? 'kpi-good kpi-hero' : 'kpi-alert kpi-hero')}
+          ${kpiHtml('Lucro operacional', formatCurrencyBRL(profit), pct(profit) || (rental ? 'margem + aluguel − despesas' : 'margem − despesas'), profit >= 0 ? 'kpi-good kpi-hero' : 'kpi-alert kpi-hero')}
           ${kpiHtml('Ponto de equilíbrio', breakEven === null ? '—' : formatCurrencyBRL(breakEven), breakEven === null ? 'sem margem no período' : 'vendas para pagar as fixas')}
         </div>
         ${cats.length ? `<div class="data-table-wrap"><table class="data-table">
