@@ -8697,12 +8697,17 @@
       const overdue = allFinance.filter(f => f.status !== 'Recebido' && f.dueDate && f.dueDate < today);
       const carteiraOpen = Array.from(new Set(allCarteira.map(c => c.phone))).reduce((s, ph) => s + Math.max(0, getCarteiraBalance(ph)), 0);
       const go = (onclick) => ({ onclick, active: false });
+      // Aluguel de aparelho (2026-11-26): outra receita, fora de "Vendido".
+      if (!openingBalancesLoaded && !openingBalancesLoading && hasDataConfig(loadSettings())) fetchOpeningBalances().then(() => renderVendas()).catch(() => {});
+      const rentals = cashMovements.filter(x => x.type === 'Aluguel de aparelho' && x.date >= from && x.date <= to);
+      const rental = sum(rentals, 'value');
 
       document.getElementById('vendasKpis').innerHTML = [
         kpiHtml('Vendido', formatCurrencyBRL(sold), `${sales.length} venda(s)`, 'kpi-hero', go("setVendasMode('vendido')")),
         kpiHtml('Recebido (bruto)', formatCurrencyBRL(recGross), `${receipts.length} recebimento(s)`, '', go("setVendasMode('recebido')")),
         kpiHtml('Taxas do cartão', `− ${formatCurrencyBRL(recFee)}`, recGross ? `${(recFee / recGross * 100).toFixed(2).replace('.', ',')}% do recebido` : ''),
         kpiHtml('Entrou na conta', formatCurrencyBRL(recGross - recFee), 'líquido', 'kpi-good', go("setVendasMode('recebido')")),
+        rental ? kpiHtml('Aluguel de aparelho', `+ ${formatCurrencyBRL(rental)}`, `${rentals.length} ${rentals.length > 1 ? 'aluguéis' : 'aluguel'} · outra receita`, 'kpi-good', go("setVendasMode('fluxo')")) : '',
         kpiHtml('A receber', formatCurrencyBRL(sum(pending, 'value')), `vencendo no período · ${pending.length}`, '', go("goToReceber('todas')")),
         kpiHtml('Atrasado', formatCurrencyBRL(sum(overdue, 'value')), `hoje · ${overdue.length} parcela(s)`, overdue.length ? 'kpi-alert' : '', go("goToReceber('atrasadas')")),
         kpiHtml('Em aberto na Carteira', formatCurrencyBRL(carteiraOpen), 'saldo de hoje', carteiraOpen > 0 ? 'kpi-alert' : '', go("goToReceber('carteira')")),
